@@ -20620,3 +20620,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The dual positive/negative boundary witness now scales beyond the single `bodyStep = False` model, improving reuse in later mismatch-boundary arguments.
+
+### 2026-03-04: added shared no-body-step positive/negative contrast theorem
+
+**Context**: Added theorem:
+- `native_handler_step_ext_with_mismatch_positive_negative_contrast_of_no_body_step`
+
+This theorem packages both branches under one shared boundary premise (`h_no_body_step`):
+- strict-positive matching witness still steps with preservation,
+- metadata-mismatch progress/soundness are both refutable.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Tensor` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeU.ping() -> resume 71`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeV.left()` with only `ProbeW.right`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeX.read() -> resume true`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe4() -> Int; resume 11`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 11; resume 11`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the shared positive/negative contrast theorem addition.
+- Continued MCP-first checkpoint loop with fresh probe names.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_positive_negative_contrast_of_no_body_step`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The constructive and refutational branches are now theorem-coupled at a shared no-body-step boundary, reducing manual cross-branch assembly in downstream arguments.

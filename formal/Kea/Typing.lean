@@ -5420,6 +5420,43 @@ theorem native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_fai
   ⟩
 
 /--
+Positive/negative contrast at a shared no-body-step boundary:
+- constructive strict-positive witness still steps with preservation, while
+- metadata-mismatch progress/soundness fail under the same `bodyStep`.
+-/
+theorem native_handler_step_ext_with_mismatch_positive_negative_contrast_of_no_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        body') :
+    (∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        native_handler_matching_perform_witness_expr
+        e'
+      ∧ HasTypeScopedTop [] e' .int)
+    ∧
+    ¬ native_handler_step_ext_with_mismatch_progress_prop
+      clauseSem mismatchSem bodyStep
+    ∧
+    ¬ native_handler_step_ext_with_mismatch_soundness_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness
+      clauseSem mismatchSem bodyStep h_body_pres
+  · exact not_native_handler_step_ext_with_mismatch_progress_prop_of_metadata_mismatch_without_body_step
+      clauseSem mismatchSem bodyStep h_no_body_step
+  · exact not_native_handler_step_ext_with_mismatch_soundness_prop_of_metadata_mismatch_without_body_step
+      clauseSem mismatchSem bodyStep h_no_body_step
+
+/--
 Packaged strict-extension/typed-gap ladder on `bodyStep = False`:
 `native -> ext -> ext-with-mismatch`.
 -/
