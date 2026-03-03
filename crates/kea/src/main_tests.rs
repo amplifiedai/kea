@@ -2947,6 +2947,50 @@ fn compile_and_execute_fip_unique_known_forwarder_call_exit_code() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_known_forwarder_with_passthrough_arg_exit_code() {
+    let source_path = write_temp_source(
+        "fn forward_with_seed(seed: Int, x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_forward_with_seed(x: Unique Int) -> Unique Int\n  forward_with_seed(42, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-known-forwarder-with-passthrough-arg",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept verified forwarders where the unique handoff parameter is not arg0",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_module_alias_forwarder_with_passthrough_arg_exit_code() {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-module-alias-forwarder-passthrough-arg");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_with_seed(seed: Int, x: Unique Int) -> Unique Int\n  x\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+            &source_path,
+            "use Alpha as A\n\n@fip\nfn call_forward_with_seed(x: Unique Int) -> Unique Int\n  A.forward_with_seed(42, x)\n\nfn main() -> Int\n  0\n",
+        )
+        .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept module-alias forwarders with passthrough arguments when the unique handoff slot is verified",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_value_call_exit_code() {
     let source_path = write_temp_source(
         "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder(forward_once, x)\n\nfn main() -> Int\n  0\n",

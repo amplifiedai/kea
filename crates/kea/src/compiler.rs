@@ -1867,15 +1867,18 @@ fn collect_import_aliases(module: &Module) -> BTreeMap<String, String> {
 }
 
 fn extend_safe_forwarders_with_import_aliases(
-    safe_handoff_callees: &mut BTreeSet<String>,
+    safe_handoff_callees: &mut BTreeMap<String, usize>,
     import_aliases: &BTreeMap<String, String>,
 ) {
-    let originals = safe_handoff_callees.iter().cloned().collect::<Vec<_>>();
+    let originals = safe_handoff_callees
+        .iter()
+        .map(|(name, index)| (name.clone(), *index))
+        .collect::<Vec<_>>();
     for (alias, module_path) in import_aliases {
         let prefix = format!("{module_path}.");
-        for original in &originals {
+        for (original, index) in &originals {
             if let Some(rest) = original.strip_prefix(&prefix) {
-                safe_handoff_callees.insert(format!("{alias}.{rest}"));
+                safe_handoff_callees.insert(format!("{alias}.{rest}"), *index);
             }
         }
     }
@@ -3326,8 +3329,11 @@ fn matches_higher_order_forwarder_body(
     }
 }
 
-fn collect_safe_unique_forwarders(hir: &HirModule, _mir: &kea_mir::MirModule) -> BTreeSet<String> {
-    let mut safe = BTreeSet::new();
+fn collect_safe_unique_forwarders(
+    hir: &HirModule,
+    _mir: &kea_mir::MirModule,
+) -> BTreeMap<String, usize> {
+    let mut safe = BTreeMap::new();
     let mut short_name_counts = BTreeMap::new();
     for decl in &hir.declarations {
         let HirDecl::Function(function) = decl else {
@@ -3341,7 +3347,7 @@ fn collect_safe_unique_forwarders(hir: &HirModule, _mir: &kea_mir::MirModule) ->
             .to_string();
         *short_name_counts.entry(short).or_default() += 1usize;
     }
-    let no_safe_handoffs = BTreeSet::new();
+    let no_safe_handoffs = BTreeMap::new();
 
     for decl in &hir.declarations {
         let HirDecl::Function(function) = decl else {
@@ -3350,11 +3356,12 @@ fn collect_safe_unique_forwarders(hir: &HirModule, _mir: &kea_mir::MirModule) ->
         let candidate_roots = function
             .params
             .iter()
-            .filter_map(|param| param.name.clone())
-            .collect::<BTreeSet<_>>();
+            .enumerate()
+            .filter_map(|(idx, param)| param.name.clone().map(|name| (name, idx)))
+            .collect::<Vec<_>>();
 
-        let mut is_safe_forwarder = false;
-        for root in candidate_roots {
+        let mut safe_arg_index = None;
+        for (root, param_index) in candidate_roots {
             let aliases = BTreeMap::from([(root.clone(), root.clone())]);
             let no_safe_higher_order_handoffs = BTreeMap::new();
             let flow = analyze_hir_unique_flow_function(
@@ -3369,22 +3376,22 @@ fn collect_safe_unique_forwarders(hir: &HirModule, _mir: &kea_mir::MirModule) ->
                 && call_escape_count == 0
                 && flow.result_alias_root.as_deref() == Some(root.as_str())
             {
-                is_safe_forwarder = true;
+                safe_arg_index = Some(param_index);
                 break;
             }
         }
-        if !is_safe_forwarder {
+        let Some(safe_arg_index) = safe_arg_index else {
             continue;
-        }
+        };
 
-        safe.insert(function.name.clone());
+        safe.insert(function.name.clone(), safe_arg_index);
         let short = function
             .name
             .rsplit('.')
             .next()
             .unwrap_or(function.name.as_str());
         if short_name_counts.get(short).copied().unwrap_or(0) == 1 {
-            safe.insert(short.to_string());
+            safe.insert(short.to_string(), safe_arg_index);
         }
     }
 
@@ -3534,7 +3541,7 @@ fn hir_callable_name(func: &HirExpr) -> Option<String> {
 fn hir_call_safe_unique_handoff_arg_index(
     func: &HirExpr,
     args: &[HirExpr],
-    safe_handoff_callees: &BTreeSet<String>,
+    safe_handoff_callees: &BTreeMap<String, usize>,
     safe_higher_order_handoff_callees: &BTreeMap<String, SafeHigherOrderForwarder>,
     local_bindings: &BTreeSet<String>,
 ) -> Option<usize> {
@@ -3548,10 +3555,14 @@ fn hir_call_safe_unique_handoff_arg_index(
     }
     let name = hir_callable_name(func)?;
     let short_name = name.rsplit('.').next().unwrap_or(name.as_str());
-    let is_safe_direct_callee =
-        safe_handoff_callees.contains(&name) || safe_handoff_callees.contains(short_name);
-    if args.len() == 1 && is_safe_direct_callee {
-        return Some(0);
+    let safe_direct_handoff_arg_index = safe_handoff_callees
+        .get(&name)
+        .copied()
+        .or_else(|| safe_handoff_callees.get(short_name).copied());
+    if let Some(arg_index) = safe_direct_handoff_arg_index
+        && arg_index < args.len()
+    {
+        return Some(arg_index);
     }
     let spec = safe_higher_order_handoff_callees
         .get(&name)
@@ -3576,7 +3587,7 @@ fn hir_call_safe_unique_handoff_arg_index(
 fn hir_call_safe_unique_handoff_arg_index_from_spec(
     spec: &SafeHigherOrderForwarder,
     args: &[HirExpr],
-    safe_handoff_callees: &BTreeSet<String>,
+    safe_handoff_callees: &BTreeMap<String, usize>,
     local_bindings: &BTreeSet<String>,
 ) -> Option<usize> {
     if spec.unique_arg_index >= args.len() || spec.forwarder_arg_index >= args.len() {
@@ -3593,9 +3604,11 @@ fn hir_call_safe_unique_handoff_arg_index_from_spec(
         .rsplit('.')
         .next()
         .unwrap_or(forwarder_name.as_str());
-    (safe_handoff_callees.contains(&forwarder_name)
-        || safe_handoff_callees.contains(forwarder_short_name))
-    .then_some(spec.unique_arg_index)
+    let safe_forwarder_arg_index = safe_handoff_callees
+        .get(&forwarder_name)
+        .copied()
+        .or_else(|| safe_handoff_callees.get(forwarder_short_name).copied());
+    (safe_forwarder_arg_index == Some(0)).then_some(spec.unique_arg_index)
 }
 
 fn hir_function_param_bindings(function: &HirFunction) -> BTreeSet<String> {
@@ -3640,14 +3653,14 @@ fn record_fip_call_boundary_issue(
 fn collect_fip_call_boundary_issues(
     expr: &HirExpr,
     local_bindings: &BTreeSet<String>,
-    safe_handoff_callees: &BTreeSet<String>,
+    safe_handoff_callees: &BTreeMap<String, usize>,
     safe_higher_order_handoff_callees: &BTreeMap<String, SafeHigherOrderForwarder>,
     site_limit: usize,
 ) -> FipCallBoundaryIssues {
     fn walk(
         expr: &HirExpr,
         local_bindings: &BTreeSet<String>,
-        safe_handoff_callees: &BTreeSet<String>,
+        safe_handoff_callees: &BTreeMap<String, usize>,
         safe_higher_order_handoff_callees: &BTreeMap<String, SafeHigherOrderForwarder>,
         site_limit: usize,
     ) -> FipCallBoundaryIssues {
@@ -3961,7 +3974,7 @@ fn collect_fip_call_boundary_issues(
 fn analyze_hir_unique_flow_function(
     function: &HirFunction,
     aliases: &BTreeMap<String, String>,
-    safe_handoff_callees: &BTreeSet<String>,
+    safe_handoff_callees: &BTreeMap<String, usize>,
     safe_higher_order_handoff_callees: &BTreeMap<String, SafeHigherOrderForwarder>,
 ) -> HirUniqueFlowSummary {
     let local_bindings = hir_function_param_bindings(function);
@@ -3977,7 +3990,7 @@ fn analyze_hir_unique_flow_function(
 fn analyze_hir_unique_flow_expr_scoped(
     expr: &HirExpr,
     aliases: &BTreeMap<String, String>,
-    safe_handoff_callees: &BTreeSet<String>,
+    safe_handoff_callees: &BTreeMap<String, usize>,
     safe_higher_order_handoff_callees: &BTreeMap<String, SafeHigherOrderForwarder>,
     local_bindings: &BTreeSet<String>,
 ) -> HirUniqueFlowSummary {
