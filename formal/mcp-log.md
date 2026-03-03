@@ -19188,3 +19188,47 @@ No MCP divergence found at this checkpoint.
 **Impact**:
 - Boundary contrast now has a single “all-at-once” theorem route, reducing
   assumption threading across separate soundness/progress gap lemmas.
+
+### 2026-03-03: strict-extension of mismatch-extension over base extension (bodyStep=false)
+
+**Context**: Added a new layer comparison proving that
+`NativeHandlerStepExtWithMismatch` strictly extends `NativeHandlerStepExt` when
+`bodyStep = False`, plus a typed mismatched-op gap witness proposition/theorem.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` parsing should remain stable.
+- Coherent higher-order handler should type-check.
+- Mismatched pure handler should reject with effect leak.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use Reader` -> `ok`.
+2. Coherent higher-order Factory handler (`Factory.build(seed) -> resume (|x| x + seed)`) -> `ok`.
+3. Mismatched pure handler (`handle Counter.next()` with only `Reader.ask` clause) -> `error`, `E0001` (pure body performs `[Counter]`).
+4. Bad resume payload (`State.get() -> resume false` in `fn ... -> Int`) -> `error`, `E0001`.
+5. Out-of-handler resume control (`fn bad_resume3() -> Unit; resume ()`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept strict-extension-over-base-extension additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_bodyStepFalse_prop`
+  - `native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_bodyStepFalse`
+  - `native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop`
+  - `native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The extension ladder is now explicit in both hops:
+  `native` -> `ext` and `ext` -> `ext-with-mismatch` (under `bodyStep=false`),
+  each with constructive strictness witnesses.
