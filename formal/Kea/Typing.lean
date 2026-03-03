@@ -10289,6 +10289,67 @@ theorem native_typed_handle_correspondence_capstone_not_erasable_implies_not_pur
       h_cap h_pure
   exact h_not_erasable h_mem_erasable
 
+/--
+At the typed native-handle singleton-declaration boundary, erasing the handled
+capability is sufficient for scheduler-`pure` classification.
+-/
+theorem native_typed_handle_correspondence_capstone_handled_erased_implies_pure
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (_h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty)
+    (h_mem_erasable : opHandle ∈ erasable) :
+    schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .pure := by
+  have h_residual_empty : eraseCapabilities [opHandle] erasable = [] := by
+    simp [eraseCapabilities, h_mem_erasable]
+  simp [schedulerClassOfResidual, h_residual_empty]
+
+/--
+Exact singleton-declaration boundary equivalence on the typed native-handle
+capstone: scheduler is `pure` iff the handled capability was erased.
+-/
+theorem native_typed_handle_correspondence_capstone_pure_iff_handled_erased
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .pure
+      ↔
+    opHandle ∈ erasable := by
+  constructor
+  · intro h_pure
+    exact native_typed_handle_correspondence_capstone_pure_implies_handled_erased
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap h_pure
+  · intro h_mem_erasable
+    exact native_typed_handle_correspondence_capstone_handled_erased_implies_pure
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap h_mem_erasable
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

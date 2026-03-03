@@ -22373,3 +22373,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The typed native-handle correspondence layer now states a concrete compiler obligation: scheduler-pure outcomes require erasing the handled capability.
+
+### 2026-03-04: proved exact boundary equivalence pure iff handled-erased on typed-handle capstone
+
+**Context**: Added singleton-boundary equivalence theorems in `Kea/Typing.lean`:
+- `native_typed_handle_correspondence_capstone_handled_erased_implies_pure`
+- `native_typed_handle_correspondence_capstone_pure_iff_handled_erased`
+
+Together with the previous pure=>erased theorem, this closes the exact typed-handle boundary relation between scheduler `pure` classification and compiler erasure of the handled capability.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched clause that leaks an unhandled effect should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Area` + trivial fn -> `ok`.
+2. Coherent handler (`handle runProbeHE(); ProbeHE.run() -> resume 461`) -> `ok`.
+3. Mismatched handler clause (effect leak remains `[ProbeHF]`) -> `error`, `E0001`.
+4. Bad resume payload -> `error`, `E0001`.
+5. Out-of-handler resume (`fresh_outside_resume_probe_20260304x`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`forged_ctx_probe_20260304x`) -> `error`, `E0012`.
+7. Double-resume clause -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the exact `pure ↔ erased` equivalence layer on the typed-handle capstone.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_typed_handle_correspondence_capstone_handled_erased_implies_pure`
+  - `native_typed_handle_correspondence_capstone_pure_iff_handled_erased`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The typed native-handle correspondence now states the exact singleton boundary law: scheduler `pure` iff the handled capability was erased.
