@@ -11390,6 +11390,81 @@ theorem tier_scheduler_pair_tier23_of_effect_compiler_scheduler_correspondence
   · exact Or.inl h_t2
   · exact Or.inr h_t3
 
+/--
+Under aggressive erasure, if at least one declared capability is retained,
+scheduler classification is exactly `cooperative`.
+-/
+theorem schedulerClassOfResidual_eq_cooperative_of_aggressive_and_nonerasable_declared
+    (blocking declared erasable : List Label)
+    {l : Label}
+    (h_aggressive : aggressiveErasureRemovesDeclaredBlocking declared erasable blocking)
+    (h_declared : l ∈ declared)
+    (h_not_erasable : l ∉ erasable) :
+    schedulerClassOfResidual blocking (eraseCapabilities declared erasable) = .cooperative := by
+  have h_small :
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable) = .pure
+        ∨
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable) = .cooperative :=
+    scheduler_class_small_of_aggressive_erasure declared erasable blocking h_aggressive
+  rcases h_small with h_pure | h_coop
+  · exact False.elim
+      ((schedulerClassOfResidual_ne_pure_of_nonerasable_declared
+        blocking declared erasable h_declared h_not_erasable) h_pure)
+  · exact h_coop
+
+/--
+Tier-side consequence of
+`schedulerClassOfResidual_eq_cooperative_of_aggressive_and_nonerasable_declared`:
+under aggressive erasure with a retained capability, residual tier is exactly
+Tier 2 or Tier 3.
+-/
+theorem handlerTierOfResidual_eq_tier2_or_tier3_of_aggressive_and_nonerasable_declared
+    (yielding blocking declared erasable : List Label)
+    {l : Label}
+    (h_aggressive : aggressiveErasureRemovesDeclaredBlocking declared erasable blocking)
+    (h_declared : l ∈ declared)
+    (h_not_erasable : l ∉ erasable) :
+    handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) = .tier2
+      ∨
+    handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) = .tier3 := by
+  have h_coop :
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable) = .cooperative :=
+    schedulerClassOfResidual_eq_cooperative_of_aggressive_and_nonerasable_declared
+      blocking declared erasable h_aggressive h_declared h_not_erasable
+  exact (schedulerClassOfResidual_eq_cooperative_iff_tier2_or_tier3
+    yielding blocking (eraseCapabilities declared erasable)).1 h_coop
+
+/--
+Singleton typed-handle scheduler corollary of aggressive+retained-capability
+cooperative classification.
+-/
+theorem native_typed_handle_correspondence_capstone_scheduler_cooperative_of_aggressive_and_not_erasable
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (_h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty)
+    (h_aggressive :
+      aggressiveErasureRemovesDeclaredBlocking [opHandle] erasable blocking)
+    (h_not_erasable : opHandle ∉ erasable) :
+    schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .cooperative := by
+  exact schedulerClassOfResidual_eq_cooperative_of_aggressive_and_nonerasable_declared
+    blocking [opHandle] erasable
+    h_aggressive
+    (by simp)
+    h_not_erasable
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

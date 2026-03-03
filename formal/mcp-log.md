@@ -22951,3 +22951,47 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The top-level correspondence artifact now directly exports joint tier/scheduler aggressive-erasure consequences.
+
+### 2026-03-04: added direct cooperative-classification consequences under aggressive retained capabilities
+
+**Context**: Added direct consequence theorems in `Kea/Typing.lean`:
+- `schedulerClassOfResidual_eq_cooperative_of_aggressive_and_nonerasable_declared`
+- `handlerTierOfResidual_eq_tier2_or_tier3_of_aggressive_and_nonerasable_declared`
+- `native_typed_handle_correspondence_capstone_scheduler_cooperative_of_aggressive_and_not_erasable`
+
+These expose the sharpened result without requiring consumers to unpack pair-valued theorems: aggressive erasure + retained capability gives scheduler `cooperative` and tier `{2,3}`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent typed handle should type-check.
+- Mismatched handler clause that leaves handled effect unremoved should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304ak`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304ak`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304ak`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304ak`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304ak`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304ak`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept direct scheduler/tier consequence routes and retained pair-level theorems as supporting lemmas.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `schedulerClassOfResidual_eq_cooperative_of_aggressive_and_nonerasable_declared`
+  - `handlerTierOfResidual_eq_tier2_or_tier3_of_aggressive_and_nonerasable_declared`
+  - `native_typed_handle_correspondence_capstone_scheduler_cooperative_of_aggressive_and_not_erasable`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The correspondence now has direct cooperative-classification theorem routes aligned with aggressive-erasure + retained-capability assumptions.
