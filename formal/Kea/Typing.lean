@@ -6462,6 +6462,55 @@ theorem native_handler_step_ext_soundness_of_core_soundness
     (native_handler_body_step_obligations_of_core_soundness bodyStep h_core)
 
 /--
+Capstone package closing the native handler progress boundary:
+the legacy minimal native relation remains progress-incomplete, while the
+extended native relation is sound for the chosen body-step relation.
+-/
+structure NativeHandlerProgressGapClosure
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop where
+  legacyProgressFalse :
+    ¬ native_handler_step_progress_prop clauseSem
+  extSoundness :
+    native_handler_step_ext_soundness_prop clauseSem bodyStep
+
+/--
+Build the native progress-gap closure package from core soundness obligations.
+-/
+theorem native_handler_progress_gap_closure_of_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep) :
+    NativeHandlerProgressGapClosure clauseSem bodyStep := by
+  exact {
+    legacyProgressFalse := native_handler_step_progress_prop_false clauseSem
+    extSoundness := native_handler_step_ext_soundness_of_core_soundness
+      clauseSem bodyStep h_core
+  }
+
+/--
+One-hop projection: the extended native relation is sound from the closure
+package.
+-/
+theorem native_handler_progress_gap_closure_ext_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_closure : NativeHandlerProgressGapClosure clauseSem bodyStep) :
+    native_handler_step_ext_soundness_prop clauseSem bodyStep :=
+  h_closure.extSoundness
+
+/--
+One-hop projection: the extended native relation has full typed-handle
+progress from the closure package.
+-/
+theorem native_handler_progress_gap_closure_ext_progress
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_closure : NativeHandlerProgressGapClosure clauseSem bodyStep) :
+    native_handler_step_ext_progress_prop clauseSem bodyStep :=
+  h_closure.extSoundness.2
+
+/--
 Packaged route: mismatch-extension soundness from packaged core soundness plus
 typed-handle metadata coherence.
 -/

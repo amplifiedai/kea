@@ -23655,3 +23655,45 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Confirms the pending wrapper slice remains aligned with current MCP semantics at commit time.
+
+### 2026-03-04: native progress-gap closure capstone for widened handler step
+
+**Context**: Added a direct closure package in `Kea/Typing.lean` that makes the boundary explicit in one object:
+- `NativeHandlerProgressGapClosure`
+- `native_handler_progress_gap_closure_of_core_soundness`
+- `native_handler_progress_gap_closure_ext_soundness`
+- `native_handler_progress_gap_closure_ext_progress`
+
+This states, in one citable surface, that the legacy minimal native relation remains progress-incomplete while the widened native step relation (`NativeHandlerStepExt`) is sound/progressive under core soundness assumptions.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304bb`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304bb`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304bb`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304bb`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304bb`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304bb`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the progress-gap closure capstone and one-hop extended-soundness/progress projections.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: theorem/structure names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The “minimal-step progress gap vs widened-step closure” status is now a single theorem object instead of a scattered inference.
