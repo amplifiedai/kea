@@ -17910,3 +17910,48 @@ strict-typing, scoped-lift, and metadata coherence assumptions.
 **Impact**:
 - Packaged global progress surfaces now match packaged global soundness/local
   consequence coverage across all strict assumption families.
+
+### 2026-03-03: generic packaged soundness-to-local consequence capstone
+
+**Context**: Added generic local consequence theorems derived from any packaged
+mismatch soundness witness, then routed strict-top packaged local consequence
+through the generic capstone.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Any typed local handle under coherent matching clauses should remain accepted
+  and pure.
+- Clause mismatch should leak source effect in pure local scope.
+- Resume payload mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent local handle (`E.op() -> resume 21`) with post-handle arithmetic
+   -> `ok`, pure local fn.
+2. Clause mismatch (`F.f` clause around `E` body)
+   -> `error`, purity/effect leak (`E` required).
+3. Bad resume payload (`resume "oops"` for `E.op() : Int`)
+   -> `error`, `E0001`.
+4. Out-of-handler resume control
+   -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept generic soundness consequence capstones and strict-top packaged theorem
+  simplification through them.
+- Continued route-surface closure work.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_step_of_soundness`
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_soundness`
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_typing_packaged` (refactored to use generic capstone)
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Local `step` / `step+preserves` consequences now have a single generic
+  packaged-soundness capstone, reducing duplication across assumption families.

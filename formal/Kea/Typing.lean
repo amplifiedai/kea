@@ -3012,6 +3012,71 @@ def native_handler_step_ext_with_mismatch_soundness_prop
       clauseSem mismatchSem bodyStep
 
 /--
+Generic local consequence of packaged mismatch soundness:
+typed handles take one mismatch-extension step.
+-/
+theorem native_handler_step_ext_with_mismatch_step_of_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_sound :
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e' := by
+  exact h_sound.2 env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+
+/--
+Generic local consequence of packaged mismatch soundness:
+typed handles take one step and preserve typing.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_sound :
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  rcases native_handler_step_ext_with_mismatch_step_of_soundness
+      clauseSem mismatchSem bodyStep h_sound h_typed with ⟨e', h_step⟩
+  refine ⟨e', h_step, ?_⟩
+  exact h_sound.1 env
+    (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+    e'
+    ty
+    h_typed
+    h_step
+
+/--
 Capstone route: mismatch-extension soundness from body-step preservation plus
 typed-handle body-shape progress obligation.
 -/
@@ -3720,19 +3785,11 @@ theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_sound
         (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
         e'
       ∧ HasTypeScopedTop env e' ty := by
-  have h_sound :=
-    native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
-      clauseSem mismatchSem bodyStep h_core h_strict_top_typing
-  have h_step :=
-    h_sound.2 env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
-  rcases h_step with ⟨e', h_step'⟩
-  refine ⟨e', h_step', ?_⟩
-  exact h_sound.1 env
-    (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
-    e'
-    ty
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_soundness
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
+      clauseSem mismatchSem bodyStep h_core h_strict_top_typing)
     h_typed
-    h_step'
 
 /--
 Local typed-handle consequence from packaged core soundness and scoped-to-strict
