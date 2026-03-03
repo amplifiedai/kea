@@ -7662,6 +7662,26 @@ theorem native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_master
   exact ⟨h_sound, h_prog, h_iff⟩
 
 /--
+Direct full soundness↔progress projection from a mismatch-extension master-suite
+witness at strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_master_suite_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_master :
+      native_handler_step_ext_with_mismatch_master_suite_prop
+        clauseSem mismatchSem bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem mismatchSem bodyStep := by
+  exact (native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing
+    clauseSem mismatchSem bodyStep h_master h_strict_top).2.2
+
+/--
 Core-soundness + strict-top one-hop bundle route (generic mismatch semantics):
 derive `(soundness, progress, soundness↔progress)` via the master-suite path.
 -/
@@ -7937,6 +7957,25 @@ theorem native_handler_step_ext_with_passThroughMismatch_soundness_progress_equi
         clauseSem nativeHandlerMismatchPassThroughSem bodyStep) := by
   exact native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing
     clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_master h_strict_top
+
+/--
+Direct full soundness↔progress projection from a concrete pass-through
+master-suite witness at strict-top typing.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_prop_iff_progress_prop_of_master_suite_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_master :
+      native_handler_step_ext_with_passThroughMismatch_master_suite_prop
+        clauseSem bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep := by
+  exact (native_handler_step_ext_with_passThroughMismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing
+    clauseSem bodyStep h_master h_strict_top).2.2
 
 /--
 Core-soundness + strict-top one-hop bundle route (concrete pass-through
