@@ -80,6 +80,16 @@ fn main() -> Int
   churn(128, 0)
 "#;
 
+const MIXED_SUM_IF_JOIN_SOURCE: &str = r#"fn main() -> Int
+  let opt = if 1 == 1
+    Some(20)
+  else
+    None
+  case opt
+    Some(v) -> v
+    None -> 0
+"#;
+
 const MIXED_JOIN_UNIT_SOURCE: &str = r#"struct Point
   x: Int
 
@@ -175,6 +185,7 @@ fn run() -> Result<(), String> {
         compile_kernel("sum_build", SUM_REUSE_SOURCE)?,
         compile_kernel("loop_backedge_rotate", LOOP_BACKEDGE_REUSE_SOURCE)?,
         compile_kernel("recursive_churn", RECURSIVE_CHURN_SOURCE)?,
+        compile_kernel("mixed_sum_if_join", MIXED_SUM_IF_JOIN_SOURCE)?,
         compile_kernel("mixed_join_unit", MIXED_JOIN_UNIT_SOURCE)?,
         compile_kernel("loop_mixed_unit_walk", LOOP_MIXED_UNIT_WALK_SOURCE)?,
         compile_kernel("mixed_join_token", MIXED_JOIN_TOKEN_SOURCE)?,
