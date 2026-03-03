@@ -4511,6 +4511,25 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_st
     ((native_handler_strict_top_typing_prop_iff_metadata_coherence).1 h_strict_top_typing)
 
 /--
+Boundary contrast under core soundness + strict-top typing:
+mismatch-extension soundness is derivable, while native minimal handler-step
+progress remains refutable.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_and_native_progress_gap_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    ¬ native_handler_step_progress_prop clauseSem := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
+      clauseSem mismatchSem bodyStep h_core h_strict_top_typing
+  · exact native_handler_step_progress_prop_false clauseSem
+
+/--
 Packaged route: mismatch-extension soundness from packaged core soundness plus
 a scoped-to-strict judgment lift.
 -/
@@ -4553,6 +4572,25 @@ theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_stri
     native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
   exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing
     clauseSem mismatchSem bodyStep h_core_progress h_strict_top_typing
+
+/--
+Boundary contrast under core progress + strict-top typing:
+mismatch-extension progress is derivable, while native minimal handler-step
+progress remains refutable.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_and_native_progress_gap_of_core_progress_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    ¬ native_handler_step_progress_prop clauseSem := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing_packaged
+      clauseSem mismatchSem bodyStep h_core_progress h_strict_top_typing
+  · exact native_handler_step_progress_prop_false clauseSem
 
 /--
 Packaged route: mismatch-extension progress from packaged core progress plus

@@ -18979,3 +18979,46 @@ No MCP divergence found at this checkpoint.
 - Current proof boundary is now consumable as one theorem-level object, rather
   than spread across separate facts.
 - MCP verification loop is back to normal operation with `use` parsing intact.
+
+### 2026-03-03: core-assumption contrast bridges (ext route derivable vs native progress refutable)
+
+**Context**: Added bridge theorems explicitly contrasting the two layers under
+core assumptions: mismatch-extension soundness/progress routes are derivable
+from core + strict-top assumptions, while native minimal progress remains
+refutable.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` declarations should still parse (`ok`).
+- Coherent handled Reader program should type-check.
+- Mismatched pure handler should reject with effect leak.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use Log` -> `ok`.
+2. Coherent handled Reader program (`handle inner(); Reader.ask() -> resume 20`) -> `ok`.
+3. Mismatched pure handler (`handle Gate.read()` with only `Store.save` clause) -> `error`, `E0001` (pure body performs `[Gate]`).
+4. Bad resume payload (`Factory.build(seed) -> resume 0` where op returns a function) -> `error`, `E0001`.
+5. Out-of-handler resume control (`fn helper(x: Int) -> Int; resume x`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept core-assumption contrast bridge additions.
+- Continued MCP-first checkpoint loop with import-enabled probes.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_and_native_progress_gap_of_core_soundness_and_strict_top_typing`
+  - `native_handler_step_ext_with_mismatch_progress_and_native_progress_gap_of_core_progress_and_strict_top_typing`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The boundary contrast is now theorem-level and direct: “ext route derivable
+  under core assumptions” and “native minimal progress still fails” are
+  available as one-hop statements.
