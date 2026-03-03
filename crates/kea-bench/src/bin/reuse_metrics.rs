@@ -10,6 +10,7 @@ struct KernelMetric {
     reuse_token_candidate_count: usize,
     reuse_token_produced_count: usize,
     reuse_token_consumed_count: usize,
+    stack_sum_mixed_excluded_count: usize,
     trmc_candidate_count: usize,
     alloc_count: usize,
     release_count: usize,
@@ -20,6 +21,7 @@ struct Totals {
     reuse_token_candidates: usize,
     reuse_token_produced: usize,
     reuse_token_consumed: usize,
+    stack_sum_mixed_excluded: usize,
     trmc_candidates: usize,
     alloc: usize,
     release: usize,
@@ -186,12 +188,15 @@ fn run() -> Result<(), String> {
         metrics.iter().map(|m| m.reuse_token_produced_count).sum();
     let total_reuse_token_consumed: usize =
         metrics.iter().map(|m| m.reuse_token_consumed_count).sum();
+    let total_stack_sum_mixed_excluded: usize =
+        metrics.iter().map(|m| m.stack_sum_mixed_excluded_count).sum();
     let total_trmc_candidates: usize = metrics.iter().map(|m| m.trmc_candidate_count).sum();
     let totals = Totals {
         reuse: total_reuse,
         reuse_token_candidates: total_reuse_token_candidates,
         reuse_token_produced: total_reuse_token_produced,
         reuse_token_consumed: total_reuse_token_consumed,
+        stack_sum_mixed_excluded: total_stack_sum_mixed_excluded,
         trmc_candidates: total_trmc_candidates,
         alloc: metrics.iter().map(|m| m.alloc_count).sum(),
         release: metrics.iter().map(|m| m.release_count).sum(),
@@ -250,6 +255,12 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
         .iter()
         .map(|f| f.trmc_candidate_count)
         .sum();
+    let stack_sum_mixed_excluded_count = artifact
+        .stats
+        .per_function
+        .iter()
+        .map(|f| f.stack_sum_mixed_excluded_count)
+        .sum();
     let alloc_count = artifact
         .stats
         .per_function
@@ -269,6 +280,7 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
         reuse_token_candidate_count,
         reuse_token_produced_count,
         reuse_token_consumed_count,
+        stack_sum_mixed_excluded_count,
         trmc_candidate_count,
         alloc_count,
         release_count,
@@ -287,13 +299,14 @@ fn render_metrics_json(metrics: &[KernelMetric], totals: &Totals) -> String {
                 0.0
             };
             format!(
-                "    {{\"name\":\"{}\",\"reuse_count\":{},\"reuse_token_candidate_count\":{},\"reuse_token_produced_count\":{},\"reuse_token_consumed_count\":{},\"reuse_token_coverage_pct\":{:.3},\"trmc_candidate_count\":{},\"alloc_count\":{},\"release_count\":{}}}",
+                "    {{\"name\":\"{}\",\"reuse_count\":{},\"reuse_token_candidate_count\":{},\"reuse_token_produced_count\":{},\"reuse_token_consumed_count\":{},\"reuse_token_coverage_pct\":{:.3},\"stack_sum_mixed_excluded_count\":{},\"trmc_candidate_count\":{},\"alloc_count\":{},\"release_count\":{}}}",
                 metric.name,
                 metric.reuse_count,
                 metric.reuse_token_candidate_count,
                 metric.reuse_token_produced_count,
                 metric.reuse_token_consumed_count,
                 coverage_pct,
+                metric.stack_sum_mixed_excluded_count,
                 metric.trmc_candidate_count,
                 metric.alloc_count,
                 metric.release_count
@@ -310,11 +323,12 @@ fn render_metrics_json(metrics: &[KernelMetric], totals: &Totals) -> String {
     };
 
     format!(
-        "{{\n  \"kernels\": [\n{kernel_rows}\n  ],\n  \"totals\": {{\"reuse_count\": {}, \"reuse_token_candidate_count\": {}, \"reuse_token_produced_count\": {}, \"reuse_token_consumed_count\": {}, \"reuse_token_coverage_pct\": {total_coverage_pct:.3}, \"trmc_candidate_count\": {}, \"alloc_count\": {}, \"release_count\": {}}}\n}}\n",
+        "{{\n  \"kernels\": [\n{kernel_rows}\n  ],\n  \"totals\": {{\"reuse_count\": {}, \"reuse_token_candidate_count\": {}, \"reuse_token_produced_count\": {}, \"reuse_token_consumed_count\": {}, \"reuse_token_coverage_pct\": {total_coverage_pct:.3}, \"stack_sum_mixed_excluded_count\": {}, \"trmc_candidate_count\": {}, \"alloc_count\": {}, \"release_count\": {}}}\n}}\n",
         totals.reuse,
         totals.reuse_token_candidates,
         totals.reuse_token_produced,
         totals.reuse_token_consumed,
+        totals.stack_sum_mixed_excluded,
         totals.trmc_candidates,
         totals.alloc,
         totals.release
