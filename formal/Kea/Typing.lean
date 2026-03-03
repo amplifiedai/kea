@@ -4479,6 +4479,12 @@ structure NativeHandlerBoundaryModelGapSlice
   typedMismatchExtVsNativeGapBodyStepFalse :
     native_handler_step_ext_with_mismatch_vs_native_typed_int_body_gap_prop
       clauseSem mismatchSem (fun _ _ => False)
+  mismatchExtStrictlyExtendsExtBodyStepFalse :
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop
+      clauseSem mismatchSem
+  typedMismatchExtVsExtOpMismatchGapBodyStepFalse :
+    native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_bodyStepFalse_prop
+      clauseSem mismatchSem
 
 /--
 Canonical packaged boundary-model status witness.
@@ -4503,6 +4509,12 @@ theorem native_handler_boundary_model_gap_slice
     typedMismatchExtVsNativeGapBodyStepFalse :=
       native_handler_step_ext_with_mismatch_vs_native_typed_int_body_witness
         clauseSem mismatchSem (fun _ _ => False)
+    mismatchExtStrictlyExtendsExtBodyStepFalse :=
+      native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse
+        clauseSem mismatchSem
+    typedMismatchExtVsExtOpMismatchGapBodyStepFalse :=
+      native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_bodyStepFalse
+        clauseSem mismatchSem
   }
 
 /--

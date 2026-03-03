@@ -19232,3 +19232,45 @@ No MCP divergence found at this checkpoint.
 - The extension ladder is now explicit in both hops:
   `native` -> `ext` and `ext` -> `ext-with-mismatch` (under `bodyStep=false`),
   each with constructive strictness witnesses.
+
+### 2026-03-03: boundary-gap capstone now includes ext->mismatch strictness fields
+
+**Context**: Expanded `NativeHandlerBoundaryModelGapSlice` again so its single
+witness now includes:
+- strictness of `ext-with-mismatch` over `ext` (under `bodyStep=false`), and
+- typed mismatched-op `ext-with-mismatch` vs `ext` gap witness.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` parsing should remain stable.
+- Coherent Counter handler should type-check.
+- Mismatched pure handler should reject with effect leak.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use Math` -> `ok`.
+2. Coherent Counter handler (`Counter.next() -> resume 1`) -> `ok`.
+3. Mismatched pure handler (`handle Reader.ask()` with only `Counter.next` clause) -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+4. Bad resume payload (`Reader.ask() -> resume "bad"` in `fn ... -> Int`) -> `error`, `E0001`.
+5. Out-of-handler resume control (`fn bad_resume4() -> Int; resume 4`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept boundary-gap capstone field expansion.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `NativeHandlerBoundaryModelGapSlice` (new ext->mismatch fields)
+  - `native_handler_boundary_model_gap_slice` (updated constructor witness)
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The boundary-model capstone now exports the full three-level contrast ladder
+  (`native`, `ext`, `ext-with-mismatch`) from one theorem witness.
