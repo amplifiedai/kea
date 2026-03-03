@@ -19911,3 +19911,53 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Route/master suite vacuity is now exported both as inhabitance witnesses and as explicit proposition-level `↔ True` contracts, making boundary interpretation mechanically uniform for downstream capstone consumers.
+
+### 2026-03-03: generalized metadata-mismatch no-body-step non-derivability boundary
+
+**Context**: Generalized the bodyStep-false non-derivability boundary into parameterized theorem surfaces that isolate the real blocker condition: if the typed metadata-mismatch perform body cannot step under `bodyStep`, then mismatch-extension progress/soundness are not derivable from current typing.
+
+New surfaces:
+- `not_native_handler_step_ext_with_mismatch_progress_prop_of_metadata_mismatch_without_body_step`
+- `not_native_handler_step_ext_with_mismatch_soundness_prop_of_metadata_mismatch_without_body_step`
+
+Then refactored `bodyStep = False` corollaries to route through the generalized forms.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Vector` -> `ok`.
+2. Coherent Delta handler (`Delta.read() -> resume 811`) -> `ok`.
+3. Mismatched pure handler (`handle Delta.read()` with only `Omega.pull` clause) -> `error`, `E0001` (pure body performs `[Delta]`).
+4. Bad resume payload (`Delta.read() -> resume false`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn delta_resume_outside() -> Int; resume 811`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 1; resume 811`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept generalized metadata-mismatch no-body-step boundary theorems.
+- Reused them to simplify the existing `bodyStep = False` non-derivability theorems.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `not_native_handler_step_ext_with_mismatch_progress_prop_of_metadata_mismatch_without_body_step`
+  - `not_native_handler_step_ext_with_mismatch_soundness_prop_of_metadata_mismatch_without_body_step`
+  - `not_native_handler_step_ext_with_mismatch_progress_prop_of_bodyStepFalse` (refactored)
+  - `not_native_handler_step_ext_with_mismatch_soundness_prop_of_bodyStepFalse` (refactored)
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The remaining handler progress/soundness gap is now stated at the right granularity: not merely `bodyStep = False`, but any `bodyStep` that cannot advance the typed metadata-mismatch witness body.
