@@ -9864,6 +9864,196 @@ theorem native_typed_handle_correspondence_capstone_scheduler_small_of_aggressiv
   rcases h_unity with ⟨_h_support, _h_pure_tier1, _h_block_tier4, _h_coop_tier23, h_small_imp⟩
   exact h_small_imp h_aggressive
 
+/--
+One-hop projection: tier-structure statement from the typed native-handle
+correspondence capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_tier_structure
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    HandlerTierStructureSlice
+      yielding blocking (eraseCapabilities [opHandle] erasable) := by
+  exact (native_typed_handle_correspondence_capstone_supporting_material
+    clauseSem mismatchSem bodyStep yielding blocking erasable
+    env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap).1
+
+/--
+One-hop projection: erasure-correspondence statement from the typed
+native-handle correspondence capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_erasure_correspondence
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    ErasureCorrespondenceSlice
+      [opHandle] erasable (eraseCapabilities [opHandle] erasable) := by
+  exact (native_typed_handle_correspondence_capstone_supporting_material
+    clauseSem mismatchSem bodyStep yielding blocking erasable
+    env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap).2.1
+
+/--
+One-hop projection: scheduler-soundness statement from the typed native-handle
+correspondence capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_scheduler_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    SchedulerClassificationSoundnessSlice
+      blocking (eraseCapabilities [opHandle] erasable) := by
+  exact (native_typed_handle_correspondence_capstone_supporting_material
+    clauseSem mismatchSem bodyStep yielding blocking erasable
+    env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap).2.2.1
+
+/--
+One-hop projection: erasure-completeness statement from the typed native-handle
+correspondence capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_erasure_completeness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    ErasurePipelineCompletenessSlice [opHandle] erasable := by
+  exact (native_typed_handle_correspondence_capstone_supporting_material
+    clauseSem mismatchSem bodyStep yielding blocking erasable
+    env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap).2.2.2
+
+/--
+One-hop projection: scheduler/tier `pure ↔ tier1` equivalence from the typed
+native-handle correspondence capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_scheduler_pure_iff_tier1
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .pure
+      ↔
+    handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable) = .tier1 := by
+  rcases h_cap with ⟨_e', _h_step, _h_typed', h_unity⟩
+  exact h_unity.2.1
+
+/--
+One-hop projection: scheduler/tier `blocking ↔ tier4` equivalence from the
+typed native-handle correspondence capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_scheduler_blocking_iff_tier4
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .blocking
+      ↔
+    handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable) = .tier4 := by
+  rcases h_cap with ⟨_e', _h_step, _h_typed', h_unity⟩
+  exact h_unity.2.2.1
+
+/--
+One-hop projection: scheduler/tier `cooperative ↔ tier2∨tier3` equivalence
+from the typed native-handle correspondence capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_scheduler_cooperative_iff_tier2_or_tier3
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .cooperative
+      ↔
+    handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable) = .tier2
+      ∨
+    handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable) = .tier3 := by
+  rcases h_cap with ⟨_e', _h_step, _h_typed', h_unity⟩
+  exact h_unity.2.2.2.1
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

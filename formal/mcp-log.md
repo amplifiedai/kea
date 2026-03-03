@@ -22179,3 +22179,60 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The native typing/step layer now has a single packaged route into correspondence support obligations and aggressive-erasure runtime-classification consequences.
+
+### 2026-03-04: added one-hop supporting/equivalence projections from typed-handle correspondence capstone
+
+**Context**: Extended `Kea/Typing.lean` with direct projection theorems from `NativeTypedHandleCorrespondenceCapstone`:
+- supporting checklist projections:
+  - `native_typed_handle_correspondence_capstone_tier_structure`
+  - `native_typed_handle_correspondence_capstone_erasure_correspondence`
+  - `native_typed_handle_correspondence_capstone_scheduler_soundness`
+  - `native_typed_handle_correspondence_capstone_erasure_completeness`
+- scheduler↔tier equivalence projections:
+  - `native_typed_handle_correspondence_capstone_scheduler_pure_iff_tier1`
+  - `native_typed_handle_correspondence_capstone_scheduler_blocking_iff_tier4`
+  - `native_typed_handle_correspondence_capstone_scheduler_cooperative_iff_tier2_or_tier3`
+
+This removes conjunction-unpacking boilerplate and exposes exactly the requested correspondence claims directly at the native typed-handle capstone boundary.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched clause that leaks an unhandled effect should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Weight` + trivial fn -> `ok`.
+2. Coherent handler (`handle runProbeGK(); ProbeGK.run() -> resume 421`) -> `ok`.
+3. Mismatched handler clause (effect leak remains `[ProbeGL]`) -> `error`, `E0001`.
+4. Bad resume payload -> `error`, `E0001`.
+5. Out-of-handler resume (`fresh_outside_resume_probe_20260304t`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`forged_ctx_probe_20260304t`) -> `error`, `E0012`.
+7. Double-resume clause -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the one-hop projection layer on the typed-handle capstone.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_typed_handle_correspondence_capstone_tier_structure`
+  - `native_typed_handle_correspondence_capstone_erasure_correspondence`
+  - `native_typed_handle_correspondence_capstone_scheduler_soundness`
+  - `native_typed_handle_correspondence_capstone_erasure_completeness`
+  - `native_typed_handle_correspondence_capstone_scheduler_pure_iff_tier1`
+  - `native_typed_handle_correspondence_capstone_scheduler_blocking_iff_tier4`
+  - `native_typed_handle_correspondence_capstone_scheduler_cooperative_iff_tier2_or_tier3`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The typed native-handle capstone now directly exports the four supporting statements and scheduler↔tier equivalences needed by the correspondence narrative.
