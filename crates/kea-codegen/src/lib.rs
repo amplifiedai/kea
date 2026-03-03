@@ -18,7 +18,7 @@ use cranelift::prelude::{
     AbiParam, Configurable, FunctionBuilder, FunctionBuilderContext, InstBuilder, Value, types,
 };
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
-use cranelift_codegen::ir::{MemFlags, TrapCode};
+use cranelift_codegen::ir::{MemFlags, StackSlotData, StackSlotKind, TrapCode};
 use cranelift_codegen::isa::CallConv;
 use cranelift_codegen::{isa, settings};
 use cranelift_jit::{JITBuilder, JITModule};
@@ -222,7 +222,7 @@ impl Backend for CraneliftBackend {
         let layout_plan = plan_layout_catalog(module)?;
 
         let isa = build_isa(config)?;
-        let stats = collect_pass_stats(module);
+        let stats = collect_pass_stats_with_layout(module, Some(&layout_plan));
         let object = match config.mode {
             CodegenMode::Jit => compile_with_jit(module, &layout_plan, &isa, config)?,
             CodegenMode::Aot => compile_with_object(module, &layout_plan, &isa, config)?,
@@ -958,6 +958,8 @@ fn compile_into_module<M: Module>(
                 }
             })?;
             let value_types = infer_mir_value_types(function, layout_plan);
+            let stack_unboxed_record_inits =
+                collect_stack_eligible_unboxed_record_inits(function, layout_plan);
 
             for block in &function.blocks {
                 let clif_block =
@@ -1006,6 +1008,7 @@ fn compile_into_module<M: Module>(
                     layout_plan,
                     drop_func_ids: &drop_func_ids,
                     value_types: &value_types,
+                    stack_unboxed_record_inits: &stack_unboxed_record_inits,
                     runtime_signatures: &runtime_signatures,
                     current_runtime_sig,
                 };
@@ -1994,8 +1997,107 @@ struct LowerInstCtx<'a> {
     layout_plan: &'a BackendLayoutPlan,
     drop_func_ids: &'a DropFunctionIds,
     value_types: &'a BTreeMap<MirValueId, Type>,
+    stack_unboxed_record_inits: &'a BTreeSet<MirValueId>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
     current_runtime_sig: &'a RuntimeFunctionSig,
+}
+
+fn collect_stack_eligible_unboxed_record_inits(
+    function: &MirFunction,
+    layout_plan: &BackendLayoutPlan,
+) -> BTreeSet<MirValueId> {
+    let mut candidates = BTreeSet::new();
+    for block in &function.blocks {
+        for inst in &block.instructions {
+            let MirInst::RecordInit {
+                dest, record_type, ..
+            } = inst
+            else {
+                continue;
+            };
+            if layout_plan
+                .records
+                .get(record_type.as_str())
+                .is_some_and(|layout| layout.is_unboxed)
+            {
+                candidates.insert(dest.clone());
+            }
+        }
+    }
+
+    candidates
+        .into_iter()
+        .filter(|candidate| {
+            for block in &function.blocks {
+                for inst in &block.instructions {
+                    match inst {
+                        MirInst::RecordFieldLoad { record, .. } if record == candidate => {}
+                        _ if inst_references_value(inst, candidate) => return false,
+                        _ => {}
+                    }
+                }
+                if terminator_references_value(&block.terminator, candidate) {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect()
+}
+
+fn inst_references_value(inst: &MirInst, value: &MirValueId) -> bool {
+    match inst {
+        MirInst::Const { .. } | MirInst::FunctionRef { .. } | MirInst::Unsupported { .. } | MirInst::Nop => false,
+        MirInst::Binary { left, right, .. } => left == value || right == value,
+        MirInst::Unary { operand, .. } => operand == value,
+        MirInst::RecordInit { fields, .. } => fields.iter().any(|(_, field)| field == value),
+        MirInst::RecordInitReuse { source, fields, .. } => {
+            source == value || fields.iter().any(|(_, field)| field == value)
+        }
+        MirInst::ReuseToken { source, .. } => source == value,
+        MirInst::RecordInitFromToken { token, fields, .. } => {
+            token == value || fields.iter().any(|(_, field)| field == value)
+        }
+        MirInst::SumInit { fields, .. } => fields.iter().any(|field| field == value),
+        MirInst::SumInitReuse { source, fields, .. } => {
+            source == value || fields.iter().any(|field| field == value)
+        }
+        MirInst::SumInitFromToken { token, fields, .. } => {
+            token == value || fields.iter().any(|field| field == value)
+        }
+        MirInst::SumTagLoad { sum, .. } => sum == value,
+        MirInst::SumPayloadLoad { sum, .. } => sum == value,
+        MirInst::RecordFieldLoad { record, .. } => record == value,
+        MirInst::ClosureInit { entry, captures, .. } => {
+            entry == value || captures.iter().any(|capture| capture == value)
+        }
+        MirInst::ClosureCaptureLoad { closure, .. } => closure == value,
+        MirInst::StateCellNew { initial, .. } => initial == value,
+        MirInst::StateCellLoad { cell, .. } => cell == value,
+        MirInst::StateCellStore { cell, value: stored } => cell == value || stored == value,
+        MirInst::Retain { value: retained }
+        | MirInst::Release { value: retained }
+        | MirInst::Move { src: retained, .. }
+        | MirInst::Borrow { src: retained, .. }
+        | MirInst::TryClaim { src: retained, .. }
+        | MirInst::Freeze { src: retained, .. } => retained == value,
+        MirInst::CowUpdate { target, updates, .. } => {
+            target == value || updates.iter().any(|update| &update.value == value)
+        }
+        MirInst::Call { args, .. } => args.iter().any(|arg| arg == value),
+        MirInst::EffectOp { args, .. } => args.iter().any(|arg| arg == value),
+        MirInst::HandlerEnter { .. } | MirInst::HandlerExit { .. } => false,
+        MirInst::Resume { value: resumed } => resumed == value,
+    }
+}
+
+fn terminator_references_value(terminator: &MirTerminator, value: &MirValueId) -> bool {
+    match terminator {
+        MirTerminator::Jump { args, .. } => args.iter().any(|arg| arg == value),
+        MirTerminator::Branch { condition, .. } => condition == value,
+        MirTerminator::Return { value: returned } => returned.as_ref().is_some_and(|v| v == value),
+        MirTerminator::Unreachable => false,
+    }
 }
 
 fn emit_generic_release<M: Module>(
@@ -2740,13 +2842,32 @@ fn lower_instruction<M: Module>(
                     detail: format!("record layout `{record_type}` not found"),
                 }
             })?;
-            let base_ptr = allocate_heap_payload(
-                module,
-                builder,
-                function_name,
-                imports,
-                layout.size_bytes,
-            )?;
+            let ptr_ty = module.target_config().pointer_type();
+            let base_ptr = if layout.is_unboxed && ctx.stack_unboxed_record_inits.contains(dest) {
+                let align_shift =
+                    u8::try_from(layout.align_bytes.trailing_zeros()).map_err(|_| {
+                        CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: format!(
+                                "record layout `{record_type}` alignment shift does not fit u8"
+                            ),
+                        }
+                    })?;
+                let stack_slot = builder.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    layout.size_bytes.max(1),
+                    align_shift,
+                ));
+                builder.ins().stack_addr(ptr_ty, stack_slot, 0)
+            } else {
+                allocate_heap_payload(
+                    module,
+                    builder,
+                    function_name,
+                    imports,
+                    layout.size_bytes,
+                )?
+            };
             store_record_fields(
                 builder,
                 function_name,
@@ -5472,19 +5593,33 @@ fn validate_fail_only_invariants(module: &MirModule) -> Result<(), CodegenError>
 }
 
 pub fn collect_pass_stats(module: &MirModule) -> PassStats {
+    let layout_plan = plan_layout_catalog(module).ok();
+    collect_pass_stats_with_layout(module, layout_plan.as_ref())
+}
+
+fn collect_pass_stats_with_layout(
+    module: &MirModule,
+    layout_plan: Option<&BackendLayoutPlan>,
+) -> PassStats {
     let per_function = module
         .functions
         .iter()
-        .map(collect_function_stats)
+        .map(|function| collect_function_stats(function, layout_plan))
         .collect::<Vec<_>>();
     PassStats { per_function }
 }
 
-fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
+fn collect_function_stats(
+    function: &MirFunction,
+    layout_plan: Option<&BackendLayoutPlan>,
+) -> FunctionPassStats {
     let mut stats = FunctionPassStats {
         function: function.name.clone(),
         ..FunctionPassStats::default()
     };
+    let stack_unboxed_record_inits = layout_plan
+        .map(|plan| collect_stack_eligible_unboxed_record_inits(function, plan))
+        .unwrap_or_default();
 
     for block in &function.blocks {
         if detect_tail_self_call(function, block).is_some() {
@@ -5519,8 +5654,12 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                     stats.alloc_count += 1;
                     stats.reuse_token_consumed_count += 1;
                 }
+                MirInst::RecordInit { dest, .. } => {
+                    if !stack_unboxed_record_inits.contains(dest) {
+                        stats.alloc_count += 1;
+                    }
+                }
                 MirInst::CowUpdate { .. }
-                | MirInst::RecordInit { .. }
                 | MirInst::SumInit { .. }
                 | MirInst::ClosureInit { .. }
                 | MirInst::StateCellNew { .. } => stats.alloc_count += 1,
