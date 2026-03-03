@@ -4357,6 +4357,24 @@ theorem native_handler_step_ext_with_mismatch_soundness_assumption_routes_vacuou
     exact False.elim (not_native_handler_perform_metadata_coherence_prop h_coherence)
 
 /--
+At the current boundary, packaged soundness routes are propositionally equal
+to `True` (vacuous via uninhabited assumption premises).
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop_iff_true
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+      clauseSem mismatchSem bodyStep
+      ↔ True := by
+  constructor
+  · intro _h
+    trivial
+  · intro _h_true
+    exact native_handler_step_ext_with_mismatch_soundness_assumption_routes_vacuous
+      clauseSem mismatchSem bodyStep
+
+/--
 From a strict-top soundness route and fixed core obligations, derive packaged
 soundness routes for strict-typing, scoped-lift, and metadata-coherence.
 -/
@@ -4482,6 +4500,24 @@ theorem native_handler_step_ext_with_mismatch_progress_assumption_routes_vacuous
       clauseSem mismatchSem bodyStep)
 
 /--
+At the current boundary, packaged progress routes are propositionally equal to
+`True` (induced by vacuous soundness routes).
+-/
+theorem native_handler_step_ext_with_mismatch_progress_assumption_routes_prop_iff_true
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_progress_assumption_routes_prop
+      clauseSem mismatchSem bodyStep
+      ↔ True := by
+  constructor
+  · intro _h
+    trivial
+  · intro _h_true
+    exact native_handler_step_ext_with_mismatch_progress_assumption_routes_vacuous
+      clauseSem mismatchSem bodyStep
+
+/--
 Combined packaged assumption-route suite for mismatch-extension progress and
 soundness.
 -/
@@ -4526,6 +4562,24 @@ theorem native_handler_step_ext_with_mismatch_assumption_route_suite_vacuous
     clauseSem mismatchSem bodyStep
     (native_handler_step_ext_with_mismatch_soundness_assumption_routes_vacuous
       clauseSem mismatchSem bodyStep)
+
+/--
+At the current boundary, the combined global route suite is propositionally
+equal to `True`.
+-/
+theorem native_handler_step_ext_with_mismatch_assumption_route_suite_prop_iff_true
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep
+      ↔ True := by
+  constructor
+  · intro _h
+    trivial
+  · intro _h_true
+    exact native_handler_step_ext_with_mismatch_assumption_route_suite_vacuous
+      clauseSem mismatchSem bodyStep
 
 /--
 The packaged global route suite is equivalent to packaged soundness routes:
@@ -6108,6 +6162,24 @@ theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route
       clauseSem mismatchSem bodyStep)
 
 /--
+At the current boundary, the combined local consequence route suite is
+propositionally equal to `True`.
+-/
+theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop_iff_true
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep
+      ↔ True := by
+  constructor
+  · intro _h
+    trivial
+  · intro _h_true
+    exact native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_vacuous
+      clauseSem mismatchSem bodyStep
+
+/--
 Master suite bundling packaged global assumption routes and packaged local
 consequence routes for mismatch-extension semantics.
 -/
@@ -6137,6 +6209,24 @@ theorem native_handler_step_ext_with_mismatch_master_suite_vacuous
     native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_vacuous
       clauseSem mismatchSem bodyStep
   ⟩
+
+/--
+At the current boundary, the full mismatch-extension master suite is
+propositionally equal to `True`.
+-/
+theorem native_handler_step_ext_with_mismatch_master_suite_prop_iff_true
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_master_suite_prop
+      clauseSem mismatchSem bodyStep
+      ↔ True := by
+  constructor
+  · intro _h
+    trivial
+  · intro _h_true
+    exact native_handler_step_ext_with_mismatch_master_suite_vacuous
+      clauseSem mismatchSem bodyStep
 
 /--
 From packaged core soundness, derive the mismatch-extension master suite

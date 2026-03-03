@@ -976,6 +976,30 @@ fn compile_and_execute_io_mkdir_exit_code() {
 }
 
 #[test]
+fn compile_and_execute_string_eq_exit_code() {
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  if \"hello\" == \"hello\"\n    42\n  else\n    0\n",
+        "kea-cli-string-eq",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("string equality should work");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_string_neq_exit_code() {
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  if \"hello\" != \"world\"\n    42\n  else\n    0\n",
+        "kea-cli-string-neq",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("string inequality should work");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_and_execute_hash_trait_int_impl_exit_code() {
     let project_dir = temp_workspace_project_dir("kea-cli-project-hash-trait");
     let src_dir = project_dir.join("src");

@@ -1043,6 +1043,23 @@ fn compile_into_module<M: Module>(
         None
     };
 
+    // Always declare strcmp — used for string comparison (==, !=).
+    // Libc function, resolved automatically by the JIT/linker.
+    let strcmp_func_id = {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(types::I32));
+        Some(
+            module
+                .declare_function("strcmp", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    };
+
     let strlen_func_id = if requires_string_concat || requires_io_stderr {
         let ptr_ty = module.target_config().pointer_type();
         let mut signature = module.make_signature();
@@ -1194,6 +1211,7 @@ fn compile_into_module<M: Module>(
                     net_connect_func_id,
                     net_send_func_id,
                     net_recv_func_id,
+                    strcmp_func_id,
                     strlen_func_id,
                     memcpy_func_id,
                     drop_func_ids: &drop_func_ids,
@@ -2195,6 +2213,7 @@ struct LowerInstCtx<'a> {
     net_connect_func_id: Option<FuncId>,
     net_send_func_id: Option<FuncId>,
     net_recv_func_id: Option<FuncId>,
+    strcmp_func_id: Option<FuncId>,
     strlen_func_id: Option<FuncId>,
     memcpy_func_id: Option<FuncId>,
     drop_func_ids: &'a DropFunctionIds,
@@ -2894,6 +2913,10 @@ fn lower_instruction<M: Module>(
             let rhs = get_value(values, function_name, right)?;
             let result = if *op == MirBinaryOp::Concat {
                 lower_string_concat(module, builder, function_name, lhs, rhs, ctx)?
+            } else if matches!(op, MirBinaryOp::Eq | MirBinaryOp::Neq)
+                && ctx.value_types.get(left) == Some(&Type::String)
+            {
+                lower_string_compare(module, builder, function_name, *op, lhs, rhs, ctx)?
             } else {
                 lower_binary(module, builder, function_name, *op, lhs, rhs)?
             };
@@ -4906,6 +4929,46 @@ fn lower_binary(
     };
 
     Ok(value)
+}
+
+fn lower_string_compare<M: Module>(
+    module: &mut M,
+    builder: &mut FunctionBuilder,
+    function_name: &str,
+    op: MirBinaryOp,
+    lhs: Value,
+    rhs: Value,
+    ctx: &LowerInstCtx<'_>,
+) -> Result<Value, CodegenError> {
+    let ptr_ty = module.target_config().pointer_type();
+    let lhs_ptr = coerce_value_to_clif_type(builder, lhs, ptr_ty);
+    let rhs_ptr = coerce_value_to_clif_type(builder, rhs, ptr_ty);
+    let strcmp_func_id = ctx.strcmp_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+        function: function_name.to_string(),
+        detail: "string comparison requires imported `strcmp` symbol".to_string(),
+    })?;
+    let strcmp_ref = module.declare_func_in_func(strcmp_func_id, builder.func);
+    let call = builder.ins().call(strcmp_ref, &[lhs_ptr, rhs_ptr]);
+    let cmp_result = builder
+        .inst_results(call)
+        .first()
+        .copied()
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: "strcmp call returned no value".to_string(),
+        })?;
+    let zero = builder.ins().iconst(types::I32, 0);
+    let pred = match op {
+        MirBinaryOp::Eq => builder.ins().icmp(IntCC::Equal, cmp_result, zero),
+        MirBinaryOp::Neq => builder.ins().icmp(IntCC::NotEqual, cmp_result, zero),
+        _ => {
+            return Err(CodegenError::UnsupportedMir {
+                function: function_name.to_string(),
+                detail: format!("string comparison `{op:?}` not supported"),
+            })
+        }
+    };
+    Ok(b1_to_i8(builder, pred))
 }
 
 fn lower_unary(

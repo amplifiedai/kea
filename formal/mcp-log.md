@@ -19859,3 +19859,55 @@ No MCP divergence found at this checkpoint.
 
 **Impact**:
 - The remaining boundary is now explicit and machine-checkable: current route/master surfaces are structurally derivable even before inhabiting strict/coherence assumptions, clarifying what still requires substantive non-vacuous witnesses.
+
+### 2026-03-03: proposition-level vacuity equivalences for route/master suite surfaces
+
+**Context**: Added proposition-level equivalences showing each vacuous route/master package is propositionally equal to `True` at the current boundary:
+- `native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop_iff_true`
+- `native_handler_step_ext_with_mismatch_progress_assumption_routes_prop_iff_true`
+- `native_handler_step_ext_with_mismatch_assumption_route_suite_prop_iff_true`
+- `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop_iff_true`
+- `native_handler_step_ext_with_mismatch_master_suite_prop_iff_true`
+
+**MCP tools used**: `reset_session`, `type_check`, `get_type` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Pure-body `handle` sentinel should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Signal` -> `ok`.
+2. Coherent Flux handler (`Flux.pull() -> resume 610`) -> `ok`.
+3. Pure-body sentinel (`handle 377` with `Pulse.tick` clause) -> `ok`.
+4. Mismatched pure handler (`handle Flux.pull()` with only `Alternate.ping` clause) -> `error`, `E0001` (`pure` body performs `[Flux]`).
+5. Bad resume payload (`Flux.pull() -> resume true`) -> `error`, `E0001`.
+6. Out-of-handler resume (`fn flux_outside_resume() -> Int; resume 610`) -> `error`, `E0012`.
+7. Forged-name out-of-handler resume (`let __kea_resume_ctx = 0; resume 610`) -> `error`, `E0012`.
+8. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+9. Sanity type probes: `get_type true -> Bool`, `get_type 1 -> Int`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the new proposition-level vacuity equivalence theorems.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop_iff_true`
+  - `native_handler_step_ext_with_mismatch_progress_assumption_routes_prop_iff_true`
+  - `native_handler_step_ext_with_mismatch_assumption_route_suite_prop_iff_true`
+  - `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop_iff_true`
+  - `native_handler_step_ext_with_mismatch_master_suite_prop_iff_true`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Route/master suite vacuity is now exported both as inhabitance witnesses and as explicit proposition-level `↔ True` contracts, making boundary interpretation mechanically uniform for downstream capstone consumers.
