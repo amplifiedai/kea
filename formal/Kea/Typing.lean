@@ -9574,6 +9574,49 @@ theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_
     clauseSem nativeHandlerMismatchPassThroughSem
 
 /--
+From a full-route integration capstone, build the explicit three-relation
+native boundary package (legacy-gap + extended soundness + mismatch soundness)
+for any body-step relation under core soundness and strict-top typing.
+-/
+theorem native_handler_step_relation_boundary_capstone_of_full_route_integration_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    NativeHandlerStepRelationBoundaryCapstone clauseSem mismatchSem bodyStep := by
+  have h_master :
+      native_handler_step_ext_with_mismatch_master_suite_prop
+        clauseSem mismatchSem bodyStep :=
+    h_cap.master bodyStep h_core
+  exact {
+    legacyProgressFalse := native_handler_step_progress_prop_false clauseSem
+    extSoundness := native_handler_step_ext_soundness_of_core_soundness
+      clauseSem bodyStep h_core
+    mismatchSoundness :=
+      native_handler_step_ext_with_mismatch_soundness_of_master_suite_and_strict_top_typing
+        clauseSem mismatchSem bodyStep h_master h_strict_top
+  }
+
+/--
+Concrete pass-through specialization of
+`native_handler_step_relation_boundary_capstone_of_full_route_integration_capstone`.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_relation_boundary_capstone_of_full_route_integration_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    NativeHandlerStepRelationBoundaryCapstone
+      clauseSem nativeHandlerMismatchPassThroughSem bodyStep := by
+  exact native_handler_step_relation_boundary_capstone_of_full_route_integration_capstone
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_cap h_core h_strict_top
+
+/--
 Build the concrete pass-through integrated full-route capstone from explicit
 components.
 -/
