@@ -18604,3 +18604,44 @@ to pass-through local suites.
 **Impact**:
 - Concrete pass-through consumption now has first-class projection and iff
   surfaces matching the generic theorem spine, reducing specialization friction.
+
+### 2026-03-03: concrete-core soundness-route specialization spine
+
+**Context**: Added explicit concrete pass-through `soundness routes of core
+soundness`, then routed concrete pass-through global/local suite-of-core
+theorems through that specialization.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent polymorphic reader handler should type-check.
+- Clause/effect mismatch should leak source effect in pure context.
+- Resume payload mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `with_reader` (`Reader.ask() -> resume env`) -> `ok`.
+2. Mismatched `State` clauses around `Reader` body -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+3. Bad `State Int` resume payload (`resume "bad"`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`let a = 1; resume a`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept concrete-core soundness-route specialization additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_assumption_routes_of_core_soundness`
+  - `native_handler_step_ext_with_passThroughMismatch_assumption_route_suite_of_soundness_assumption_routes`
+  - refactors:
+    - `native_handler_step_ext_with_passThroughMismatch_assumption_route_suite_of_core_soundness`
+    - `native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_of_core_soundness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Concrete pass-through suite derivations now use a single explicit core ->
+  soundness-routes specialization before constructing global/local suites.
