@@ -20155,3 +20155,50 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Boundary status is now packaged as one theorem object that includes both semantic routes and the present typing-side blocker, making checkpoint communication and downstream consumption more direct.
+
+### 2026-03-03: added strict-positive matching-metadata witness alongside mismatch counterexample
+
+**Context**: Added a concrete positive witness block to complement the metadata-mismatch negative witness:
+- `native_handler_matching_perform_witness_expr`
+- `hasTypeScopedStrictTop_native_handler_matching_perform_witness`
+- `native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness_bodyStepFalse`
+
+This demonstrates non-empty strict typing and one-step/post-step typing on a matching-metadata handle even under `bodyStep = False`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Prelude` -> `ok`.
+2. Coherent Eta handler (`Eta.read() -> resume 1615`) -> `ok`.
+3. Mismatched pure handler (`handle Eta.read()` with only `Theta.read_other` clause) -> `error`, `E0001` (pure body performs `[Eta]`).
+4. Bad resume payload (`Eta.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn eta_resume_outside() -> Int; resume 1615`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 6; resume 1615`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the strict-positive witness additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_matching_perform_witness_expr`
+  - `hasTypeScopedStrictTop_native_handler_matching_perform_witness`
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness_bodyStepFalse`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The boundary is now evidenced on both sides with explicit witnesses: a strict-typed matching positive branch and a metadata-mismatch negative branch, reducing ambiguity about whether strict routes are vacuous by construction.

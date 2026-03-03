@@ -4836,6 +4836,77 @@ theorem hasTypeScopedStrictTop_typed_metadata_mismatch_counterexample_not_typabl
   exact Ty.noConfusion h_meta.1
 
 /--
+Concrete matching-metadata handle witness used to exhibit non-empty strict
+typing and one-step behavior on the positive branch.
+-/
+def native_handler_matching_perform_witness_expr : CoreExpr :=
+  .handle
+    (.perform "Op" .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+    "Op" "x" "k" .int .int (.intLit 2)
+
+/--
+The matching-metadata witness is typable under strict top-level scoped typing.
+-/
+theorem hasTypeScopedStrictTop_native_handler_matching_perform_witness :
+    HasTypeScopedStrictTop [] native_handler_matching_perform_witness_expr .int := by
+  have h_typed :
+      HasTypeScopedTop [] native_handler_matching_perform_witness_expr .int := by
+    exact HasTypeScoped.handle none []
+      (.perform "Op" .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+      "Op" "x" "k" .int .int .int (.intLit 2)
+      (HasTypeScoped.perform none [] "Op" .int .int .int
+        (.intLit 1) (.lam "x" .int (.intLit 0))
+        (HasTypeScoped.int none [] 1)
+        (HasTypeScoped.lam none [] "x" .int .int (.intLit 0)
+          (HasTypeScoped.int none [("x", .int)] 0)))
+      (HasTypeScoped.int (some (.int, .int))
+        (("k", .function (.cons .int .nil) .int) ::
+          ("x", .int) ::
+          [])
+        2)
+  exact hasTypeScopedTop_handle_lifts_strict_of_local_coherence
+    h_typed
+    (by
+      intro opBody argTyBody opRetTyBody arg k h_eq
+      cases h_eq
+      exact ⟨rfl, rfl⟩)
+
+/--
+At `bodyStep = False`, the strict typed matching-metadata witness still has a
+one-step mismatch-extension successor with post-step typing preserved.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness_bodyStepFalse
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem (fun _ _ => False)
+        native_handler_matching_perform_witness_expr
+        e'
+      ∧ HasTypeScopedTop [] e' .int := by
+  refine ⟨
+    clauseSem.instantiate (.intLit 2) (.intLit 1) (.lam "x" .int (.intLit 0)),
+    ?_,
+    ?_⟩
+  · exact NativeHandlerStepExtWithMismatch.ext
+      (NativeHandlerStepExt.handle_perform
+        "Op" .int .int (.intLit 1) (.lam "x" .int (.intLit 0))
+        "x" "k" (.intLit 2))
+  · exact native_handler_step_ext_with_mismatch_preservation
+      clauseSem mismatchSem (fun _ _ => False)
+      (by
+        intro env body body' ty _h_body h_step
+        cases h_step)
+      []
+      native_handler_matching_perform_witness_expr
+      (clauseSem.instantiate (.intLit 2) (.intLit 1) (.lam "x" .int (.intLit 0)))
+      .int
+      (hasTypeScopedStrictTop_native_handler_matching_perform_witness.1)
+      (NativeHandlerStepExtWithMismatch.ext
+        (NativeHandlerStepExt.handle_perform
+          "Op" .int .int (.intLit 1) (.lam "x" .int (.intLit 0))
+          "x" "k" (.intLit 2)))
+
+/--
 If the metadata-mismatch counterexample body cannot take a `bodyStep`, global
 mismatch-extension progress fails under current typing.
 -/
