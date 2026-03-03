@@ -4337,6 +4337,26 @@ def native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
       native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep)
 
 /--
+Current boundary witness: packaged soundness routes are derivable for any
+`bodyStep` because each route premise is currently uninhabited.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_assumption_routes_vacuous
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro h_strict_top
+    exact False.elim (not_native_handler_strict_top_typing_prop h_strict_top)
+  · intro h_strict
+    exact False.elim (not_native_handler_strict_typing_prop h_strict)
+  · intro h_lift
+    exact False.elim (not_native_handler_scoped_to_strict_lift_prop h_lift)
+  · intro h_coherence
+    exact False.elim (not_native_handler_perform_metadata_coherence_prop h_coherence)
+
+/--
 From a strict-top soundness route and fixed core obligations, derive packaged
 soundness routes for strict-typing, scoped-lift, and metadata-coherence.
 -/
@@ -4447,6 +4467,21 @@ theorem native_handler_step_ext_with_mismatch_progress_assumption_routes_of_soun
     exact (h_meta h_coherence).2
 
 /--
+Current boundary witness: packaged progress routes are derivable for any
+`bodyStep` (via vacuous soundness routes).
+-/
+theorem native_handler_step_ext_with_mismatch_progress_assumption_routes_vacuous
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_progress_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_progress_assumption_routes_of_soundness_assumption_routes
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_soundness_assumption_routes_vacuous
+      clauseSem mismatchSem bodyStep)
+
+/--
 Combined packaged assumption-route suite for mismatch-extension progress and
 soundness.
 -/
@@ -4476,6 +4511,21 @@ theorem native_handler_step_ext_with_mismatch_assumption_route_suite_of_soundnes
   refine ⟨?_, h_sound_routes⟩
   exact native_handler_step_ext_with_mismatch_progress_assumption_routes_of_soundness_assumption_routes
     clauseSem mismatchSem bodyStep h_sound_routes
+
+/--
+Current boundary witness: the combined global route suite is derivable for any
+`bodyStep` via vacuous soundness routes.
+-/
+theorem native_handler_step_ext_with_mismatch_assumption_route_suite_vacuous
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_assumption_route_suite_of_soundness_assumption_routes
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_soundness_assumption_routes_vacuous
+      clauseSem mismatchSem bodyStep)
 
 /--
 The packaged global route suite is equivalent to packaged soundness routes:
@@ -6043,6 +6093,21 @@ theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route
       clauseSem mismatchSem bodyStep h_core)
 
 /--
+Current boundary witness: the combined local consequence route suite is
+derivable for any `bodyStep` via the vacuous global route suite.
+-/
+theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_vacuous
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_assumption_route_suite
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_assumption_route_suite_vacuous
+      clauseSem mismatchSem bodyStep)
+
+/--
 Master suite bundling packaged global assumption routes and packaged local
 consequence routes for mismatch-extension semantics.
 -/
@@ -6055,6 +6120,23 @@ def native_handler_step_ext_with_mismatch_master_suite_prop
     ∧
     native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
       clauseSem mismatchSem bodyStep
+
+/--
+Current boundary witness: the full mismatch-extension master suite is derivable
+for any `bodyStep` via vacuous global and local route suites.
+-/
+theorem native_handler_step_ext_with_mismatch_master_suite_vacuous
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_master_suite_prop
+      clauseSem mismatchSem bodyStep := by
+  exact ⟨
+    native_handler_step_ext_with_mismatch_assumption_route_suite_vacuous
+      clauseSem mismatchSem bodyStep,
+    native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_vacuous
+      clauseSem mismatchSem bodyStep
+  ⟩
 
 /--
 From packaged core soundness, derive the mismatch-extension master suite

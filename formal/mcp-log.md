@@ -19812,3 +19812,50 @@ No MCP divergence found at this checkpoint.
 
 **Impact**:
 - The generic ladder projection now cannot drift from capstone construction logic, improving maintainability and reducing duplicate proof plumbing.
+
+### 2026-03-03: explicit vacuity theorems for assumption-route and master-suite surfaces
+
+**Context**: Added explicit boundary theorems showing current route/master surfaces are derivable for arbitrary `bodyStep` because all assumption families are currently uninhabited:
+- `native_handler_step_ext_with_mismatch_soundness_assumption_routes_vacuous`
+- `native_handler_step_ext_with_mismatch_progress_assumption_routes_vacuous`
+- `native_handler_step_ext_with_mismatch_assumption_route_suite_vacuous`
+- `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_vacuous`
+- `native_handler_step_ext_with_mismatch_master_suite_vacuous`
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handlers should type-check.
+- Pure-body `handle` sentinel should type-check.
+- Mismatched pure handlers should reject (`E0001`).
+- Double-resume and out-of-handler `resume` should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Counter` -> `ok`.
+2. Coherent Stream handler (`Stream.head() -> resume 233`) -> `ok`.
+3. Pure-body sentinel (`handle 233` with `Stream.head` clause) -> `ok`.
+4. Mismatched pure handler (`handle Stream.head()` with only `Queue.pop` clause) -> `error`, `E0001` (pure body performs `[Stream]`).
+5. Double-resume control -> `error`, `E0012`.
+6. Out-of-handler resume (`fn out_resume_vacuous_routes() -> Int; resume 233`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept explicit vacuity-boundary theorem additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_assumption_routes_vacuous`
+  - `native_handler_step_ext_with_mismatch_progress_assumption_routes_vacuous`
+  - `native_handler_step_ext_with_mismatch_assumption_route_suite_vacuous`
+  - `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_vacuous`
+  - `native_handler_step_ext_with_mismatch_master_suite_vacuous`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The remaining boundary is now explicit and machine-checkable: current route/master surfaces are structurally derivable even before inhabiting strict/coherence assumptions, clarifying what still requires substantive non-vacuous witnesses.
