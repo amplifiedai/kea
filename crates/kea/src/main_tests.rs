@@ -4130,6 +4130,30 @@ fn compile_rejects_fip_unique_pattern_shadowed_forwarder_name_call_escape() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_case_shadowed_forwarder_name_call_escape() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_case_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  case true\n    true ->\n      let forward_once = g\n      forward_once(x)\n    false ->\n      x\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-case-shadowed-forwarder-name",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject call-boundary escape through case-arm-shadowed forwarder name",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_case_shadow`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("unsupported cross-function call boundaries (1):"),
+        "expected call-boundary escape diagnostic, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_unique_handoff_missing() {
     let source_path = write_temp_source(
         "@fip\nfn leak(x: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  0\n",
