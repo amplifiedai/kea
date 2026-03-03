@@ -2027,22 +2027,54 @@ fn collect_stack_eligible_unboxed_record_inits(
 
     candidates
         .into_iter()
-        .filter(|candidate| {
-            for block in &function.blocks {
-                for inst in &block.instructions {
-                    match inst {
-                        MirInst::RecordFieldLoad { record, .. } if record == candidate => {}
-                        _ if inst_references_value(inst, candidate) => return false,
-                        _ => {}
+        .filter(|candidate| is_non_escaping_unboxed_record_init(function, candidate))
+        .collect()
+}
+
+fn is_non_escaping_unboxed_record_init(function: &MirFunction, candidate: &MirValueId) -> bool {
+    // Conservative alias closure over local forwarding ops.
+    let mut aliases = BTreeSet::from([candidate.clone()]);
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                let alias_dest = match inst {
+                    MirInst::Move { dest, src }
+                    | MirInst::Borrow { dest, src }
+                    | MirInst::TryClaim { dest, src }
+                    | MirInst::Freeze { dest, src }
+                        if aliases.contains(src) =>
+                    {
+                        Some(dest)
                     }
-                }
-                if terminator_references_value(&block.terminator, candidate) {
-                    return false;
+                    _ => None,
+                };
+                if let Some(dest) = alias_dest {
+                    changed |= aliases.insert(dest.clone());
                 }
             }
-            true
-        })
-        .collect()
+        }
+    }
+
+    for block in &function.blocks {
+        for inst in &block.instructions {
+            match inst {
+                MirInst::RecordFieldLoad { record, .. } if aliases.contains(record) => {}
+                MirInst::Move { src, .. }
+                | MirInst::Borrow { src, .. }
+                | MirInst::TryClaim { src, .. }
+                | MirInst::Freeze { src, .. }
+                    if aliases.contains(src) => {}
+                _ if inst_references_any_value(inst, &aliases) => return false,
+                _ => {}
+            }
+        }
+        if terminator_references_any_value(&block.terminator, &aliases) {
+            return false;
+        }
+    }
+    true
 }
 
 fn inst_references_value(inst: &MirInst, value: &MirValueId) -> bool {
@@ -2098,6 +2130,19 @@ fn terminator_references_value(terminator: &MirTerminator, value: &MirValueId) -
         MirTerminator::Return { value: returned } => returned.as_ref().is_some_and(|v| v == value),
         MirTerminator::Unreachable => false,
     }
+}
+
+fn inst_references_any_value(inst: &MirInst, values: &BTreeSet<MirValueId>) -> bool {
+    values.iter().any(|value| inst_references_value(inst, value))
+}
+
+fn terminator_references_any_value(
+    terminator: &MirTerminator,
+    values: &BTreeSet<MirValueId>,
+) -> bool {
+    values
+        .iter()
+        .any(|value| terminator_references_value(terminator, value))
 }
 
 fn emit_generic_release<M: Module>(
