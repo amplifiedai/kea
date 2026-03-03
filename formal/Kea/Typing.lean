@@ -6558,6 +6558,85 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_st
     ((native_handler_strict_top_typing_prop_iff_metadata_coherence).1 h_strict_top_typing)
 
 /--
+Three-way boundary comparison package for native handler stepping:
+- legacy minimal relation (`NativeHandlerStep`) progress gap,
+- widened native relation (`NativeHandlerStepExt`) soundness, and
+- mismatch-extended relation (`NativeHandlerStepExtWithMismatch`) soundness.
+-/
+structure NativeHandlerStepRelationBoundaryCapstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop where
+  legacyProgressFalse :
+    ¬ native_handler_step_progress_prop clauseSem
+  extSoundness :
+    native_handler_step_ext_soundness_prop clauseSem bodyStep
+  mismatchSoundness :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+
+/--
+Build the native step-relation boundary capstone from core soundness plus
+metadata coherence.
+-/
+theorem native_handler_step_relation_boundary_capstone_of_core_soundness_and_metadata_coherence
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_coherence : native_handler_perform_metadata_coherence_prop) :
+    NativeHandlerStepRelationBoundaryCapstone clauseSem mismatchSem bodyStep := by
+  exact {
+    legacyProgressFalse := native_handler_step_progress_prop_false clauseSem
+    extSoundness := native_handler_step_ext_soundness_of_core_soundness
+      clauseSem bodyStep h_core
+    mismatchSoundness :=
+      native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence
+        clauseSem mismatchSem bodyStep h_core h_coherence
+  }
+
+/--
+Build the native step-relation boundary capstone from core soundness plus
+strict-top typing.
+-/
+theorem native_handler_step_relation_boundary_capstone_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    NativeHandlerStepRelationBoundaryCapstone clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_relation_boundary_capstone_of_core_soundness_and_metadata_coherence
+    clauseSem mismatchSem bodyStep h_core
+    ((native_handler_strict_top_typing_prop_iff_metadata_coherence).1 h_strict_top_typing)
+
+/-- One-hop projection: legacy minimal relation progress remains false. -/
+theorem native_handler_step_relation_boundary_capstone_legacy_progress_false
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_cap : NativeHandlerStepRelationBoundaryCapstone clauseSem mismatchSem bodyStep) :
+    ¬ native_handler_step_progress_prop clauseSem :=
+  h_cap.legacyProgressFalse
+
+/-- One-hop projection: widened native relation soundness. -/
+theorem native_handler_step_relation_boundary_capstone_ext_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_cap : NativeHandlerStepRelationBoundaryCapstone clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_soundness_prop clauseSem bodyStep :=
+  h_cap.extSoundness
+
+/-- One-hop projection: mismatch-extended native relation soundness. -/
+theorem native_handler_step_relation_boundary_capstone_mismatch_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_cap : NativeHandlerStepRelationBoundaryCapstone clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep :=
+  h_cap.mismatchSoundness
+
+/--
 One-hop local consequence from the strongest packaged route:
 under core soundness plus strict-top typing, every typed handle site has a
 one-step mismatch-extension successor that preserves its type.
