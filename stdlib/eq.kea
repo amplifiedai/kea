@@ -18,3 +18,15 @@ doc
     Eq.eq(4, 5)   -- => false
 fn eq(x: Int, y: Int) -> Bool
   x == y
+
+Int as Eq
+  fn eq(x: Int, y: Int) -> Bool
+    x == y
+
+Bool as Eq
+  fn eq(x: Bool, y: Bool) -> Bool
+    x == y
+
+String as Eq
+  fn eq(x: String, y: String) -> Bool
+    x == y

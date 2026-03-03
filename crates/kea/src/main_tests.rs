@@ -1020,6 +1020,44 @@ fn compile_and_execute_string_hash_exit_code() {
 }
 
 #[test]
+fn compile_and_execute_map_with_int_keys_hash_eq_exit_code() {
+    let project_dir = temp_workspace_project_dir("kea-cli-project-map-int-keys");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    let app_path = src_dir.join("app.kea");
+    std::fs::write(
+        &app_path,
+        "use Hash\nuse Eq\n\nfn main() -> Int\n  let m = %{1 => 10, 2 => 20}\n  42\n",
+    )
+    .expect("app module write should succeed");
+
+    let run = run_file(&app_path).expect("map with Int keys should compile with Hash+Eq");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn compile_and_execute_map_with_string_keys_hash_eq_exit_code() {
+    let project_dir = temp_workspace_project_dir("kea-cli-project-map-string-keys");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    let app_path = src_dir.join("app.kea");
+    std::fs::write(
+        &app_path,
+        "use Hash\nuse Eq\n\nfn main() -> Int\n  let m = %{\"a\" => 10, \"b\" => 20}\n  42\n",
+    )
+    .expect("app module write should succeed");
+
+    let run = run_file(&app_path).expect("map with String keys should compile with Hash+Eq");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
 fn compile_and_execute_hash_trait_int_impl_exit_code() {
     let project_dir = temp_workspace_project_dir("kea-cli-project-hash-trait");
     let src_dir = project_dir.join("src");

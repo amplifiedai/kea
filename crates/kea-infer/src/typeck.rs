@@ -12135,10 +12135,22 @@ fn infer_expr_bidir(
                 constrain_type_eq(unifier, &key_ty, &kt, &prov(Reason::LetAnnotation));
                 constrain_type_eq(unifier, &val_ty, &vt, &prov(Reason::LetAnnotation));
             }
-            // NOTE: Hash constraint on map keys requires deferred trait
-            // obligations (not yet implemented). For now, Hash impls exist
-            // in stdlib but the constraint is not enforced at map literal
-            // sites. See plan: "Hash trait + Map key constraints".
+            constrain_trait_obligation(
+                unifier,
+                &key_ty,
+                "Hash",
+                &prov(Reason::TraitBound {
+                    trait_name: "Hash".to_string(),
+                }),
+            );
+            constrain_trait_obligation(
+                unifier,
+                &key_ty,
+                "Eq",
+                &prov(Reason::TraitBound {
+                    trait_name: "Eq".to_string(),
+                }),
+            );
             Type::Map(Box::new(key_ty), Box::new(val_ty))
         }
 
