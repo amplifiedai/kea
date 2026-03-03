@@ -8437,6 +8437,84 @@ fn effect_row_fail_payload(row: &EffectRow) -> Option<&Type> {
         .map(|(_, payload)| payload)
 }
 
+fn type_contains_unique(ty: &Type) -> bool {
+    match ty {
+        Type::Opaque { name, .. } => name == "Unique",
+        Type::Constructor {
+            name, fixed_args, ..
+        } => name == "Unique" || fixed_args.iter().any(|(_, arg)| type_contains_unique(arg)),
+        Type::App(head, args) => {
+            type_contains_unique(head) || args.iter().any(type_contains_unique)
+        }
+        Type::Record(record) => {
+            record.name == "Unique"
+                || record
+                    .row
+                    .fields
+                    .iter()
+                    .any(|(_, field_ty)| type_contains_unique(field_ty))
+        }
+        Type::AnonRecord(row) | Type::Row(row) => {
+            row.fields.iter().any(|(_, field_ty)| type_contains_unique(field_ty))
+        }
+        Type::Sum(sum) => {
+            sum.name == "Unique"
+                || sum.type_args.iter().any(type_contains_unique)
+                || sum
+                    .variants
+                    .iter()
+                    .any(|(_, payloads)| payloads.iter().any(type_contains_unique))
+        }
+        Type::Tuple(items) => items.iter().any(type_contains_unique),
+        Type::List(item)
+        | Type::Option(item)
+        | Type::Stream(item)
+        | Type::Task(item)
+        | Type::Actor(item)
+        | Type::Arc(item)
+        | Type::Tagged { inner: item, .. } => type_contains_unique(item),
+        Type::Result(ok, err) => type_contains_unique(ok) || type_contains_unique(err),
+        Type::Function(ft) => {
+            ft.params.iter().any(type_contains_unique)
+                || type_contains_unique(ft.ret.as_ref())
+                || ft
+                    .effects
+                    .row
+                    .fields
+                    .iter()
+                    .any(|(_, payload)| type_contains_unique(payload))
+        }
+        Type::Forall(scheme) => type_contains_unique(&scheme.ty),
+        _ => false,
+    }
+}
+
+fn validate_state_effect_payload(row: &EffectRow, span: Span, context: &str) -> Result<(), Diagnostic> {
+    let state_label = Label::new("State");
+    if let Some(payload) = row
+        .row
+        .fields
+        .iter()
+        .find_map(|(label, payload)| {
+            (label == &state_label && type_contains_unique(payload)).then_some(payload)
+        })
+    {
+        return Err(
+            Diagnostic::error(
+                Category::TypeError,
+                format!(
+                    "State effect payload cannot contain `Unique`; found `State {payload}` in {context}",
+                ),
+            )
+            .at(span_to_loc(span))
+            .with_help(
+                "`State` duplicates its payload through `get()`. `Unique` values cannot be duplicated; keep `Unique` outside `State` and pass owned values explicitly.",
+            ),
+        );
+    }
+    Ok(())
+}
+
 fn instantiate_effect_row_for_unifier(row: &EffectRow, unifier: &mut Unifier) -> EffectRow {
     let mut row_map = BTreeMap::new();
     if let Some(rest) = row.row.rest {
@@ -11021,6 +11099,13 @@ fn infer_expr_bidir(
             } else {
                 lambda_effects
             };
+
+            let effect_span = effect_annotation.as_ref().map_or(expr.span, |ann| ann.span);
+            if let Err(diag) =
+                validate_state_effect_payload(&final_effects, effect_span, "function effect row")
+            {
+                unifier.push_error(diag);
+            }
 
             Type::Function(FunctionType {
                 params: param_types,

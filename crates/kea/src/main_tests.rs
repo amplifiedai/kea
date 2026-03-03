@@ -4916,6 +4916,23 @@ fn compile_rejects_modulo_by_zero_literal() {
 }
 
 #[test]
+fn compile_rejects_state_effect_payload_with_unique_type() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn bad() -[State UniqueInt]> Int\n  0\n\nfn main() -> Int\n  0\n",
+        "kea-cli-state-unique-effect-payload",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err("State payload containing Unique should fail");
+    assert!(
+        err.contains("State effect payload cannot contain `Unique`"),
+        "expected State/Unique payload diagnostic, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_unique_use_after_move() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let first = consume(u)\n  first + consume(u)\n",
