@@ -6075,6 +6075,27 @@ theorem native_handler_soundness_boundary_status_bodyStepFalse_snapshot
   ⟩
 
 /--
+Vacuity profile extracted from the unified status capstone:
+- the global strict-top typing contract is uninhabited,
+- yet strict-top handler typing itself has concrete inhabitants.
+-/
+theorem native_handler_soundness_boundary_status_strict_top_vacuity_profile
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_status : NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem) :
+    (¬ Nonempty native_handler_strict_top_typing_prop)
+      ∧
+    (∃ body op argName resumeName argTy opRetTy clauseBody ty,
+      HasTypeScopedStrictTop []
+        (.handle body op argName resumeName argTy opRetTy clauseBody)
+        ty) := by
+  refine ⟨?_, h_status.typingGap.strictTopTypedHandleExists⟩
+  intro h_nonempty
+  cases h_nonempty with
+  | intro h_strict_top =>
+    exact h_status.typingGap.strictTopTypingFalse h_strict_top
+
+/--
 Packaged route: mismatch-extension progress from packaged core progress plus
 global strict typing, routed through strict-top typing.
 -/

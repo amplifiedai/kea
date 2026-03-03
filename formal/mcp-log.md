@@ -20436,3 +20436,47 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Consumers now have a single theorem for the full bodyStep-false checkpoint state, reducing multi-field manual extraction from the status capstone.
+
+### 2026-03-03: added strict-top vacuity profile theorem from unified status capstone
+
+**Context**: Added `native_handler_soundness_boundary_status_strict_top_vacuity_profile`, extracting from `NativeHandlerSoundnessBoundaryStatusCapstone`:
+- `¬ Nonempty native_handler_strict_top_typing_prop` (global strict-top contract uninhabited),
+- existence of strict-top typed handlers (`HasTypeScopedStrictTop` handle witness).
+
+This makes the contract-vacuity vs relation-inhabitation distinction explicit in one theorem.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use System` -> `ok`.
+2. Coherent Psi2 handler (`Psi2.read() -> resume 2829`) -> `ok`.
+3. Mismatched pure handler (`handle Psi2.read()` with only `Omega2.read_other` clause) -> `error`, `E0001` (pure body performs `[Psi2]`).
+4. Bad resume payload (`Psi2.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn psi2_resume_outside() -> Int; resume 2829`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 12; resume 2829`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the strict-top vacuity profile theorem.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_soundness_boundary_status_strict_top_vacuity_profile`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The current blocker is now more crisply machine-stated: strict-top contract vacuity coexists with strict-top typed-handle witnesses, i.e., the gap is global lifting/coherence, not relation emptiness.
