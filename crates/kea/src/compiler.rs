@@ -105,7 +105,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
 
     diagnostics.extend(validate_module_fn_annotations(&parsed_module));
     diagnostics.extend(validate_module_annotations(&parsed_module));
-    diagnostics.extend(validate_unsafe_call_sites(&parsed_module, None, None));
+    diagnostics.extend(validate_unsafe_call_sites(&parsed_module, None, None, None));
     if has_errors(&diagnostics) {
         return Err(format_diagnostics(
             "type annotation validation failed",
@@ -290,8 +290,12 @@ fn collect_unsafe_call_targets(
     module: &Module,
     module_path: Option<&str>,
     unsafe_registry: Option<&BTreeMap<String, BTreeSet<String>>>,
+    ambient_unsafe_names: Option<&BTreeSet<String>>,
 ) -> BTreeSet<String> {
     let mut unsafe_callees = collect_unsafe_annotated_function_names(module);
+    if let Some(ambient_unsafe_names) = ambient_unsafe_names {
+        unsafe_callees.extend(ambient_unsafe_names.iter().cloned());
+    }
 
     if let Some(module_path) = module_path {
         for name in collect_unsafe_annotated_function_names(module) {
@@ -829,8 +833,14 @@ fn validate_unsafe_call_sites(
     module: &Module,
     module_path: Option<&str>,
     unsafe_registry: Option<&BTreeMap<String, BTreeSet<String>>>,
+    ambient_unsafe_names: Option<&BTreeSet<String>>,
 ) -> Vec<Diagnostic> {
-    let unsafe_callees = collect_unsafe_call_targets(module, module_path, unsafe_registry);
+    let unsafe_callees = collect_unsafe_call_targets(
+        module,
+        module_path,
+        unsafe_registry,
+        ambient_unsafe_names,
+    );
     if unsafe_callees.is_empty() {
         return Vec::new();
     }
@@ -1015,7 +1025,14 @@ pub fn process_module_in_env(
 ) -> Result<ModuleProcessResult, Vec<Diagnostic>> {
     diagnostics.extend(validate_module_fn_annotations(module));
     diagnostics.extend(validate_module_annotations(module));
-    diagnostics.extend(validate_unsafe_call_sites(module, None, None));
+    let unsafe_registry = env.module_unsafe_function_registry();
+    let unsafe_names = env.unsafe_function_names();
+    diagnostics.extend(validate_unsafe_call_sites(
+        module,
+        None,
+        Some(&unsafe_registry),
+        Some(&unsafe_names),
+    ));
     if has_errors(&diagnostics) {
         return Err(diagnostics);
     }
@@ -1588,6 +1605,7 @@ fn typecheck_loaded_modules(
             &loaded.module,
             Some(&loaded.module_path),
             Some(&unsafe_registry),
+            None,
         ));
         if has_errors(&diagnostics) {
             if !is_entry_module {
@@ -2646,6 +2664,12 @@ fn typecheck_functions(
             placeholder_counter = placeholder_counter.wrapping_sub(1);
             Type::Var(kea_types::TypeVarId(id))
         });
+        if has_annotation_named(&fn_decl.annotations, "unsafe") {
+            env.register_unsafe_function(&fn_decl.name.node);
+            if let Some(module_path) = module_path {
+                env.register_module_unsafe_function(module_path, &fn_decl.name.node);
+            }
+        }
         env.bind(fn_decl.name.node.clone(), TypeScheme::mono(ty));
 
         // Also pre-register the effect row so transitive effect inference

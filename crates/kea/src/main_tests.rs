@@ -7647,6 +7647,85 @@ fn process_module_in_env_accepts_parameterized_effect_handler() {
     }
 }
 
+/// Regression test: process_module_in_env must preserve unsafe-call gating
+/// across incremental session modules.
+#[test]
+fn process_module_in_env_enforces_unsafe_call_gating_across_session_modules() {
+    use kea_infer::typeck::{RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv};
+
+    fn parse_module_for_test(source: &str, file: u32) -> (kea_ast::Module, Vec<kea_diag::Diagnostic>) {
+        let (tokens, warnings) =
+            kea_syntax::lex_layout(source, kea_ast::FileId(file)).expect("lex should succeed");
+        let module =
+            kea_syntax::parse_module(tokens, kea_ast::FileId(file)).expect("parse should succeed");
+        (module, warnings)
+    }
+
+    let mut env = TypeEnv::new();
+    let mut records = RecordRegistry::new();
+    let mut traits = TraitRegistry::new();
+    let mut sum_types = SumTypeRegistry::new();
+
+    let (unsafe_mod, warnings0) =
+        parse_module_for_test("@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n", 10);
+    let registered = kea::process_module_in_env(
+        &unsafe_mod,
+        &mut env,
+        &mut records,
+        &mut traits,
+        &mut sum_types,
+        warnings0,
+    )
+    .expect("unsafe declaration module should register successfully");
+    assert!(
+        registered
+            .diagnostics
+            .iter()
+            .all(|d| d.severity != kea_diag::Severity::Error),
+        "unsafe declaration module should not produce errors"
+    );
+
+    let (safe_caller_mod, warnings1) =
+        parse_module_for_test("fn caller() -> Int\n  raw_add_one(1)\n", 11);
+    let err = kea::process_module_in_env(
+        &safe_caller_mod,
+        &mut env,
+        &mut records,
+        &mut traits,
+        &mut sum_types,
+        warnings1,
+    )
+    .expect_err("safe caller should be rejected when calling @unsafe callee in session env");
+    assert!(
+        err.iter().any(|diag| diag.message.contains(
+            "call to `@unsafe` function `raw_add_one` requires unsafe context"
+        )),
+        "expected unsafe call-site diagnostic, got: {err:?}"
+    );
+
+    let (unsafe_block_caller_mod, warnings2) = parse_module_for_test(
+        "fn caller_safe() -> Int\n  unsafe\n    raw_add_one(41)\n",
+        12,
+    );
+    let allowed = kea::process_module_in_env(
+        &unsafe_block_caller_mod,
+        &mut env,
+        &mut records,
+        &mut traits,
+        &mut sum_types,
+        warnings2,
+    )
+    .expect("unsafe block caller should be accepted in session env");
+    assert!(
+        allowed
+            .diagnostics
+            .iter()
+            .all(|d| d.severity != kea_diag::Severity::Error),
+        "unsafe block caller should not produce errors: {:?}",
+        allowed.diagnostics
+    );
+}
+
 fn temp_artifact_path(prefix: &str, extension: &str) -> PathBuf {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

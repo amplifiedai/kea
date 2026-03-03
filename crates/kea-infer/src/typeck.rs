@@ -248,6 +248,8 @@ pub struct TypeEnv {
     function_effects: BTreeMap<String, Effects>,
     function_effect_rows: BTreeMap<String, EffectRow>,
     function_signatures: BTreeMap<String, FnSignature>,
+    unsafe_functions: BTreeSet<String>,
+    module_unsafe_functions: BTreeMap<String, BTreeSet<String>>,
     module_functions: BTreeMap<String, Vec<String>>,
     /// Module path → declared effect operation names.
     ///
@@ -348,6 +350,8 @@ impl TypeEnv {
             function_effects: BTreeMap::new(),
             function_effect_rows: BTreeMap::new(),
             function_signatures: BTreeMap::new(),
+            unsafe_functions: BTreeSet::new(),
+            module_unsafe_functions: BTreeMap::new(),
             module_functions: BTreeMap::new(),
             effect_operations: BTreeMap::new(),
             module_type_schemes: BTreeMap::new(),
@@ -384,6 +388,26 @@ impl TypeEnv {
     /// Register call-site signature metadata for a function binding.
     pub fn set_function_signature(&mut self, name: String, signature: FnSignature) {
         self.function_signatures.insert(name, signature);
+    }
+
+    pub fn register_unsafe_function(&mut self, name: &str) {
+        self.unsafe_functions.insert(name.to_string());
+    }
+
+    pub fn register_module_unsafe_function(&mut self, module_path: &str, name: &str) {
+        self.module_unsafe_functions
+            .entry(module_path.to_string())
+            .or_default()
+            .insert(name.to_string());
+        self.ensure_module_alias_for_path(module_path);
+    }
+
+    pub fn unsafe_function_names(&self) -> BTreeSet<String> {
+        self.unsafe_functions.clone()
+    }
+
+    pub fn module_unsafe_function_registry(&self) -> BTreeMap<String, BTreeSet<String>> {
+        self.module_unsafe_functions.clone()
     }
 
     /// Remove bare function metadata for a symbol name.
