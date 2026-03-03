@@ -21306,3 +21306,49 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Core+strict-top boundary contrast now exports the full mismatch-extension reduction picture (soundness, progress, and equivalence) while preserving the native-progress gap witness.
+
+### 2026-03-04: added strengthened-contrast backward-compatible projections and recalibrated MCP handle syntax
+
+**Context**: Added backward-compatible projections from the strengthened contrast surfaces:
+- `native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_strengthened`
+- `native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice_of_strengthened`
+
+These recover the older triple `(soundness, progress, native-progress-gap)` API directly from the strengthened quadruple that also carries mismatch `soundness ↔ progress`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Net` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeCY.run(); ProbeCY.run() -> resume 231`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeCZ.left(); ProbeDA.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeDB.read() -> resume false`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304b() -> Int; resume 27`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 27; resume 27`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the backward-compatible strengthened-contrast projection theorems.
+- Recalibrated probes to current MCP handler syntax (`handle e` followed by an indented clause block, no `with`) after an initial syntax-only `E0006` precondition drift.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_strengthened`
+  - `native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice_of_strengthened`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Strengthened and legacy contrast APIs are now directly interoperable.
+- MCP checkpoint semantics remain aligned after syntax recalibration (no divergence).
