@@ -21032,3 +21032,52 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Unified body-preservation capstone is now directly usable through one-hop route APIs for strict-handle, strict-top, and full layers.
+
+### 2026-03-04: added core-obligation capstone bundles for full soundness/progress/equivalence across assumption families
+
+**Context**: Added four bundled capstone routes returning `(soundness, progress, soundness↔progress)` in one theorem:
+- `native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_metadata_coherence`
+- `native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_strict_top_typing`
+- `native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_strict_typing`
+- `native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_scoped_to_strict_lift`
+
+Each route is parameterized by core obligations (`h_body_pres`, `h_core_progress`) and the corresponding assumption family.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Math` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeBN.call() -> resume 161`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeBO.left()` with only `ProbeBP.right`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeBQ.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe13() -> Int; resume 20`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 20; resume 20`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the core-obligation soundness/progress/equivalence bundle capstones.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_metadata_coherence`
+  - `..._and_strict_top_typing`
+  - `..._and_strict_typing`
+  - `..._and_scoped_to_strict_lift`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Core-assumption-family routes now expose full soundness, progress, and their reduction equivalence in one capstone API per family.

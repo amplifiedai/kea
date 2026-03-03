@@ -4480,6 +4480,135 @@ theorem native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_o
     clauseSem mismatchSem bodyStep h_body_pres).2.2
 
 /--
+Core-soundness + metadata-coherence capstone bundle:
+exports full mismatch-extension soundness, progress, and their equivalence in
+one theorem route.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_metadata_coherence
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_coherence : native_handler_perform_metadata_coherence_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep) := by
+  have h_sound :
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep :=
+    ⟨
+      native_handler_step_ext_with_mismatch_preservation
+        clauseSem mismatchSem bodyStep h_body_pres,
+      native_handler_step_ext_with_mismatch_progress_of_core_progress_and_metadata_coherence
+        clauseSem mismatchSem bodyStep h_core_progress h_coherence
+    ⟩
+  have h_iff :
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation
+      clauseSem mismatchSem bodyStep
+      (native_handler_step_ext_with_mismatch_preservation
+        clauseSem mismatchSem bodyStep h_body_pres)
+  exact ⟨h_sound, h_sound.2, h_iff⟩
+
+/--
+Core-soundness + strict-top-typing capstone bundle:
+exports full mismatch-extension soundness, progress, and their equivalence in
+one theorem route.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep) := by
+  exact native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_metadata_coherence
+    clauseSem mismatchSem bodyStep h_body_pres h_core_progress
+    ((native_handler_strict_top_typing_prop_iff_metadata_coherence).1 h_strict_top_typing)
+
+/--
+Core-soundness + strict-typing capstone bundle:
+exports full mismatch-extension soundness, progress, and their equivalence in
+one theorem route.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_strict_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_strict_typing : native_handler_strict_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep) := by
+  exact native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_metadata_coherence
+    clauseSem mismatchSem bodyStep h_body_pres h_core_progress
+    (native_handler_perform_metadata_coherence_of_strict_typing h_strict_typing)
+
+/--
+Core-soundness + scoped-to-strict-lift capstone bundle:
+exports full mismatch-extension soundness, progress, and their equivalence in
+one theorem route.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_scoped_to_strict_lift
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_lift : native_handler_scoped_to_strict_lift_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep) := by
+  exact native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_metadata_coherence
+    clauseSem mismatchSem bodyStep h_body_pres h_core_progress
+    (native_handler_perform_metadata_coherence_of_scoped_to_strict_lift h_lift)
+
+/--
 Generic local consequence of packaged mismatch soundness:
 typed handles take one mismatch-extension step.
 -/
