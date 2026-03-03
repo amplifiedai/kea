@@ -6751,6 +6751,85 @@ def native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
     ¬ native_handler_step_progress_prop clauseSem
 
 /--
+Strengthened core+strict-top contrast route surface that also carries mismatch
+soundness↔progress equivalence at each `bodyStep`.
+-/
+def native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop :=
+  ∀ bodyStep,
+    native_core_soundness_prop bodyStep →
+    native_handler_strict_top_typing_prop →
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep)
+      ∧
+    ¬ native_handler_step_progress_prop clauseSem
+
+/--
+Project the legacy contrast route from the strengthened route package.
+-/
+theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop_of_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_route :
+      native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop
+        clauseSem mismatchSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
+      clauseSem mismatchSem := by
+  intro bodyStep h_core h_strict_top_typing
+  rcases h_route bodyStep h_core h_strict_top_typing with
+    ⟨h_sound, h_progress, _h_equiv, h_gap⟩
+  exact ⟨h_sound, h_progress, h_gap⟩
+
+/--
+Lift the legacy contrast route to the strengthened route using the local
+preservation-driven soundness↔progress equivalence.
+-/
+theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop_of_legacy
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_route :
+      native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
+        clauseSem mismatchSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop
+      clauseSem mismatchSem := by
+  intro bodyStep h_core h_strict_top_typing
+  rcases h_route bodyStep h_core h_strict_top_typing with
+    ⟨h_sound, h_progress, h_gap⟩
+  have h_iff :
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation
+      clauseSem mismatchSem bodyStep h_sound.1
+  exact ⟨h_sound, h_progress, h_iff, h_gap⟩
+
+/--
+Route-level equivalence between the legacy and strengthened core+strict-top
+contrast APIs.
+-/
+theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop_iff_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
+        clauseSem mismatchSem
+      ↔
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop
+        clauseSem mismatchSem := by
+  constructor
+  · intro h_route
+    exact
+      native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop_of_legacy
+        clauseSem mismatchSem h_route
+  · intro h_route
+    exact
+      native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop_of_strengthened
+        clauseSem mismatchSem h_route
+
+/--
 Build the core+strict-top contrast route from a packaged boundary-model gap
 slice witness.
 -/
@@ -6762,6 +6841,21 @@ theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_of_
       clauseSem mismatchSem := by
   intro bodyStep h_core h_strict_top_typing
   exact native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice
+    clauseSem mismatchSem bodyStep h_gap h_core h_strict_top_typing
+
+/--
+Build the strengthened core+strict-top contrast route (including mismatch
+soundness↔progress equivalence) from a packaged boundary-model gap slice
+witness.
+-/
+theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop
+      clauseSem mismatchSem := by
+  intro bodyStep h_core h_strict_top_typing
+  exact native_handler_step_ext_with_mismatch_soundness_progress_equiv_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice
     clauseSem mismatchSem bodyStep h_gap h_core h_strict_top_typing
 
 /--

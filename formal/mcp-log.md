@@ -21352,3 +21352,52 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 **Impact**:
 - Strengthened and legacy contrast APIs are now directly interoperable.
 - MCP checkpoint semantics remain aligned after syntax recalibration (no divergence).
+
+### 2026-03-04: added route-level legacy↔strengthened contrast equivalence capstone
+
+**Context**: Added route-level capstone surfaces:
+- `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop`
+- `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop_of_strengthened`
+- `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop_of_legacy`
+- `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop_iff_strengthened`
+- `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_of_boundary_model_gap_slice`
+
+This upgrades the API from one-way projection to a route-level equivalence between legacy and strengthened contrast routes.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Time` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeDD.run(); ProbeDD.run() -> resume 241`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeDE.left(); ProbeDF.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeDG.read() -> resume true`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304c() -> Int; resume 28`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 28; resume 28`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the route-level `legacy ↔ strengthened` equivalence capstone and strengthened boundary-slice route constructor.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop`
+  - `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop_iff_strengthened`
+  - `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_of_boundary_model_gap_slice`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Core+strict-top contrast routes can now be consumed on either API shape with a proved route-level equivalence.
