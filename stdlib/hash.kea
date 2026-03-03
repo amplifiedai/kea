@@ -27,3 +27,11 @@ Bool as Hash
       1
     else
       0
+
+@intrinsic("__kea_hash_string")
+fn hash_string(s: String) -> Int
+  0
+
+String as Hash
+  fn hash(x: String) -> Int
+    hash_string(x)

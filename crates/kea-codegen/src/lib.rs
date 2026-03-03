@@ -463,6 +463,18 @@ unsafe extern "C" fn kea_io_exit_stub(code: i64) {
     JIT_EXIT_CODE.with(|c| c.set(Some(code as i32)));
 }
 
+unsafe extern "C" fn kea_hash_string_stub(s: *const c_char) -> i64 {
+    if s.is_null() {
+        return 0;
+    }
+    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let mut hash: i64 = 5381;
+    for &b in bytes {
+        hash = ((hash << 5).wrapping_add(hash)) ^ (b as i64);
+    }
+    hash
+}
+
 unsafe extern "C" fn kea_io_file_exists_stub(path: *const c_char) -> i8 {
     if path.is_null() {
         return 0;
@@ -568,6 +580,7 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_io_write_file", kea_io_write_file_stub as *const u8);
     builder.symbol("__kea_io_read_file", kea_io_read_file_stub as *const u8);
     builder.symbol("__kea_io_exit", kea_io_exit_stub as *const u8);
+    builder.symbol("__kea_hash_string", kea_hash_string_stub as *const u8);
     builder.symbol("__kea_io_file_exists", kea_io_file_exists_stub as *const u8);
     builder.symbol("__kea_io_env_var", kea_io_env_var_stub as *const u8);
     builder.symbol("__kea_io_mkdir", kea_io_mkdir_stub as *const u8);

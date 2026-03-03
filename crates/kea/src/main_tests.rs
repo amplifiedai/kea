@@ -1000,6 +1000,26 @@ fn compile_and_execute_string_neq_exit_code() {
 }
 
 #[test]
+fn compile_and_execute_string_hash_exit_code() {
+    let project_dir = temp_workspace_project_dir("kea-cli-project-string-hash");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    let app_path = src_dir.join("app.kea");
+    // Use the hash_string intrinsic directly to verify DJB2 works
+    std::fs::write(
+        &app_path,
+        "use Hash\n\nfn main() -> Int\n  let h1 = Hash.hash_string(\"hello\")\n  let h2 = Hash.hash_string(\"hello\")\n  if h1 == h2\n    42\n  else\n    0\n",
+    )
+    .expect("app module write should succeed");
+
+    let run = run_file(&app_path).expect("string hash should compile and execute");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
 fn compile_and_execute_hash_trait_int_impl_exit_code() {
     let project_dir = temp_workspace_project_dir("kea-cli-project-hash-trait");
     let src_dir = project_dir.join("src");
