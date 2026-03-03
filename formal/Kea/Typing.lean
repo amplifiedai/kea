@@ -2698,6 +2698,24 @@ theorem native_handler_strict_top_typing_of_metadata_coherence
     (native_handler_strict_typing_of_metadata_coherence h_coherence)
 
 /--
+Global mismatch-extension progress route from core body progress plus metadata
+coherence, routed through strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_metadata_coherence_via_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_coherence : native_handler_perform_metadata_coherence_prop) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing
+    clauseSem mismatchSem bodyStep h_core_progress
+    (native_handler_strict_top_typing_of_metadata_coherence h_coherence)
+
+/--
 Strict-top handle typing and metadata coherence are equivalent global
 contracts.
 -/
@@ -3105,6 +3123,29 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_sc
   exact native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing
     clauseSem mismatchSem bodyStep h_core
     (native_handler_strict_top_typing_prop_of_scoped_to_strict_lift h_lift)
+
+/--
+Capstone route: mismatch-extension soundness from packaged core soundness plus
+metadata coherence, routed through strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence_via_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core :
+      (∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+      ∧
+      (∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body'))
+    (h_coherence : native_handler_perform_metadata_coherence_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing
+    clauseSem mismatchSem bodyStep h_core
+    (native_handler_strict_top_typing_of_metadata_coherence h_coherence)
 
 /--
 Specialized soundness target for the concrete pass-through mismatch semantics.

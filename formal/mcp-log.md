@@ -17708,3 +17708,40 @@ types.
 **Impact**:
 - Previously reported polymorphic-resume divergence no longer reproduces on the
   restarted MCP.
+
+### 2026-03-03: metadata-coherence routed through strict-top capstones
+
+**Context**: Added explicit metadata-coherence routed progress/soundness
+theorems through strict-top typing to align assumption surfaces.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Metadata-coherence-routed theorems should preserve existing behavior:
+  coherent matching handlers accepted, resume-type mismatch rejected, mismatched
+  clauses leak residual effects, and out-of-handler resume rejected.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `Reader(Int)` handling (`resume 41`) -> `ok`, pure `main`.
+2. `Reader(Int)` bad resume (`resume "bad"`) -> `error`, `E0001`.
+3. Mismatched handler clauses (`Reader` body handled only with `State` clauses)
+   -> `error`, purity/effect leak (`Reader(Int)` still required).
+4. Out-of-handler `resume` control -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept routed strict-top metadata theorem additions.
+- Continued with checkpoint protocol unchanged.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_metadata_coherence_via_strict_top_typing`
+  - `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence_via_strict_top_typing`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Metadata coherence now has direct one-hop routes into strict-top progress and
+  soundness capstones, reducing assumption-routing ambiguity.
