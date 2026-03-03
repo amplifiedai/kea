@@ -3144,6 +3144,52 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_block_alias_
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_if_passthrough_branch_exit_code() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_or_passthrough(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    x\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_or_passthrough(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-if-passthrough-branch",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept wrappers where one branch forwards and the other safely passthroughs the unique value",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_if_passthrough_branch_exit_code(
+) {
+    let project_dir = temp_workspace_project_dir(
+        "kea-cli-fip-unique-higher-order-module-alias-if-passthrough-branch",
+    );
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_or_passthrough(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    x\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+            &source_path,
+            "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_or_passthrough(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        )
+        .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept module-alias wrappers with forward-or-passthrough branch shapes",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_named_import_call_exit_code() {
     let project_dir =
         temp_workspace_project_dir("kea-cli-fip-unique-higher-order-forwarder-imported");
