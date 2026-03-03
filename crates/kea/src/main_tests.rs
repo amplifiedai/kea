@@ -4341,6 +4341,51 @@ fn compile_value_only_record_if_join_reduces_consume_alloc_in_stats() {
         "expected value-only record if-join consume path to keep alloc count at most one per lowered function, stats: {:?}",
         compiled.stats
     );
+    let release_count: usize = consume_stats.iter().map(|f| f.release_count).sum();
+    assert_eq!(
+        release_count, 0,
+        "expected value-only record if-join consume path to keep release churn elided, stats: {:?}",
+        compiled.stats
+    );
+
+    let run = run_file(&source_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_loop_mixed_unit_walk_keeps_record_alloc_floor_in_stats() {
+    let source_path = write_temp_source(
+        "struct Point\n  x: Int\n\nfn walk(n: Int, p: Point) -> Unit\n  let cur = if n % 2 == 0\n    p\n  else\n    Point { x: p.x + 1 }\n  if n <= 0\n    ()\n  else\n    walk(n - 1, cur)\n\nfn main() -> Int\n  walk(64, Point { x: 0 })\n  0\n",
+        "kea-cli-loop-mixed-unit-walk-stats",
+        "kea",
+    );
+
+    let compiled = compile_file(&source_path, CodegenMode::Jit).expect("compile should work");
+    let app_stats = compiled
+        .stats
+        .per_function
+        .iter()
+        .filter(|f| f.function == "walk" || f.function == "main")
+        .collect::<Vec<_>>();
+    assert!(
+        !app_stats.is_empty(),
+        "expected app walk/main stats to exist, stats: {:?}",
+        compiled.stats
+    );
+    let alloc_count: usize = app_stats.iter().map(|f| f.alloc_count).sum();
+    assert!(
+        alloc_count <= 2,
+        "expected loop mixed-unit walk kernel to stay at current alloc floor (<=2) until cross-call stack forwarding lands, stats: {:?}",
+        compiled.stats
+    );
+    let release_count: usize = app_stats.iter().map(|f| f.release_count).sum();
+    assert_eq!(
+        release_count, 0,
+        "expected loop mixed-unit walk kernel to keep release churn elided, stats: {:?}",
+        compiled.stats
+    );
 
     let run = run_file(&source_path).expect("run should succeed");
     assert_eq!(run.exit_code, 0);
