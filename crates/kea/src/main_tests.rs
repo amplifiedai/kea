@@ -3897,6 +3897,76 @@ fn compile_rejects_unsafe_annotation_on_record_declaration() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_accepts_unboxed_annotation_on_struct() {
+    let source_path = write_temp_source(
+        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\nfn main() -> Int\n  let p = Pair { left: 20, right: 22 }\n  p.left + p.right\n",
+        "kea-cli-unboxed-struct-accept",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("@unboxed struct with value fields should compile");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_unboxed_annotation_with_arguments() {
+    let source_path = write_temp_source(
+        "@unboxed(\"flat\")\nstruct Pair\n  left: Int\n  right: Int\n\nfn main() -> Int\n  0\n",
+        "kea-cli-unboxed-annotation-args",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err("@unboxed annotation with args should fail");
+    assert!(
+        err.contains("`@unboxed` does not accept arguments"),
+        "expected @unboxed argument validation failure, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_unboxed_annotation_on_function() {
+    let source_path = write_temp_source(
+        "@unboxed\nfn bad(x: Int) -> Int\n  x\n\nfn main() -> Int\n  bad(1)\n",
+        "kea-cli-unboxed-annotation-function",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("@unboxed annotation on function should fail validation");
+    assert!(
+        err.contains("`@unboxed` is not valid on function declaration"),
+        "expected @unboxed target validation failure, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_unboxed_struct_with_heap_field() {
+    let source_path = write_temp_source(
+        "@unboxed\nstruct Bad\n  name: String\n\nfn main() -> Int\n  0\n",
+        "kea-cli-unboxed-heap-field-reject",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err("@unboxed struct with heap fields should fail");
+    assert!(
+        err.contains("`@unboxed` field `name` must be a value type"),
+        "expected @unboxed value-type diagnostic, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_build_and_execute_aot_payload_constructor_case_exit_code() {
     let source_path = write_temp_source(
         "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",

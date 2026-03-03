@@ -5640,12 +5640,12 @@ fn annotation_name_known(name: &str) -> bool {
     matches!(
         name,
         "rename" | "default" | "skip_if" | "tagged" | "deprecated" | "intrinsic" | "fip"
-            | "unsafe"
+            | "unsafe" | "unboxed"
     )
 }
 
 fn annotation_name_suggestion(name: &str) -> Option<&'static str> {
-    const KNOWN: [&str; 8] = [
+    const KNOWN: [&str; 9] = [
         "rename",
         "default",
         "skip_if",
@@ -5654,6 +5654,7 @@ fn annotation_name_suggestion(name: &str) -> Option<&'static str> {
         "intrinsic",
         "fip",
         "unsafe",
+        "unboxed",
     ];
     let mut best: Option<(&str, usize)> = None;
     for candidate in KNOWN {
@@ -5784,6 +5785,44 @@ fn literal_matches_type_annotation(expr: &Expr, ann: &kea_ast::TypeAnnotation) -
         (ExprKind::Lit(Lit::Char(_)), kea_ast::TypeAnnotation::Named(name)) => Some(name == "Char"),
         (ExprKind::None, kea_ast::TypeAnnotation::Optional(_)) => Some(true),
         _ => None,
+    }
+}
+
+fn is_unboxed_primitive_name(name: &str) -> bool {
+    matches!(
+        name,
+        "Unit"
+            | "Bool"
+            | "Char"
+            | "Int"
+            | "Int8"
+            | "Int16"
+            | "Int32"
+            | "Int64"
+            | "UInt8"
+            | "UInt16"
+            | "UInt32"
+            | "UInt64"
+            | "Float"
+            | "Float16"
+            | "Float32"
+            | "Float64"
+    )
+}
+
+fn is_unboxed_value_annotation(
+    ann: &kea_ast::TypeAnnotation,
+    local_unboxed_records: &BTreeSet<String>,
+) -> bool {
+    match ann {
+        kea_ast::TypeAnnotation::Named(name) => {
+            is_unboxed_primitive_name(name) || local_unboxed_records.contains(name)
+        }
+        kea_ast::TypeAnnotation::Applied(name, args) if name == "Ptr" && args.len() == 1 => true,
+        kea_ast::TypeAnnotation::Tuple(items) => items
+            .iter()
+            .all(|item| is_unboxed_value_annotation(item, local_unboxed_records)),
+        _ => false,
     }
 }
 
@@ -6076,6 +6115,23 @@ fn validate_annotation_arguments(
                 );
             }
         }
+        "unboxed" => {
+            if !matches!(target, AnnotationTargetKind::Record) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!("`@unboxed` is not valid on {}", target.label()),
+                    )
+                    .at(span_to_loc(ann.span)),
+                );
+            }
+            if !ann.args.is_empty() {
+                diagnostics.push(
+                    Diagnostic::error(Category::TypeError, "`@unboxed` does not accept arguments")
+                        .at(span_to_loc(ann.span)),
+                );
+            }
+        }
         _ => {}
     }
 
@@ -6084,6 +6140,18 @@ fn validate_annotation_arguments(
 
 pub fn validate_module_annotations(module: &kea_ast::Module) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
+    let local_unboxed_records: BTreeSet<String> = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            kea_ast::DeclKind::RecordDef(rd)
+                if rd.annotations.iter().any(|ann| ann.name.node == "unboxed") =>
+            {
+                Some(rd.name.node.clone())
+            }
+            _ => None,
+        })
+        .collect();
     for decl in &module.declarations {
         match &decl.node {
             kea_ast::DeclKind::Function(fd) => {
@@ -6106,6 +6174,7 @@ pub fn validate_module_annotations(module: &kea_ast::Module) -> Vec<Diagnostic> 
             }
             kea_ast::DeclKind::RecordDef(rd) => {
                 let serializable = has_serialize_derive(&rd.derives);
+                let is_unboxed = rd.annotations.iter().any(|ann| ann.name.node == "unboxed");
                 for ann in &rd.annotations {
                     diagnostics.extend(validate_annotation_arguments(
                         ann,
@@ -6131,6 +6200,22 @@ pub fn validate_module_annotations(module: &kea_ast::Module) -> Vec<Diagnostic> 
                                     ),
                                 )
                                 .at(span_to_loc(ann.span)),
+                            );
+                        }
+                    }
+                }
+                if is_unboxed {
+                    for (field_name, field_ty) in &rd.fields {
+                        if !is_unboxed_value_annotation(field_ty, &local_unboxed_records) {
+                            diagnostics.push(
+                                Diagnostic::error(
+                                    Category::TypeError,
+                                    format!(
+                                        "`@unboxed` field `{}` must be a value type (primitive, Ptr T, tuple of value types, or another local `@unboxed` struct)",
+                                        field_name.node
+                                    ),
+                                )
+                                .at(span_to_loc(rd.name.span)),
                             );
                         }
                     }
