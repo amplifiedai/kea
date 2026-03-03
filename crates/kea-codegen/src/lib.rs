@@ -3114,7 +3114,7 @@ fn lower_instruction<M: Module>(
                 }
             })?;
             let ptr_ty = module.target_config().pointer_type();
-            let base_ptr = if layout.is_unboxed && ctx.stack_unboxed_record_inits.contains(dest) {
+            let base_ptr = if ctx.stack_unboxed_record_inits.contains(dest) {
                 let align_shift =
                     u8::try_from(layout.align_bytes.trailing_zeros()).map_err(|_| {
                         CodegenError::UnsupportedMir {
@@ -5457,6 +5457,34 @@ fn detect_tail_self_call(
         (MirTerminator::Return { value: None }, None)
     ) {
         return Some(TailSelfCall { args: args.clone() });
+    }
+
+    // Unit-return tail self-call through a jump-only return block:
+    //   call self(...)
+    //   jump ret_block
+    // ret_block:
+    //   return
+    if let (
+        MirTerminator::Jump {
+            target,
+            args: jump_args,
+        },
+        None,
+    ) = (&block.terminator, result)
+    {
+        let target_block = function
+            .blocks
+            .iter()
+            .find(|candidate| candidate.id == *target)?;
+        if target_block
+            .instructions
+            .iter()
+            .all(|inst| matches!(inst, MirInst::Nop))
+            && target_block.params.len() == jump_args.len()
+            && matches!(target_block.terminator, MirTerminator::Return { value: None })
+        {
+            return Some(TailSelfCall { args: args.clone() });
+        }
     }
 
     let (
