@@ -8506,6 +8506,42 @@ fn compile_rejects_unique_reuse_after_control_send_move() {
 }
 
 #[test]
+fn compile_rejects_consuming_borrow_parameter_in_handler_clause() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn bad(borrow value: Unique Int) -> Int\n  handle State.get()\n    State.get() ->\n      case value\n        Unique(v) -> v\n    State.put(next) -> resume ()\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-handler-clause-consume-rejected",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("consuming borrowed parameter in handler clause should fail");
+    assert!(
+        err.contains("borrowed value `value` cannot be consumed"),
+        "expected borrow-consumption diagnostic in handler clause, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_consuming_borrow_parameter_in_then_clause_through_alias() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\neffect Dummy\n  fn noop() -> Unit\n\nfn bad(borrow value: Unique Int) -> Int\n  handle Dummy.noop()\n    Dummy.noop() -> resume ()\n    then result ->\n      let forwarded = value\n      case forwarded\n        Unique(v) -> v\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-then-clause-alias-consume-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("consuming borrowed parameter in then clause through alias should fail");
+    assert!(
+        err.contains("borrowed value") && err.contains("cannot be consumed"),
+        "expected borrow-consumption diagnostic in then clause alias path, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_passing_borrow_parameter_into_effect_operation() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect Echo A\n  fn echo(value: A) -> A\n\nfn bad(borrow value: UniqueInt) -[Echo UniqueInt]> Int\n  let out = Echo.echo(value)\n  case out\n    Unique(v) -> v\n\nfn main() -> Int\n  0\n",
