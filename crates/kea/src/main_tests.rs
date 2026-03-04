@@ -2333,6 +2333,48 @@ fn compile_accepts_derive_eq_show_ord_hash_together() {
 }
 
 #[test]
+fn compile_and_execute_derive_ord_semantics_on_sum_exit_code() {
+    let source_path = write_temp_source(
+        "use Ord\nuse Order\n\n@derive(Ord)\nenum Flag\n  Off\n  On\n\nfn main() -> Int\n  let off = Flag.Off\n  let on = Flag.On\n  let lo = off.compare(on)\n  let hi = on.compare(off)\n  let eq = on.compare(on)\n  if lo.Order.is_less() and hi.Order.is_greater() and eq.Order.is_equal()\n    42\n  else\n    0\n",
+        "kea-cli-derive-ord-semantics-sum",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("run should compile and execute");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_derive_hash_semantics_on_sum_exit_code() {
+    let source_path = write_temp_source(
+        "use Hash\n\n@derive(Hash)\nenum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  let a = PairBox.Pair(1, 2)\n  let b = PairBox.Pair(1, 2)\n  let c = PairBox.Pair(2, 1)\n  if a.hash() == b.hash() and a.hash() != c.hash()\n    42\n  else\n    0\n",
+        "kea-cli-derive-hash-semantics-sum",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("run should compile and execute");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_derive_show_semantics_on_sum_exit_code() {
+    let source_path = write_temp_source(
+        "use Show\nuse Text\n\n@derive(Show)\nenum Flag\n  Off\n  On\n\nfn main() -> Int\n  let off = Flag.Off\n  let on = Flag.On\n  let a = off.show()\n  let b = on.show()\n  if a != b and Text.length(a) > 0 and Text.length(b) > 0\n    42\n  else\n    0\n",
+        "kea-cli-derive-show-semantics-sum",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("run should compile and execute");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_frame_literal_syntax() {
     let source_path = write_temp_source(
         "fn main() -> Int\n  let _x = frame { x: [1, 2, 3] }\n  0\n",
