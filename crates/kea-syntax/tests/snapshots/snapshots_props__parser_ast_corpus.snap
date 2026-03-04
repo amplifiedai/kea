@@ -1,5 +1,6 @@
 ---
 source: crates/kea-syntax/tests/snapshots_props.rs
+assertion_line: 213
 expression: output
 ---
 ## module_fn_decl
@@ -224,49 +225,8 @@ source:
 |··x:·Int
 |··y:·Int
 |deriving·Eq,·Display
-status: ok
-RecordDef(
-    RecordDef {
-        public: false,
-        name: Spanned {
-            node: "Point",
-        },
-        doc: None,
-        annotations: [],
-        params: [],
-        fields: [
-            (
-                Spanned {
-                    node: "x",
-                },
-                Named(
-                    "Int",
-                ),
-            ),
-            (
-                Spanned {
-                    node: "y",
-                },
-                Named(
-                    "Int",
-                ),
-            ),
-        ],
-        const_fields: [],
-        field_annotations: [
-            [],
-            [],
-        ],
-        derives: [
-            Spanned {
-                node: "Eq",
-            },
-            Spanned {
-                node: "Display",
-            },
-        ],
-    },
-)
+status: err
+- Error E0006 @31..39: expected declaration (fn, expr, test, pub fn, enum, type, alias, opaque, struct, trait, effect, Type as Trait impl, use, or import)
 
 ## module_type_named_variant
 source:
@@ -319,7 +279,6 @@ TypeDef(
                 where_clause: [],
             },
         ],
-        derives: [],
     },
 )
 
@@ -363,30 +322,8 @@ AliasDecl(
 ## module_opaque_deriving
 source:
 |opaque·UserId·=·Int·deriving·Eq,·Display
-status: ok
-OpaqueTypeDef(
-    OpaqueTypeDef {
-        public: false,
-        name: Spanned {
-            node: "UserId",
-        },
-        doc: None,
-        params: [],
-        target: Spanned {
-            node: Named(
-                "Int",
-            ),
-        },
-        derives: [
-            Spanned {
-                node: "Eq",
-            },
-            Spanned {
-                node: "Display",
-            },
-        ],
-    },
-)
+status: err
+- Error E0006 @31..32: expected declaration (fn, expr, test, pub fn, enum, type, alias, opaque, struct, trait, effect, Type as Trait impl, use, or import)
 
 ## module_trait_methods
 source:
@@ -714,7 +651,6 @@ RecordDef(
             [],
             [],
         ],
-        derives: [],
     },
 )
 

@@ -5857,6 +5857,13 @@ impl FunctionLoweringCtx {
                 if expr.ty == Type::Bool && matches!(op, BinOp::And | BinOp::Or) {
                     return self.lower_short_circuit_binary(*op, left, right);
                 }
+                if matches!(op, BinOp::Eq | BinOp::Neq)
+                    && !is_primitive_equality_type(&left.ty)
+                    && is_concrete_nominal_equality_type(&left.ty)
+                    && let Some(value) = self.lower_eq_via_trait_call(*op, left, right)
+                {
+                    return Some(value);
+                }
                 let left_value = self.lower_expr(left)?;
                 let right_value = self.lower_expr(right)?;
                 let left_value = self.lower_maybe_sum_tag_operand(*op, left, left_value, right);
@@ -7128,6 +7135,76 @@ impl FunctionLoweringCtx {
         result
     }
 
+    fn resolve_eq_trait_callee_for_type(&self, ty: &Type) -> Option<String> {
+        let type_name = match ty {
+            Type::Record(record) => record.name.as_str(),
+            Type::Sum(sum) => sum.name.as_str(),
+            _ => return None,
+        };
+
+        let mut best: Option<(usize, String)> = None;
+        for (name, scheme_ty) in &self.known_function_types {
+            if !name.ends_with(".eq") {
+                continue;
+            }
+            let Type::Function(ft) = scheme_ty else {
+                continue;
+            };
+            if ft.params.len() != 2 {
+                continue;
+            }
+            if ft.params[0] != *ty || ft.params[1] != *ty {
+                continue;
+            }
+            let score = if name == &format!("Eq.{type_name}.eq") {
+                4
+            } else if name.ends_with(&format!(".{type_name}.eq")) {
+                3
+            } else if name == "Eq.eq" {
+                2
+            } else {
+                1
+            };
+            if best.as_ref().is_none_or(|(best_score, _)| score > *best_score) {
+                best = Some((score, name.clone()));
+            }
+        }
+        best.map(|(_, name)| self.canonical_known_function_name(&name))
+    }
+
+    fn lower_eq_via_trait_call(
+        &mut self,
+        op: BinOp,
+        left: &HirExpr,
+        right: &HirExpr,
+    ) -> Option<MirValueId> {
+        let callee_name = self.resolve_eq_trait_callee_for_type(&left.ty)?;
+
+        let left_value = self.lower_expr(left)?;
+        let right_value = self.lower_expr(right)?;
+        let eq_dest = self.new_value();
+        self.emit_inst(MirInst::Call {
+            callee: MirCallee::Local(callee_name),
+            args: vec![left_value, right_value],
+            arg_types: vec![left.ty.clone(), right.ty.clone()],
+            result: Some(eq_dest.clone()),
+            ret_type: Type::Bool,
+            callee_fail_result_abi: false,
+            capture_fail_result: false,
+            cc_manifest_id: "default".to_string(),
+        });
+        if op == BinOp::Eq {
+            return Some(eq_dest);
+        }
+        let neq_dest = self.new_value();
+        self.emit_inst(MirInst::Unary {
+            dest: neq_dest.clone(),
+            op: MirUnaryOp::Not,
+            operand: eq_dest,
+        });
+        Some(neq_dest)
+    }
+
     fn dispatch_effects_for_function_expr(&self, expr: &HirExpr) -> Vec<String> {
         match &expr.ty {
             Type::Function(ft) => self.dispatch_effects_for_effect_row(&ft.effects),
@@ -7822,6 +7899,107 @@ fn lower_unaryop(op: UnaryOp) -> MirUnaryOp {
     }
 }
 
+fn is_primitive_equality_type(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::Int
+            | Type::Bool
+            | Type::Char
+            | Type::Float
+            | Type::String
+            | Type::Unit
+            | Type::Dynamic
+            | Type::IntN { .. }
+            | Type::FloatN(_)
+    )
+}
+
+fn is_concrete_nominal_equality_type(ty: &Type) -> bool {
+    match ty {
+        Type::Record(record) => {
+            !record.row.is_open() && !record.params.iter().any(type_contains_inference_var)
+        }
+        Type::Sum(sum) => !sum.type_args.iter().any(type_contains_inference_var),
+        _ => false,
+    }
+}
+
+fn type_contains_inference_var(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => true,
+        Type::List(inner)
+        | Type::Set(inner)
+        | Type::Option(inner)
+        | Type::Stream(inner)
+        | Type::Task(inner)
+        | Type::Actor(inner)
+        | Type::Arc(inner) => type_contains_inference_var(inner),
+        Type::Map(key, value) | Type::Result(key, value) => {
+            type_contains_inference_var(key) || type_contains_inference_var(value)
+        }
+        Type::Tuple(items) => items.iter().any(type_contains_inference_var),
+        Type::Record(record) => {
+            record.params.iter().any(type_contains_inference_var)
+                || record
+                    .row
+                    .fields
+                    .iter()
+                    .any(|(_, field_ty)| type_contains_inference_var(field_ty))
+                || record.row.rest.is_some()
+        }
+        Type::Sum(sum) => {
+            sum.type_args.iter().any(type_contains_inference_var)
+                || sum
+                    .variants
+                    .iter()
+                    .any(|(_, fields)| fields.iter().any(type_contains_inference_var))
+        }
+        Type::Opaque { params, .. } => params.iter().any(type_contains_inference_var),
+        Type::App(head, args) => {
+            type_contains_inference_var(head) || args.iter().any(type_contains_inference_var)
+        }
+        Type::Function(ft) => {
+            ft.params.iter().any(type_contains_inference_var)
+                || type_contains_inference_var(&ft.ret)
+                || ft.effects.row.fields.iter().any(|(_, ty)| type_contains_inference_var(ty))
+                || ft.effects.row.rest.is_some()
+        }
+        Type::FixedSizeList { element, .. } | Type::Tensor { element, .. } => {
+            type_contains_inference_var(element)
+        }
+        Type::AnonRecord(row) | Type::Row(row) => {
+            row.fields
+                .iter()
+                .any(|(_, field_ty)| type_contains_inference_var(field_ty))
+                || row.rest.is_some()
+        }
+        Type::Tagged { inner, .. } => type_contains_inference_var(inner),
+        Type::Forall(scheme) => type_contains_inference_var(&scheme.ty),
+        Type::Existential {
+            associated_types, ..
+        } => associated_types.values().any(type_contains_inference_var),
+        Type::Constructor { fixed_args, .. } => {
+            fixed_args.iter().any(|(_, ty)| type_contains_inference_var(ty))
+        }
+        Type::Int
+        | Type::IntN(_, _)
+        | Type::Float
+        | Type::FloatN(_)
+        | Type::Decimal { .. }
+        | Type::Bool
+        | Type::Char
+        | Type::String
+        | Type::Html
+        | Type::Markdown
+        | Type::Unit
+        | Type::Never
+        | Type::Atom
+        | Type::Date
+        | Type::DateTime => false,
+        Type::Dynamic => true,
+    }
+}
+
 fn is_heap_managed_type(ty: &Type, layouts: &MirLayoutCatalog) -> bool {
     match ty {
         Type::String
@@ -7896,7 +8074,6 @@ mod tests {
                 ],
                 const_fields: vec![],
                 field_annotations: vec![],
-                derives: vec![],
             }))],
         };
 
@@ -7945,7 +8122,6 @@ mod tests {
                         where_clause: vec![],
                     },
                 ],
-                derives: vec![],
             }))],
         };
 
@@ -9157,7 +9333,6 @@ mod tests {
                     where_clause: vec![],
                 },
             ],
-            derives: vec![],
         }));
         let option_ty = Type::Sum(kea_types::SumType {
             name: "Option".to_string(),
@@ -9413,7 +9588,6 @@ mod tests {
                     ],
                     const_fields: vec![],
                     field_annotations: vec![],
-                    derives: vec![],
                 })),
                 HirDecl::Function(HirFunction {
                     name: "get_age".to_string(),
@@ -14404,7 +14578,6 @@ mod tests {
                     )],
                     const_fields: vec![],
                     field_annotations: vec![],
-                    derives: vec![],
                 })),
                 HirDecl::Function(HirFunction {
                     name: "id_user".to_string(),

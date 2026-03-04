@@ -1408,7 +1408,6 @@ fn register_tagged_gadt(sum_types: &mut SumTypeRegistry, records: &RecordRegistr
                 }],
             },
         ],
-        derives: vec![],
     };
     sum_types
         .register(&def, records)
@@ -1440,7 +1439,6 @@ fn register_shape_sum(sum_types: &mut SumTypeRegistry, records: &RecordRegistry)
                 where_clause: vec![],
             },
         ],
-        derives: vec![],
     };
     sum_types
         .register(&def, records)
@@ -1511,7 +1509,6 @@ proptest! {
             name: sp(name.clone()),
             doc: None,
             params: vec![],
-            derives: vec![],
             fields,
             const_fields: vec![],
             field_annotations: vec![],

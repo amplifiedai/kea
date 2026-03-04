@@ -119,7 +119,6 @@ impl Parser {
     fn declaration(&mut self) -> Option<Decl> {
         let doc = self.consume_doc_comment_block();
         let start = self.current_span();
-        self.parse_legacy_derive_attributes();
         let annotations = self.parse_annotations()?;
 
         // use Kea.Core
@@ -528,12 +527,6 @@ impl Parser {
         self.skip_newlines();
         let target = self.type_annotation()?;
 
-        let mut derives = Vec::new();
-        if self.check(&TokenKind::Deriving) {
-            let mut post_derives = self.parse_deriving_clause()?;
-            derives.append(&mut post_derives);
-        }
-
         let end = self.current_span();
         Some(Spanned::new(
             DeclKind::OpaqueTypeDef(OpaqueTypeDef {
@@ -542,7 +535,6 @@ impl Parser {
                 doc,
                 params,
                 target,
-                derives,
             }),
             start.merge(end),
         ))
@@ -572,12 +564,6 @@ impl Parser {
             self.skip_newlines();
         }
 
-        if self.check(&TokenKind::Deriving) {
-            self.error_at_current(
-                "`deriving` must appear after the struct body (`struct Name { ... } deriving Eq`)",
-            );
-        }
-        let mut derives = Vec::new();
         let delimiter = self.expect_block_start("expected struct body block after struct name")?;
         let mut fields = Vec::new();
         let mut const_fields = Vec::new();
@@ -621,10 +607,6 @@ impl Parser {
         }
         self.skip_newlines();
         self.expect_block_end(delimiter, "expected end of struct definition")?;
-        if self.check(&TokenKind::Deriving) {
-            let mut post_derives = self.parse_deriving_clause()?;
-            derives.append(&mut post_derives);
-        }
         let end = self.current_span();
         Some(Spanned::new(
             DeclKind::RecordDef(RecordDef {
@@ -636,7 +618,6 @@ impl Parser {
                 fields,
                 const_fields,
                 field_annotations,
-                derives,
             }),
             start.merge(end),
         ))
@@ -673,22 +654,21 @@ impl Parser {
             self.expect(&TokenKind::RParen, "expected ')' after type parameters")?;
             self.skip_newlines();
         } else {
+            // Legacy `deriving` suffix is rejected for enum declarations.
+            // Stop bare-parameter collection here so block-start parsing emits
+            // the expected syntax error instead of treating it as a type param.
             while matches!(
                 self.peek_kind(),
                 Some(TokenKind::Ident(_) | TokenKind::UpperIdent(_))
             ) {
+                if self.check_ident("deriving") {
+                    break;
+                }
                 let p = self.expect_type_param_name("expected type parameter")?;
                 params.push(p.node);
                 self.skip_newlines();
             }
         }
-
-        if self.check(&TokenKind::Deriving) {
-            self.error_at_current(
-                "`deriving` must appear after enum variants (`enum Name ... deriving Eq`)",
-            );
-        }
-        let mut derives = Vec::new();
 
         let delimiter = self.expect_block_start("expected enum body block after enum name")?;
         let mut variants = Vec::new();
@@ -750,11 +730,6 @@ impl Parser {
         self.skip_newlines();
         self.expect_block_end(delimiter, "expected end of enum definition")?;
 
-        if self.check(&TokenKind::Deriving) {
-            let mut post_derives = self.parse_deriving_clause()?;
-            derives.append(&mut post_derives);
-        }
-
         let end = self.current_span();
         Some(Spanned::new(
             DeclKind::TypeDef(TypeDef {
@@ -764,7 +739,6 @@ impl Parser {
                 annotations,
                 params,
                 variants,
-                derives,
             }),
             start.merge(end),
         ))
@@ -893,82 +867,6 @@ impl Parser {
             });
         }
         Some(where_clause)
-    }
-
-    /// Parse `deriving` followed by a bare trait list.
-    fn parse_deriving_clause(&mut self) -> Option<Vec<Spanned<String>>> {
-        self.expect(&TokenKind::Deriving, "expected 'deriving'")?;
-        self.skip_newlines();
-        if self.check(&TokenKind::LParen) {
-            self.error_at_current(
-                "parenthesized deriving lists are not supported; use `deriving Eq, Display`",
-            );
-            return None;
-        }
-        self.parse_deriving_list()
-    }
-
-    /// Parse `Eq, Display, Serialize` after a `deriving` keyword.
-    fn parse_deriving_list(&mut self) -> Option<Vec<Spanned<String>>> {
-        let mut derives = Vec::new();
-        let first = self.expect_upper_ident("expected trait name after 'deriving'")?;
-        derives.push(first);
-        while self.match_token(&TokenKind::Comma) {
-            self.skip_newlines();
-            let trait_name = self.expect_upper_ident("expected trait name after ','")?;
-            derives.push(trait_name);
-        }
-        Some(derives)
-    }
-
-    fn parse_legacy_derive_attributes(&mut self) {
-        self.skip_newlines();
-        while self.check(&TokenKind::HashBracket) {
-            self.advance(); // #[
-            let attr_name = match self.peek_kind() {
-                Some(TokenKind::Ident(name)) => {
-                    let name = name.clone();
-                    self.advance();
-                    name
-                }
-                _ => {
-                    self.error_at_current("expected attribute name after `#[`");
-                    return;
-                }
-            };
-
-            if !self.match_token(&TokenKind::LParen) {
-                self.error_at_current("expected '(' after attribute name");
-                return;
-            }
-
-            self.skip_newlines();
-            while !self.check(&TokenKind::RParen) && !self.at_eof() {
-                self.advance();
-                self.skip_newlines();
-                if !self.match_token(&TokenKind::Comma) && !self.check(&TokenKind::RParen) {
-                    self.advance();
-                }
-                self.skip_newlines();
-            }
-            if !self.match_token(&TokenKind::RParen) {
-                self.error_at_current("expected ')' to close attribute");
-                return;
-            }
-            if !self.match_token(&TokenKind::RBracket) {
-                self.error_at_current("expected ']' to close attribute");
-                return;
-            }
-            if attr_name == "derive" {
-                self.error_at_current(
-                    "legacy `#[derive(...)]` is not supported; use postfix `deriving Eq, Display`",
-                );
-            } else {
-                let msg = format!("attributes are not supported (`#[{attr_name}(...)]`)");
-                self.error_at_current(&msg);
-            }
-            self.skip_newlines();
-        }
     }
 
     fn trait_def(&mut self, public: bool, start: Span, doc: Option<String>) -> Option<Decl> {
@@ -6626,38 +6524,26 @@ mod tests {
                 assert_eq!(def.name.node, "UserId");
                 assert!(def.params.is_empty());
                 assert!(matches!(def.target.node, TypeAnnotation::Named(ref n) if n == "Int"));
-                assert!(def.derives.is_empty());
             }
             _ => panic!("expected OpaqueTypeDef"),
         }
     }
 
     #[test]
-    fn parse_pub_parametric_opaque_with_deriving() {
-        let module = parse_mod("pub opaque Boxed(t) = List(t) deriving Eq, Display");
-        assert_eq!(module.declarations.len(), 1);
-        match &module.declarations[0].node {
-            DeclKind::OpaqueTypeDef(def) => {
-                assert!(def.public);
-                assert_eq!(def.name.node, "Boxed");
-                assert_eq!(def.params, vec!["t".to_string()]);
-                assert_eq!(def.derives.len(), 2);
-                assert_eq!(def.derives[0].node, "Eq");
-                assert_eq!(def.derives[1].node, "Display");
-            }
-            _ => panic!("expected OpaqueTypeDef"),
-        }
+    fn parse_pub_parametric_opaque_with_deriving_is_rejected() {
+        let errors = parse_mod_err("pub opaque Boxed(t) = List(t) deriving Eq, Display");
+        assert!(!errors.is_empty(), "expected parser error");
     }
 
     #[test]
     fn parse_record_def_with_derive() {
-        let module = parse_mod("struct Point\n  x: Int\n  y: Int\nderiving Eq, Hash");
+        let module = parse_mod("@derive(Eq, Hash)\nstruct Point\n  x: Int\n  y: Int");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.name.node, "Point");
-                assert_eq!(def.derives.len(), 2);
-                assert_eq!(def.derives[0].node, "Eq");
-                assert_eq!(def.derives[1].node, "Hash");
+                assert_eq!(def.annotations.len(), 1);
+                assert_eq!(def.annotations[0].name.node, "derive");
+                assert_eq!(def.annotations[0].args.len(), 2);
             }
             _ => panic!("expected RecordDef"),
         }
@@ -8455,7 +8341,7 @@ mod tests {
         assert!(!errs.is_empty());
     }
 
-    // -- Associated types and deriving --
+    // -- Associated types and derive annotations --
 
     #[test]
     fn parse_trait_with_associated_type() {
@@ -8552,15 +8438,35 @@ mod tests {
     }
 
     #[test]
-    fn parse_record_deriving() {
-        let m = parse_mod("struct Point\n  x: Int\n  y: Int\nderiving Eq, Display");
+    fn parse_record_deriving_is_rejected() {
+        let errs = parse_mod_err("struct Point\n  x: Int\n  y: Int\nderiving Eq, Display");
+        assert!(!errs.is_empty());
+    }
+
+    #[test]
+    fn parse_record_derive_annotation() {
+        let m = parse_mod("@derive(Eq, Show)\nstruct Point\n  x: Int\n  y: Int");
         match &m.declarations[0].node {
             DeclKind::RecordDef(def) => {
-                assert_eq!(def.name.node, "Point");
-                assert_eq!(def.derives.len(), 2);
-                assert_eq!(def.derives[0].node, "Eq");
-                assert_eq!(def.derives[1].node, "Display");
-                assert_eq!(def.fields.len(), 2);
+                assert_eq!(def.annotations.len(), 1);
+                assert_eq!(def.annotations[0].name.node, "derive");
+                assert_eq!(def.annotations[0].args.len(), 2);
+                match &def.annotations[0].args[0].value.node {
+                    ExprKind::Var(name) => assert_eq!(name, "Eq"),
+                    ExprKind::Constructor { name, args } => {
+                        assert!(args.is_empty());
+                        assert_eq!(name.node, "Eq");
+                    }
+                    other => panic!("expected Eq trait arg, got {other:?}"),
+                }
+                match &def.annotations[0].args[1].value.node {
+                    ExprKind::Var(name) => assert_eq!(name, "Show"),
+                    ExprKind::Constructor { name, args } => {
+                        assert!(args.is_empty());
+                        assert_eq!(name.node, "Show");
+                    }
+                    other => panic!("expected Show trait arg, got {other:?}"),
+                }
             }
             _ => panic!("expected RecordDef"),
         }
@@ -8579,14 +8485,27 @@ mod tests {
     }
 
     #[test]
-    fn parse_type_deriving() {
-        let m = parse_mod("enum Color\n  Red\n  Green\n  Blue\nderiving Eq");
+    fn parse_type_deriving_is_rejected() {
+        let errs = parse_mod_err("enum Color\n  Red\n  Green\n  Blue\nderiving Eq");
+        assert!(!errs.is_empty());
+    }
+
+    #[test]
+    fn parse_type_derive_annotation() {
+        let m = parse_mod("@derive(Eq)\nenum Color\n  Red\n  Green");
         match &m.declarations[0].node {
             DeclKind::TypeDef(def) => {
-                assert_eq!(def.name.node, "Color");
-                assert_eq!(def.derives.len(), 1);
-                assert_eq!(def.derives[0].node, "Eq");
-                assert_eq!(def.variants.len(), 3);
+                assert_eq!(def.annotations.len(), 1);
+                assert_eq!(def.annotations[0].name.node, "derive");
+                assert_eq!(def.annotations[0].args.len(), 1);
+                match &def.annotations[0].args[0].value.node {
+                    ExprKind::Var(name) => assert_eq!(name, "Eq"),
+                    ExprKind::Constructor { name, args } => {
+                        assert!(args.is_empty());
+                        assert_eq!(name.node, "Eq");
+                    }
+                    other => panic!("expected Eq trait arg, got {other:?}"),
+                }
             }
             _ => panic!("expected TypeDef"),
         }
@@ -9589,13 +9508,13 @@ mod tests {
 
     #[test]
     fn parse_type_def_with_derive() {
-        let module = parse_mod("enum Shape\n  Circle(Float)\n  Point\nderiving Eq, Hash");
+        let module = parse_mod("@derive(Eq, Hash)\nenum Shape\n  Circle(Float)\n  Point");
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
                 assert_eq!(def.name.node, "Shape");
-                assert_eq!(def.derives.len(), 2);
-                assert_eq!(def.derives[0].node, "Eq");
-                assert_eq!(def.derives[1].node, "Hash");
+                assert_eq!(def.annotations.len(), 1);
+                assert_eq!(def.annotations[0].name.node, "derive");
+                assert_eq!(def.annotations[0].args.len(), 2);
             }
             _ => panic!("expected TypeDef"),
         }

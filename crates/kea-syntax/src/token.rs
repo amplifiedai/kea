@@ -110,7 +110,6 @@ pub enum TokenKind {
     Forall,
     Where,
     Import,
-    Deriving,
     Testing,
     Use,
     With,

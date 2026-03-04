@@ -1,5 +1,6 @@
 ---
 source: crates/kea-syntax/tests/snapshots_props.rs
+assertion_line: 67
 expression: output
 ---
 ## fn_decl
@@ -284,7 +285,7 @@ tokens:
 - RParen
 - Newline
 - Dedent
-- Deriving
+- Ident("deriving")
 - UpperIdent("Eq")
 - Eof
 warnings: []

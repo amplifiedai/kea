@@ -784,7 +784,6 @@ pub struct TypeDef {
     pub annotations: Vec<Annotation>,
     pub params: Vec<String>,
     pub variants: Vec<TypeVariant>,
-    pub derives: Vec<Spanned<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -803,7 +802,6 @@ pub struct OpaqueTypeDef {
     pub doc: Option<String>,
     pub params: Vec<String>,
     pub target: Spanned<TypeAnnotation>,
-    pub derives: Vec<Spanned<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -817,7 +815,6 @@ pub struct RecordDef {
     pub const_fields: Vec<ConstField>,
     /// Per-field annotations aligned with `fields` by index.
     pub field_annotations: Vec<Vec<Annotation>>,
-    pub derives: Vec<Spanned<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

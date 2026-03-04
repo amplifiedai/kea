@@ -523,7 +523,6 @@ fn make_record_def(name: &str, fields: Vec<(&str, TypeAnnotation)>) -> RecordDef
         name: sp(name.to_string()),
         doc: None,
         params: Vec::new(),
-        derives: Vec::new(),
         fields: fields
             .into_iter()
             .map(|(n, ann)| (sp(n.to_string()), ann))
@@ -544,7 +543,6 @@ fn make_param_record_def(
         name: sp(name.to_string()),
         doc: None,
         params: params.into_iter().map(ToString::to_string).collect(),
-        derives: Vec::new(),
         fields: fields
             .into_iter()
             .map(|(n, ann)| (sp(n.to_string()), ann))
@@ -568,7 +566,6 @@ fn make_opaque_def(
     name: &str,
     params: Vec<&str>,
     target: TypeAnnotation,
-    derives: Vec<&str>,
 ) -> OpaqueTypeDef {
     OpaqueTypeDef {
         public: false,
@@ -576,10 +573,6 @@ fn make_opaque_def(
         doc: None,
         params: params.into_iter().map(ToString::to_string).collect(),
         target: sp(target),
-        derives: derives
-            .into_iter()
-            .map(|trait_name| sp(trait_name.to_string()))
-            .collect(),
     }
 }
 
@@ -603,7 +596,6 @@ fn make_type_def(
                 where_clause: vec![],
             })
             .collect(),
-        derives: vec![],
     }
 }
 
@@ -1407,7 +1399,6 @@ fn opaque_named_resolves_as_nominal_type() {
             "UserId",
             vec![],
             TypeAnnotation::Named("Int".to_string()),
-            vec![],
         ))
         .expect("opaque registration");
 
@@ -1430,7 +1421,6 @@ fn infer_opaque_constructor_and_value_accessor() {
             "UserId",
             vec![],
             TypeAnnotation::Named("Int".to_string()),
-            vec![],
         ))
         .expect("opaque registration");
 
@@ -1462,7 +1452,6 @@ fn infer_pattern_match_on_opaque_constructor() {
             "UserId",
             vec![],
             TypeAnnotation::Named("Int".to_string()),
-            vec![],
         ))
         .expect("opaque registration");
 
@@ -1588,7 +1577,6 @@ fn sum_type_variant_where_clause_registers_constraints() {
                 where_clause: vec![],
             },
         ],
-        derives: vec![],
     };
 
     sums.register(&tagged, &records)
@@ -1620,7 +1608,6 @@ fn sum_type_variant_where_clause_unknown_param_errors() {
                 ty: sp(TypeAnnotation::Named("Int".to_string())),
             }],
         }],
-        derives: vec![],
     };
 
     let err = sums
@@ -1652,7 +1639,6 @@ fn sum_type_variant_where_clause_accepts_phantom_constraint_param() {
                 ty: sp(TypeAnnotation::Named("Int".to_string())),
             }],
         }],
-        derives: vec![],
     };
 
     sums.register(&tagged, &records)
@@ -1684,7 +1670,6 @@ fn constructor_enforces_variant_where_clause_constraints() {
                 ty: sp(TypeAnnotation::Named("Int".to_string())),
             }],
         }],
-        derives: vec![],
     };
     sums.register(&constrained, &records)
         .expect("Constrained should register");
@@ -1732,7 +1717,6 @@ fn constructor_enforces_variant_where_clause_constraints_bool_variant() {
                 }],
             },
         ],
-        derives: vec![],
     };
     sums.register(&constrained, &records)
         .expect("Constrained should register");
@@ -1803,7 +1787,6 @@ fn case_arms_do_not_leak_variant_where_clause_constraints() {
                 }],
             },
         ],
-        derives: vec![],
     };
     sums.register(&tagged, &records)
         .expect("Tagged should register");
@@ -1870,7 +1853,6 @@ fn case_exhaustiveness_ignores_unreachable_gadt_variants() {
                 }],
             },
         ],
-        derives: vec![],
     };
     sums.register(&tagged, &records)
         .expect("Tagged should register");
@@ -1927,7 +1909,6 @@ fn case_exhaustiveness_ignores_unreachable_phantom_gadt_variants() {
                 }],
             },
         ],
-        derives: vec![],
     };
     sums.register(&expr_ty, &records)
         .expect("Expr should register");
@@ -1984,7 +1965,6 @@ fn case_ignores_unreachable_gadt_arms_without_errors() {
                 }],
             },
         ],
-        derives: vec![],
     };
     sums.register(&tagged, &records)
         .expect("Tagged should register");
@@ -4421,7 +4401,6 @@ fn infer_case_pattern_sum_constructor_arity_mismatch_errors() {
             ],
             where_clause: vec![],
         }],
-        derives: vec![],
     };
     sums.register(&pair, &records)
         .expect("Pair should register");
@@ -13242,7 +13221,7 @@ fn validate_module_annotations_default_literal_type_mismatch_errors() {
         "Config",
         vec![("timeout", TypeAnnotation::Named("Int".into()))],
     );
-    record.derives = vec![sp("Serialize".to_string())];
+    record.annotations = vec![ann("derive", vec![ann_arg(var("Serialize"))])];
     record.field_annotations = vec![vec![ann("default", vec![ann_arg(lit_str("slow"))])]];
     let module = Module {
         doc: None,
@@ -13265,7 +13244,7 @@ fn validate_module_annotations_default_impure_argument_rejected() {
         "Config",
         vec![("timeout", TypeAnnotation::Named("Int".into()))],
     );
-    record.derives = vec![sp("Serialize".to_string())];
+    record.annotations = vec![ann("derive", vec![ann_arg(var("Serialize"))])];
     record.field_annotations = vec![vec![ann(
         "default",
         vec![ann_arg(call(var("read_env"), vec![lit_str("TIMEOUT")]))],
@@ -13291,7 +13270,7 @@ fn validate_module_annotations_skip_if_option_guard_requires_optional_field() {
         "Config",
         vec![("name", TypeAnnotation::Named("String".into()))],
     );
-    record.derives = vec![sp("Serialize".to_string())];
+    record.annotations = vec![ann("derive", vec![ann_arg(var("Serialize"))])];
     record.field_annotations = vec![vec![ann(
         "skip_if",
         vec![ann_arg(field_access(var("Option"), "is_none"))],
@@ -13330,7 +13309,7 @@ fn validate_module_annotations_serialization_without_derive_is_warning() {
     assert!(
         diags[0]
             .message
-            .contains("annotation `@rename` has no effect without `deriving Serialize`")
+            .contains("annotation `@rename` has no effect without `@derive(Serialize)`")
     );
 }
 
