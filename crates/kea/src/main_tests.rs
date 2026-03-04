@@ -8209,6 +8209,22 @@ fn compile_rejects_state_effect_payload_with_unique_type() {
 }
 
 #[test]
+fn compile_and_execute_unique_roundtrip_through_tail_resumptive_handler_exit_code() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect Echo A\n  fn echo(value: A) -> A\n\nfn roundtrip(value: UniqueInt) -[Echo UniqueInt]> Int\n  let out = Echo.echo(value)\n  case out\n    Unique(v) -> v\n\nfn main() -> Int\n  handle roundtrip(Unique(7))\n    Echo.echo(v) -> resume v\n",
+        "kea-cli-unique-tail-handler-roundtrip",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "Unique values should flow through tail-resumptive handlers when ownership is resumed exactly once",
+    );
+    assert_eq!(run.exit_code, 7);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_unique_use_after_move() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let first = consume(u)\n  first + consume(u)\n",
