@@ -8328,6 +8328,24 @@ fn compile_rejects_spawning_borrow_parameter() {
 }
 
 #[test]
+fn compile_rejects_passing_borrow_parameter_into_effect_operation() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect Echo A\n  fn echo(value: A) -> A\n\nfn bad(borrow value: UniqueInt) -[Echo UniqueInt]> Int\n  let out = Echo.echo(value)\n  case out\n    Unique(v) -> v\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-effect-op-consume-rejected",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("passing a borrowed unique parameter to effect op should fail");
+    assert!(
+        err.contains("borrowed value `value` cannot be consumed"),
+        "expected borrow-consumption diagnostic for effect op, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_and_execute_borrow_param_does_not_consume_caller_unique() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\nfn touch(borrow value: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = touch(u)\n  let _ = touch(u)\n  7\n",
