@@ -1,0 +1,69 @@
+use Char
+use Test
+
+test "Char.to_int"
+  Test.assert(Char.to_int('A') == 65)
+  Test.assert(Char.to_int('a') == 97)
+  Test.assert(Char.to_int('0') == 48)
+  Test.assert(Char.to_int(' ') == 32)
+
+test "Char.from_int"
+  let some_a = Char.from_int(65)
+  Test.assert(some_a == Some('A'))
+  Test.assert(Char.from_int(-1) == None)
+  Test.assert(Char.from_int(1114112) == None)
+  -- surrogate range is invalid
+  Test.assert(Char.from_int(55296) == None)
+  Test.assert(Char.from_int(57343) == None)
+
+test "Char.is_alpha"
+  Test.assert(Char.is_alpha('a'))
+  Test.assert(Char.is_alpha('z'))
+  Test.assert(Char.is_alpha('A'))
+  Test.assert(Char.is_alpha('Z'))
+  Test.assert(not Char.is_alpha('0'))
+  Test.assert(not Char.is_alpha(' '))
+  Test.assert(not Char.is_alpha('!'))
+
+test "Char.is_digit"
+  Test.assert(Char.is_digit('0'))
+  Test.assert(Char.is_digit('9'))
+  Test.assert(not Char.is_digit('a'))
+  Test.assert(not Char.is_digit(' '))
+
+test "Char.is_alphanumeric"
+  Test.assert(Char.is_alphanumeric('a'))
+  Test.assert(Char.is_alphanumeric('Z'))
+  Test.assert(Char.is_alphanumeric('5'))
+  Test.assert(not Char.is_alphanumeric(' '))
+  Test.assert(not Char.is_alphanumeric('_'))
+
+test "Char.is_whitespace"
+  Test.assert(Char.is_whitespace(' '))
+  Test.assert(Char.is_whitespace('\t'))
+  Test.assert(Char.is_whitespace('\n'))
+  Test.assert(Char.is_whitespace('\r'))
+  Test.assert(not Char.is_whitespace('a'))
+
+test "Char.is_upper and is_lower"
+  Test.assert(Char.is_upper('A'))
+  Test.assert(Char.is_upper('Z'))
+  Test.assert(not Char.is_upper('a'))
+  Test.assert(not Char.is_upper('1'))
+  Test.assert(Char.is_lower('a'))
+  Test.assert(Char.is_lower('z'))
+  Test.assert(not Char.is_lower('A'))
+
+test "Char.to_lower"
+  Test.assert(Char.to_lower('A') == 'a')
+  Test.assert(Char.to_lower('Z') == 'z')
+  Test.assert(Char.to_lower('a') == 'a')
+  Test.assert(Char.to_lower('1') == '1')
+  Test.assert(Char.to_lower(' ') == ' ')
+
+test "Char.to_upper"
+  Test.assert(Char.to_upper('a') == 'A')
+  Test.assert(Char.to_upper('z') == 'Z')
+  Test.assert(Char.to_upper('A') == 'A')
+  Test.assert(Char.to_upper('1') == '1')
+  Test.assert(Char.to_upper(' ') == ' ')

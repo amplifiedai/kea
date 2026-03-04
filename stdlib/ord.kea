@@ -25,3 +25,21 @@ fn compare(x: Int, y: Int) -> Ordering
     Order.Greater
   else
     Order.Equal
+
+Int as Ord
+  fn compare(x: Int, y: Int) -> Ordering
+    if x < y
+      Order.Less
+    else if x > y
+      Order.Greater
+    else
+      Order.Equal
+
+Char as Ord
+  fn compare(x: Char, y: Char) -> Ordering
+    if x < y
+      Order.Less
+    else if x > y
+      Order.Greater
+    else
+      Order.Equal

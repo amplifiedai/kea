@@ -118,6 +118,7 @@ fn run_test_file_executes_property_iterations() {
 fn run_stdlib_case_corpus_with_kea_test_runner() {
     let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/stdlib_cases");
     let supported = [
+        "char_tests.kea",
         "clock_tests.kea",
         "eq_tests.kea",
         "float_tests.kea",

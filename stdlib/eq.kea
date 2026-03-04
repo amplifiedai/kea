@@ -30,3 +30,11 @@ Bool as Eq
 String as Eq
   fn eq(x: String, y: String) -> Bool
     x == y
+
+Char as Eq
+  fn eq(x: Char, y: Char) -> Bool
+    x == y
+
+Float as Eq
+  fn eq(x: Float, y: Float) -> Bool
+    x == y

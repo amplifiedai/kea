@@ -45,6 +45,12 @@ struct MonoPass<'a> {
     /// (e.g. "zip" in both List and Option), type-based resolution is used to
     /// pick the one whose parameter types match the call site.
     short_to_qualified: BTreeMap<String, Vec<String>>,
+    /// Bare (unqualified) names that are merge artifacts — they have at least
+    /// one qualified counterpart in the module.  These must not be emitted in
+    /// the output module; emitting them causes conflicting external-call
+    /// signatures (e.g. bare `to_int` calling `__kea_char_to_int` with Dynamic
+    /// I64 args while `Char.to_int` calls it with Char I32 args).
+    overlay_names: BTreeSet<String>,
     /// Already-generated specializations: (original_name, stringified bindings) → mangled name.
     generated: HashMap<SpecKey, String>,
     /// Work queue: (original_name, substitution, mangled_name, depth).
@@ -64,15 +70,31 @@ impl<'a> MonoPass<'a> {
         // to a polymorphic qualified variant (e.g. Result.unwrap_or) when a
         // user-defined monomorphic function with the same bare name exists.
         let mut mono_names: BTreeSet<String> = BTreeSet::new();
+
+        // Pre-scan: collect the set of short names that have at least one
+        // qualified counterpart (e.g., "eq" has "Int.eq", "Char.eq", …).
+        // Bare functions whose short name appears here are merge artifacts
+        // created by merge_modules_for_codegen and should be ignored —
+        // regardless of whether their type is all-Dynamic or concrete.
+        let qualified_short_names: BTreeSet<String> = module
+            .declarations
+            .iter()
+            .filter_map(|d| {
+                if let HirDecl::Function(f) = d {
+                    f.name.rsplit_once('.').map(|(_, short)| short.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         for decl in &module.declarations {
             if let HirDecl::Function(f) = decl {
-                // Skip bare overlay functions whose type defaulted to all-Dynamic
-                // because the env binding was lost after module scope cleanup
-                // (e.g., bare "zip" after both List and Option define it).
-                // Bare names that contain a dot are always retained by the
-                // compiler so their types are correct; only unqualified names
-                // suffer this env-loss problem.
-                if !f.name.contains('.') && is_all_dynamic_overlay(f) {
+                // Skip bare overlay functions: any bare (unqualified) name
+                // whose short form has qualified counterparts in the module
+                // is a merge artifact, not a real definition.  Skipping it
+                // preserves the short_to_qualified routing table for all callers.
+                if !f.name.contains('.') && qualified_short_names.contains(&f.name) {
                     continue;
                 }
                 if !free_type_vars(&f.ty).is_empty() {
@@ -108,6 +130,7 @@ impl<'a> MonoPass<'a> {
             module,
             poly_fns,
             short_to_qualified,
+            overlay_names: qualified_short_names,
             generated: HashMap::new(),
             queue: VecDeque::new(),
             next_id: 0,
@@ -196,6 +219,19 @@ impl<'a> MonoPass<'a> {
         for decl in &self.module.declarations {
             match decl {
                 HirDecl::Function(f) => {
+                    // Drop bare overlay functions with all-Dynamic types — they
+                    // are merge artifacts whose env binding was lost and must
+                    // not appear in the output module.  Emitting them produces
+                    // conflicting external-call signatures (e.g. bare `to_int`
+                    // calling `__kea_char_to_int` with I64 while `Char.to_int`
+                    // calls it with I32).  Concrete-typed bare functions (e.g.
+                    // `main`) are preserved.
+                    if !f.name.contains('.')
+                        && self.overlay_names.contains(&f.name)
+                        && is_all_dynamic_overlay(f)
+                    {
+                        continue;
+                    }
                     let name = f.name.clone();
                     let rewritten = HirFunction {
                         name: name.clone(),
@@ -511,20 +547,14 @@ impl<'a> MonoPass<'a> {
 /// lowering produces for bare overlay functions whose env binding was lost
 /// after module scope cleanup.
 ///
-/// When `merge_modules_for_codegen` merges two modules that both define a
-/// function with the same short name (e.g. `List.zip` and `Option.zip`), the
-/// merged module contains a bare "zip" entry whose type cannot be resolved
-/// from the type environment (bare names are dropped after each module scope).
-/// HIR lowering falls back to building the type from declaration annotations,
-/// which maps any complex annotation to `Type::Dynamic`.  The resulting
-/// function type is `fn(Dynamic, ...) -> Dynamic` with one Dynamic per
-/// declared parameter.
+/// Used in Phase 1 of `run()` to drop bare overlays that would produce
+/// conflicting external-call signatures: e.g. a bare `to_int` with type
+/// `fn(Dynamic) -> Dynamic` calling `__kea_char_to_int` with an I64 arg,
+/// while `Char.to_int` calls it with an I32 arg.
 ///
-/// Such functions should not participate in the poly/mono classification:
-/// they are not genuinely monomorphic (their type is wrong), and treating
-/// them as monomorphic would prevent the module-qualified versions from being
-/// considered when resolving bare name call sites inside the qualified
-/// counterpart (e.g., `zip(xrest, yrest)` inside `List.zip`).
+/// Note: concrete-typed bare functions (e.g. `main`) must NOT be dropped —
+/// this check intentionally excludes them by requiring all parameters and
+/// the return type to be Dynamic.
 fn is_all_dynamic_overlay(f: &HirFunction) -> bool {
     let Type::Function(ft) = &f.ty else {
         return false;

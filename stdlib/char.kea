@@ -1,0 +1,110 @@
+use Option
+
+doc
+  Return the Unicode code point of a character as an integer.
+
+    Char.to_int('A')          -- => 65
+    Char.to_int('\u{1F600}')  -- => 128512
+@intrinsic("__kea_char_to_int")
+fn to_int(c: Char) -> Int
+  0
+
+doc
+  Convert an integer code point to a Char, returning None for invalid values.
+
+  Valid code points are 0..=1114111 (0x10FFFF), excluding the surrogate
+  range 55296..=57343 (U+D800..=U+DFFF).
+
+    Char.from_int(65)       -- => Some('A')
+    Char.from_int(-1)       -- => None
+    Char.from_int(1114112)  -- => None
+fn from_int(code: Int) -> Option Char
+  if code >= 0 and code <= 1114111 and (code < 55296 or code > 57343)
+    Some(from_int_unchecked(code))
+  else
+    None
+
+@intrinsic("__kea_char_from_int")
+fn from_int_unchecked(code: Int) -> Char
+  'a'
+
+doc
+  Return true when the character is an ASCII letter (A–Z or a–z).
+
+    Char.is_alpha('a')   -- => true
+    Char.is_alpha('Z')   -- => true
+    Char.is_alpha('1')   -- => false
+    Char.is_alpha(' ')   -- => false
+fn is_alpha(c: Char) -> Bool
+  (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z')
+
+doc
+  Return true when the character is an ASCII decimal digit (0–9).
+
+    Char.is_digit('3')   -- => true
+    Char.is_digit('a')   -- => false
+fn is_digit(c: Char) -> Bool
+  c >= '0' and c <= '9'
+
+doc
+  Return true when the character is an ASCII letter or digit.
+
+    Char.is_alphanumeric('a')   -- => true
+    Char.is_alphanumeric('9')   -- => true
+    Char.is_alphanumeric('_')   -- => false
+fn is_alphanumeric(c: Char) -> Bool
+  Char.is_alpha(c) or Char.is_digit(c)
+
+doc
+  Return true when the character is ASCII whitespace (space, tab,
+  newline, or carriage return).
+
+    Char.is_whitespace(' ')    -- => true
+    Char.is_whitespace('\t')   -- => true
+    Char.is_whitespace('a')    -- => false
+fn is_whitespace(c: Char) -> Bool
+  c == ' ' or c == '\t' or c == '\n' or c == '\r'
+
+doc
+  Return true when the character is an ASCII uppercase letter (A–Z).
+
+    Char.is_upper('A')   -- => true
+    Char.is_upper('a')   -- => false
+fn is_upper(c: Char) -> Bool
+  c >= 'A' and c <= 'Z'
+
+doc
+  Return true when the character is an ASCII lowercase letter (a–z).
+
+    Char.is_lower('a')   -- => true
+    Char.is_lower('A')   -- => false
+fn is_lower(c: Char) -> Bool
+  c >= 'a' and c <= 'z'
+
+doc
+  Convert an ASCII uppercase letter to lowercase. Non-uppercase
+  characters are returned unchanged.
+
+    Char.to_lower('A')   -- => 'a'
+    Char.to_lower('Z')   -- => 'z'
+    Char.to_lower('a')   -- => 'a'
+    Char.to_lower('1')   -- => '1'
+fn to_lower(c: Char) -> Char
+  if Char.is_upper(c)
+    Option.unwrap_or(Char.from_int(Char.to_int(c) + 32), c)
+  else
+    c
+
+doc
+  Convert an ASCII lowercase letter to uppercase. Non-lowercase
+  characters are returned unchanged.
+
+    Char.to_upper('a')   -- => 'A'
+    Char.to_upper('z')   -- => 'Z'
+    Char.to_upper('A')   -- => 'A'
+    Char.to_upper('1')   -- => '1'
+fn to_upper(c: Char) -> Char
+  if Char.is_lower(c)
+    Option.unwrap_or(Char.from_int(Char.to_int(c) - 32), c)
+  else
+    c

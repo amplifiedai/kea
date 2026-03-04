@@ -766,6 +766,25 @@ unsafe extern "C" fn kea_ptr_free_stub(ptr: i64) -> i8 {
     0
 }
 
+// Char ↔ Int conversion stubs.
+//
+// Char is represented as i64 at the Cranelift level (consistent with the
+// Dynamic/I64-first runtime).  Unicode scalar values fit in 21 bits.
+// `kea_char_to_int` is the identity (Char code point → Int, both i64).
+// `kea_char_from_int` validates the code point; returns the code point as
+// i64, or -1 for an invalid/surrogate value.
+unsafe extern "C" fn kea_char_to_int_stub(c: i64) -> i64 {
+    c
+}
+
+unsafe extern "C" fn kea_char_from_int_stub(code: i64) -> i64 {
+    if !(0..=0x10_FFFF).contains(&code) || (0xD800..=0xDFFF).contains(&code) {
+        -1
+    } else {
+        code
+    }
+}
+
 fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_net_connect", kea_net_connect_stub as *const u8);
     builder.symbol("__kea_net_send", kea_net_send_stub as *const u8);
@@ -792,6 +811,8 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_ptr_cast", kea_ptr_cast_stub as *const u8);
     builder.symbol("__kea_ptr_alloc", kea_ptr_alloc_stub as *const u8);
     builder.symbol("__kea_ptr_free", kea_ptr_free_stub as *const u8);
+    builder.symbol("__kea_char_to_int", kea_char_to_int_stub as *const u8);
+    builder.symbol("__kea_char_from_int", kea_char_from_int_stub as *const u8);
 }
 
 fn compile_with_jit(
@@ -1369,7 +1390,12 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
         Type::Float => Ok(types::F64),
         Type::FloatN(width) => clif_float_type(*width),
         Type::Bool => Ok(types::I8),
-        Type::Char => Ok(types::I32),
+        // Char is represented as I64 at the Cranelift level to be consistent
+        // with the Dynamic/I64-first runtime.  Unicode scalar values fit in 21
+        // bits (0..=0x10FFFF) so I64 is always sufficient.  Using I32 caused
+        // systematic type mismatches throughout the pipeline because most HIR
+        // expressions carry Dynamic (→ I64) types.
+        Type::Char => Ok(types::I64),
         Type::Unit => Ok(types::I8),
         Type::Never => Ok(types::I64),
         Type::String => Ok(types::I64),
@@ -5016,7 +5042,7 @@ fn lower_literal(
         MirLiteral::Int(value) => Ok(builder.ins().iconst(types::I64, *value)),
         MirLiteral::Float(value) => Ok(builder.ins().f64const(*value)),
         MirLiteral::Bool(value) => Ok(builder.ins().iconst(types::I8, if *value { 1 } else { 0 })),
-        MirLiteral::Char(value) => Ok(builder.ins().iconst(types::I32, *value as i64)),
+        MirLiteral::Char(value) => Ok(builder.ins().iconst(types::I64, *value as i64)),
         MirLiteral::Unit => Ok(builder.ins().iconst(types::I8, 0)),
         MirLiteral::String(_) => Err(CodegenError::UnsupportedMir {
             function: function_name.to_string(),
