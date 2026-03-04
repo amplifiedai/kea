@@ -8610,6 +8610,24 @@ fn compile_rejects_consuming_borrow_parameter_in_handler_clause() {
 }
 
 #[test]
+fn compile_rejects_consuming_borrow_parameter_in_handler_clause_through_alias() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\neffect Tick\n  fn step() -> Unit\n\nfn consume(v: Unique Int) -> Unit\n  ()\n\nfn bad(borrow value: Unique Int) -[Tick]> Unit\n  handle Tick.step()\n    Tick.step() ->\n      let forwarded = value\n      consume(forwarded)\n      resume ()\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-handler-clause-alias-consume-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("consuming borrowed parameter in handler clause through alias should fail");
+    assert!(
+        err.contains("borrowed value") && err.contains("cannot be consumed"),
+        "expected borrow-consumption diagnostic in handler clause alias path, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_consuming_borrow_parameter_in_then_clause_through_alias() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\neffect Dummy\n  fn noop() -> Unit\n\nfn bad(borrow value: Unique Int) -> Int\n  handle Dummy.noop()\n    Dummy.noop() -> resume ()\n    then result ->\n      let forwarded = value\n      case forwarded\n        Unique(v) -> v\n\nfn main() -> Int\n  0\n",
