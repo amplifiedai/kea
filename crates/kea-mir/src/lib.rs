@@ -7268,8 +7268,33 @@ impl FunctionLoweringCtx {
                 }
                 fallback
             }
+            // For direct call expressions (e.g. `f() == Some(x)` without a let binding),
+            // look up the callee's return type from known_function_types so that equality
+            // dispatch can identify the nominal sum type without requiring an intermediate
+            // variable binding.
+            HirExprKind::Call { func, .. } => {
+                if matches!(expr.ty, Type::Dynamic | Type::Var(_))
+                    && let HirExprKind::Var(name) = &func.kind
+                    && let Some(sum_type) = self.infer_sum_type_for_known_function_return(name)
+                {
+                    return Type::Sum(SumType {
+                        name: sum_type,
+                        type_args: vec![],
+                        variants: vec![],
+                    });
+                }
+                expr.ty.clone()
+            }
             _ => expr.ty.clone(),
         }
+    }
+
+    fn infer_sum_type_for_known_function_return(&self, name: &str) -> Option<String> {
+        let ty = self.known_function_types.get(name)?;
+        let Type::Function(ft) = ty else {
+            return None;
+        };
+        self.infer_sum_type_from_type(&ft.ret)
     }
 
     fn dispatch_effects_for_function_expr(&self, expr: &HirExpr) -> Vec<String> {
