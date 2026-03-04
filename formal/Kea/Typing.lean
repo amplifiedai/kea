@@ -7425,6 +7425,36 @@ theorem native_handler_step_ext_soundness_of_stutter_core_soundness
     clauseSem native_core_stutter_step native_core_soundness_stutter
 
 /--
+Assumption-free local extended-native route under stutter core soundness:
+any typed `handle` has a preserving one-step successor in
+`NativeHandlerStepExt`.
+-/
+theorem native_handler_step_ext_exists_and_preserves_of_stutter_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExt clauseSem native_core_stutter_step
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  have h_sound := native_handler_step_ext_soundness_of_stutter_core_soundness clauseSem
+  rcases h_sound.2 env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    with ⟨e', h_step⟩
+  exact ⟨e', h_step, h_sound.1 env
+    (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+    e' ty h_typed h_step⟩
+
+/--
 Assumption-free native progress-gap closure under the canonical stutter
 body-step relation.
 -/
