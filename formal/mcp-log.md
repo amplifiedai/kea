@@ -24358,3 +24358,42 @@ Also added explicit regression theorems:
 
 **Impact**:
 - No Lean↔MCP divergence at this checkpoint.
+
+### 2026-03-04: legacy theorem-level linearity surfaces + inference bridge
+
+**Context**: After tightening legacy handle typing/inference, added explicit theorem
+surfaces for legacy linearity in `Kea/Typing.lean`:
+- `legacy_handler_clause_resumeSummary_linearity_prop`
+- `legacy_handler_clause_resumeSummary_linearity`
+- `legacy_handler_clause_resumeSummary_linearity_prop_iff_true`
+- `inferExpr_handle_some_implies_clause_resumeSummary_atMostOnce`
+
+These make legacy declarative/algo linearity consequences citable directly.
+
+**MCP tools used**: `reset_session`, `type_check` (direct `kea` MCP probes).
+
+**Predict (Lean side)**:
+- The new theorem layer is proof-surface only; runtime behavior should stay:
+  coherent handler `ok`, double-resume `E0012`, out-of-handler `resume` `E0012`.
+
+**Probe (Rust side via MCP)**:
+1. `probe_coherent_20260304bv` -> `ok`.
+2. `probe_double_resume_20260304bv` -> `error`, `E0012`,
+   `handler clause may resume at most once`.
+3. `probe_outside_resume_20260304bv` -> `error`, `E0012`,
+   `` `resume` is only valid inside a matching handler clause ``.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Legacy linearity is now encoded as named theorem-level contracts on both
+  declarative (`HasType`) and algorithmic (`inferExpr`) routes.
+
+**Traceability**:
+- Lean edits: `formal/Kea/Typing.lean` (theorem names listed above).
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- No Lean↔MCP divergence at this checkpoint.

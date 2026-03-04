@@ -1211,6 +1211,54 @@ theorem not_hasType_handle_with_doubleResume_clause :
   simp [inferExpr, doubleResumeWitnessExpr, resumeSummary, resumeSummaryCombine] at h_inf
 
 /--
+Boundary proposition: legacy declarative handle typing enforces clause-body
+saturated resume at-most-once.
+-/
+def legacy_handler_clause_resumeSummary_linearity_prop : Prop :=
+  ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
+    HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
+    resumeSummary_atMostOnce (resumeSummary clauseBody)
+
+/--
+Legacy declarative handle typing satisfies
+`legacy_handler_clause_resumeSummary_linearity_prop`.
+-/
+  theorem legacy_handler_clause_resumeSummary_linearity :
+    legacy_handler_clause_resumeSummary_linearity_prop := by
+  intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+  cases h_typed with
+  | handle _ _ _ _ _ _ _ _ _ h_body h_linear h_clause =>
+      exact h_linear
+
+/--
+Current boundary characterization: clause-body resume linearity under legacy
+declarative handle typing is propositionally equivalent to `True`.
+-/
+theorem legacy_handler_clause_resumeSummary_linearity_prop_iff_true :
+    legacy_handler_clause_resumeSummary_linearity_prop ↔ True := by
+  constructor
+  · intro _h_linear
+    trivial
+  · intro _h_true
+    exact legacy_handler_clause_resumeSummary_linearity
+
+/--
+Algorithmic legacy handle inference agrees: any inferred handle type implies
+clause-body saturated at-most-once.
+-/
+theorem inferExpr_handle_some_implies_clause_resumeSummary_atMostOnce
+    {env : TermEnv} {body : CoreExpr} {op : Label}
+    {argName resumeName : String} {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr} {ty : Ty}
+    (h_inf :
+      inferExpr env (.handle body op argName resumeName argTy opRetTy clauseBody) = some ty) :
+    resumeSummary_atMostOnce (resumeSummary clauseBody) := by
+  exact legacy_handler_clause_resumeSummary_linearity
+    env body op argName resumeName argTy opRetTy clauseBody ty
+    ((inferExpr_iff_hasType env
+      (.handle body op argName resumeName argTy opRetTy clauseBody) ty).1 h_inf)
+
+/--
 Concrete top-level `handle` with a double-resume clause is not typable in the
 scoped native judgment (because the handle rule requires at-most-once summary).
 -/
