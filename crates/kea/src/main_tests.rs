@@ -8700,6 +8700,24 @@ fn compile_rejects_consuming_borrow_parameter_in_handler_clause_through_alias() 
 }
 
 #[test]
+fn compile_rejects_consuming_borrow_parameter_in_then_clause() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\neffect Dummy\n  fn noop() -> Unit\n\nfn bad(borrow value: Unique Int) -> Int\n  handle Dummy.noop()\n    Dummy.noop() -> resume ()\n    then result ->\n      case value\n        Unique(v) -> v\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-then-clause-consume-rejected",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("consuming borrowed parameter in then clause should fail");
+    assert!(
+        err.contains("borrowed value `value` cannot be consumed"),
+        "expected borrow-consumption diagnostic in then clause, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_consuming_borrow_parameter_in_then_clause_through_alias() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\neffect Dummy\n  fn noop() -> Unit\n\nfn bad(borrow value: Unique Int) -> Int\n  handle Dummy.noop()\n    Dummy.noop() -> resume ()\n    then result ->\n      let forwarded = value\n      case forwarded\n        Unique(v) -> v\n\nfn main() -> Int\n  0\n",
