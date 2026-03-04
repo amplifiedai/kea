@@ -15,3 +15,26 @@ test "Result.from_option"
 test "Result.predicates"
   Test.assert(Result.is_ok(Ok(1)))
   Test.assert(Result.is_err(Err(1)))
+
+test "Result.map"
+  -- Use Result.unwrap_or to extract and compare values
+  Test.assert(Result.unwrap_or(Result.map(Ok(5), |x| x + 1), 0) == 6)
+  Test.assert(Result.is_err(Result.map(Err(0), |x: Int| x + 1)))
+
+test "Result.map_err"
+  -- Ok case: value passes through unchanged
+  Test.assert(Result.unwrap_or(Result.map_err(Ok(5), |e: Int| e + 1), 0) == 5)
+  -- Err case: error value is transformed
+  let mapped = Result.map_err(Err(3), |e| e + 1)
+  Test.assert(Result.is_err(mapped))
+
+test "Result.and_then"
+  Test.assert(Result.unwrap_or(Result.and_then(Ok(5), |x| Ok(x + 1)), 0) == 6)
+  Test.assert(Result.is_err(Result.and_then(Err(0), |x: Int| Ok(x + 1))))
+
+test "Result.unwrap"
+  let ok_val = catch Result.unwrap(Ok(7))
+  Test.assert(Result.is_ok(ok_val))
+  Test.assert(Result.unwrap_or(ok_val, 0) == 7)
+  let err_val: Result(Int, Int) = catch Result.unwrap(Err(5))
+  Test.assert(Result.is_err(err_val))

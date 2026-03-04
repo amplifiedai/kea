@@ -46,6 +46,46 @@ fn unwrap_or(res: Result(a, e), fallback: a) -> a
     Err(_) -> fallback
 
 doc
+  Transform the Ok value with a mapping function.
+
+    Result.map(Ok(5), |x| x + 1)     -- => Ok(6)
+    Result.map(Err("boom"), |x| x + 1)  -- => Err("boom")
+fn map(res: Result(a, e), f: fn(a) -> b) -> Result(b, e)
+  case res
+    Ok(value) -> Ok(f(value))
+    Err(err) -> Err(err)
+
+doc
+  Transform the Err value with a mapping function.
+
+    Result.map_err(Err("boom"), |e| e ++ "!")   -- => Err("boom!")
+    Result.map_err(Ok(5), |e| e ++ "!")         -- => Ok(5)
+fn map_err(res: Result(a, e), f: fn(e) -> f) -> Result(a, f)
+  case res
+    Ok(value) -> Ok(value)
+    Err(err) -> Err(f(err))
+
+doc
+  Chain Result-producing computations.
+
+    Result.and_then(Ok(5), |x| Ok(x + 1))    -- => Ok(6)
+    Result.and_then(Err("boom"), |x| Ok(x))   -- => Err("boom")
+fn and_then(res: Result(a, e), f: fn(a) -> Result(b, e)) -> Result(b, e)
+  case res
+    Ok(value) -> f(value)
+    Err(err) -> Err(err)
+
+doc
+  Extract the Ok value or fail when Err.
+
+    catch Result.unwrap(Ok(7))    -- => Ok(7)
+    catch Result.unwrap(Err(5))   -- => Err(5)
+fn unwrap(res: Result(a, e)) -[Fail e]> a
+  case res
+    Ok(value) -> value
+    Err(err) -> Fail.fail(err)
+
+doc
   Return true when a result is Ok.
 
     Result.is_ok(Ok(1))    -- => true
