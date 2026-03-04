@@ -39,9 +39,12 @@ struct MonoPass<'a> {
     module: &'a HirModule,
     /// Original polymorphic functions keyed by name.
     poly_fns: BTreeMap<String, &'a HirFunction>,
-    /// Maps unqualified names (e.g. "filter") to their qualified poly fn
-    /// (e.g. "List.filter") for call-site resolution.
-    unqualified_to_qualified: BTreeMap<String, String>,
+    /// Maps unqualified short names (e.g. "filter") to all qualified poly fns
+    /// that have that name (e.g. ["List.filter"]).  When there is exactly one
+    /// candidate the lookup is unambiguous.  When there are multiple candidates
+    /// (e.g. "zip" in both List and Option), type-based resolution is used to
+    /// pick the one whose parameter types match the call site.
+    short_to_qualified: BTreeMap<String, Vec<String>>,
     /// Already-generated specializations: (original_name, stringified bindings) → mangled name.
     generated: HashMap<SpecKey, String>,
     /// Work queue: (original_name, substitution, mangled_name, depth).
@@ -55,7 +58,7 @@ struct MonoPass<'a> {
 impl<'a> MonoPass<'a> {
     fn new(module: &'a HirModule) -> Self {
         let mut poly_fns = BTreeMap::new();
-        let mut unqualified_to_qualified: BTreeMap<String, String> = BTreeMap::new();
+        let mut short_to_qualified: BTreeMap<String, Vec<String>> = BTreeMap::new();
         // Track unqualified names that have a concrete monomorphic definition so
         // we can prevent the routing table from accidentally sending those calls
         // to a polymorphic qualified variant (e.g. Result.unwrap_or) when a
@@ -63,15 +66,27 @@ impl<'a> MonoPass<'a> {
         let mut mono_names: BTreeSet<String> = BTreeSet::new();
         for decl in &module.declarations {
             if let HirDecl::Function(f) = decl {
+                // Skip bare overlay functions whose type defaulted to all-Dynamic
+                // because the env binding was lost after module scope cleanup
+                // (e.g., bare "zip" after both List and Option define it).
+                // Bare names that contain a dot are always retained by the
+                // compiler so their types are correct; only unqualified names
+                // suffer this env-loss problem.
+                if !f.name.contains('.') && is_all_dynamic_overlay(f) {
+                    continue;
+                }
                 if !free_type_vars(&f.ty).is_empty() {
                     poly_fns.insert(f.name.clone(), f);
-                    // Map unqualified name to qualified if applicable.
-                    if let Some((_module, short)) = f.name.rsplit_once('.') {
-                        // Only map if the unqualified name isn't already a poly fn
-                        // (avoid clobbering `fold` with `List.fold` if both exist).
-                        if !poly_fns.contains_key(short) {
-                            unqualified_to_qualified.insert(short.to_string(), f.name.clone());
-                        }
+                    // Collect qualified name under its short name for call-site
+                    // resolution.  We allow multiple qualified names per short
+                    // name — ambiguity is resolved by type at the call site.
+                    if let Some((_module, short)) = f.name.rsplit_once('.')
+                        && !poly_fns.contains_key(short)
+                    {
+                        short_to_qualified
+                            .entry(short.to_string())
+                            .or_default()
+                            .push(f.name.clone());
                     }
                 } else {
                     // Monomorphic function: record its unqualified name so we can
@@ -88,16 +103,89 @@ impl<'a> MonoPass<'a> {
         // `unwrap_or` in user code (resolved to the monomorphic definition
         // during merge) would be incorrectly re-routed to `Result.unwrap_or`
         // and then monomorphised under the wrong sum-type layout.
-        unqualified_to_qualified.retain(|short, _| !mono_names.contains(short));
+        short_to_qualified.retain(|short, _| !mono_names.contains(short));
         Self {
             module,
             poly_fns,
-            unqualified_to_qualified,
+            short_to_qualified,
             generated: HashMap::new(),
             queue: VecDeque::new(),
             next_id: 0,
             specialized: Vec::new(),
         }
+    }
+
+    /// Resolve a bare call name (e.g. "zip") to the qualified polymorphic
+    /// function that best matches the call site.
+    ///
+    /// Resolution order:
+    ///
+    /// 1. If `name` is already a fully-qualified key in `poly_fns`, return it.
+    /// 2. If there is exactly one candidate, return it unambiguously.
+    /// 3. Try type-based resolution: the candidate whose free type variables
+    ///    are all covered by `extract_bindings` on the call-site arg types.
+    /// 4. Same-module preference: if `caller_module` is provided, prefer the
+    ///    candidate whose module prefix matches (handles recursive calls such
+    ///    as `zip(rest, ys)` inside `List.zip` when `Option.zip` also exists).
+    /// 5. Fallback: return the first candidate.
+    fn resolve_poly_name(
+        &self,
+        name: &str,
+        args: &[HirExpr],
+        ret_ty: &Type,
+        caller_module: Option<&str>,
+    ) -> Option<String> {
+        // Step 1: the name is already in poly_fns.
+        //
+        // If the caller is inside a named module and a qualified version of
+        // this name exists for that module, prefer it.  This prevents bare
+        // "zip" (which may be shadowed by Option.zip after module merging)
+        // from being returned when the call is inside List.zip's body.
+        if self.poly_fns.contains_key(name) {
+            if let Some(module) = caller_module {
+                let qualified = format!("{module}.{name}");
+                if self.poly_fns.contains_key(qualified.as_str()) {
+                    return Some(qualified);
+                }
+            }
+            return Some(name.to_string());
+        }
+        let candidates = self.short_to_qualified.get(name)?;
+        // Step 2: unambiguous.
+        if candidates.len() == 1 {
+            return Some(candidates[0].clone());
+        }
+        // Step 3: type-based resolution — pick the candidate whose free type
+        // vars are all covered by bindings extracted from the call-site types.
+        for candidate in candidates {
+            if let Some(poly_fn) = self.poly_fns.get(candidate.as_str()) {
+                let poly_free = free_type_vars(&poly_fn.ty);
+                if poly_free.is_empty() {
+                    continue;
+                }
+                if let Type::Function(ft) = &poly_fn.ty {
+                    let mut bindings = BTreeMap::new();
+                    for (poly_param, arg) in ft.params.iter().zip(args.iter()) {
+                        extract_bindings(poly_param, &arg.ty, &mut bindings);
+                    }
+                    extract_bindings(&ft.ret, ret_ty, &mut bindings);
+                    if poly_free.iter().all(|v| bindings.contains_key(v)) {
+                        return Some(candidate.clone());
+                    }
+                }
+            }
+        }
+        // Step 4: same-module preference.  Unqualified recursive calls inside
+        // `List.zip` should prefer `List.zip` over `Option.zip` even when HIR
+        // expression types are Dynamic (which prevents type-based resolution).
+        if let Some(module) = caller_module {
+            let prefix = format!("{module}.");
+            if let Some(same_module) = candidates.iter().find(|c| c.starts_with(&prefix)) {
+                return Some(same_module.clone());
+            }
+        }
+        // Step 5: fallback.
+        candidates.first().cloned()
     }
 
     fn run(&mut self) -> HirModule {
@@ -108,10 +196,11 @@ impl<'a> MonoPass<'a> {
         for decl in &self.module.declarations {
             match decl {
                 HirDecl::Function(f) => {
+                    let name = f.name.clone();
                     let rewritten = HirFunction {
-                        name: f.name.clone(),
+                        name: name.clone(),
                         params: f.params.clone(),
-                        body: self.rewrite_calls(&f.body, 0),
+                        body: self.rewrite_calls(&f.body, 0, &name),
                         ty: f.ty.clone(),
                         effects: f.effects.clone(),
                         span: f.span,
@@ -128,9 +217,12 @@ impl<'a> MonoPass<'a> {
                 continue;
             };
             let mut specialized = apply_subst_to_function(poly_fn, &subst);
-            specialized.name = mangled;
+            specialized.name = mangled.clone();
             // Rewrite calls inside the specialized body (may enqueue more work).
-            specialized.body = self.rewrite_calls(&specialized.body, depth);
+            // Pass orig_name as the caller context so same-module preference
+            // applies even within specializations (e.g., List.zip__0 should
+            // still prefer List.* for its recursive calls).
+            specialized.body = self.rewrite_calls(&specialized.body, depth, &orig_name);
             self.specialized.push(specialized);
         }
 
@@ -142,22 +234,26 @@ impl<'a> MonoPass<'a> {
 
     /// Walk an expression tree, rewriting calls to polymorphic functions to
     /// their mangled specialized names and enqueueing specialization requests.
-    fn rewrite_calls(&mut self, expr: &HirExpr, depth: usize) -> HirExpr {
+    ///
+    /// `current_fn` is the fully-qualified name of the function whose body is
+    /// being traversed.  It is used to extract the caller's module prefix for
+    /// same-module name resolution (see `resolve_poly_name` step 4).
+    fn rewrite_calls(&mut self, expr: &HirExpr, depth: usize, current_fn: &str) -> HirExpr {
+        let caller_module = current_fn.rsplit_once('.').map(|(module, _)| module);
         let kind = match &expr.kind {
             HirExprKind::Call { func, args } => {
                 let rewritten_args: Vec<HirExpr> =
-                    args.iter().map(|a| self.rewrite_calls(a, depth)).collect();
+                    args.iter().map(|a| self.rewrite_calls(a, depth, current_fn)).collect();
                 let callee_name = match &func.kind {
                     HirExprKind::Var(name) => Some(name.as_str()),
                     _ => None,
                 };
                 // Resolve unqualified names like "filter" → "List.filter".
+                // When multiple modules define the same short name (e.g. "zip"
+                // in both List and Option), same-module preference picks the
+                // candidate from the caller's module when types are ambiguous.
                 let resolved_name = callee_name.and_then(|name| {
-                    if self.poly_fns.contains_key(name) {
-                        Some(name.to_string())
-                    } else {
-                        self.unqualified_to_qualified.get(name).cloned()
-                    }
+                    self.resolve_poly_name(name, &rewritten_args, &expr.ty, caller_module)
                 });
                 if let Some(ref resolved) = resolved_name
                     && let Some(poly_fn) = self.poly_fns.get(resolved.as_str())
@@ -193,21 +289,36 @@ impl<'a> MonoPass<'a> {
                                 args: rewritten_args,
                             }
                         } else {
-                            // Incomplete bindings — keep original call.
+                            // Incomplete bindings — cannot specialise.  Still
+                            // rewrite the callee to the resolved qualified name
+                            // so that bare-name collisions (e.g. "zip" resolved
+                            // to "List.zip") do not dispatch to the wrong
+                            // module's implementation at JIT link time.
+                            let callee_is_bare =
+                                callee_name.is_some_and(|n| n != resolved.as_str());
+                            let new_func = if callee_is_bare {
+                                Box::new(HirExpr {
+                                    kind: HirExprKind::Var(resolved.clone()),
+                                    ty: func.ty.clone(),
+                                    span: func.span,
+                                })
+                            } else {
+                                Box::new(self.rewrite_calls(func, depth, current_fn))
+                            };
                             HirExprKind::Call {
-                                func: Box::new(self.rewrite_calls(func, depth)),
+                                func: new_func,
                                 args: rewritten_args,
                             }
                         }
                     } else {
                         HirExprKind::Call {
-                            func: Box::new(self.rewrite_calls(func, depth)),
+                            func: Box::new(self.rewrite_calls(func, depth, current_fn)),
                             args: rewritten_args,
                         }
                     }
                 } else {
                     HirExprKind::Call {
-                        func: Box::new(self.rewrite_calls(func, depth)),
+                        func: Box::new(self.rewrite_calls(func, depth, current_fn)),
                         args: rewritten_args,
                     }
                 }
@@ -223,7 +334,7 @@ impl<'a> MonoPass<'a> {
                 record_type: record_type.clone(),
                 fields: fields
                     .iter()
-                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth)))
+                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth, current_fn)))
                     .collect(),
             },
 
@@ -233,10 +344,10 @@ impl<'a> MonoPass<'a> {
                 fields,
             } => HirExprKind::RecordUpdate {
                 record_type: record_type.clone(),
-                base: Box::new(self.rewrite_calls(base, depth)),
+                base: Box::new(self.rewrite_calls(base, depth, current_fn)),
                 fields: fields
                     .iter()
-                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth)))
+                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth, current_fn)))
                     .collect(),
             },
 
@@ -251,7 +362,7 @@ impl<'a> MonoPass<'a> {
                 tag: *tag,
                 fields: fields
                     .iter()
-                    .map(|e| self.rewrite_calls(e, depth))
+                    .map(|e| self.rewrite_calls(e, depth, current_fn))
                     .collect(),
             },
 
@@ -261,35 +372,35 @@ impl<'a> MonoPass<'a> {
                 variant,
                 field_index,
             } => HirExprKind::SumPayloadAccess {
-                expr: Box::new(self.rewrite_calls(inner, depth)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn)),
                 sum_type: sum_type.clone(),
                 variant: variant.clone(),
                 field_index: *field_index,
             },
 
             HirExprKind::FieldAccess { expr: inner, field } => HirExprKind::FieldAccess {
-                expr: Box::new(self.rewrite_calls(inner, depth)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn)),
                 field: field.clone(),
             },
 
             HirExprKind::Binary { op, left, right } => HirExprKind::Binary {
                 op: *op,
-                left: Box::new(self.rewrite_calls(left, depth)),
-                right: Box::new(self.rewrite_calls(right, depth)),
+                left: Box::new(self.rewrite_calls(left, depth, current_fn)),
+                right: Box::new(self.rewrite_calls(right, depth, current_fn)),
             },
 
             HirExprKind::Unary { op, operand } => HirExprKind::Unary {
                 op: *op,
-                operand: Box::new(self.rewrite_calls(operand, depth)),
+                operand: Box::new(self.rewrite_calls(operand, depth, current_fn)),
             },
 
             HirExprKind::Lambda { params, body } => HirExprKind::Lambda {
                 params: params.clone(),
-                body: Box::new(self.rewrite_calls(body, depth)),
+                body: Box::new(self.rewrite_calls(body, depth, current_fn)),
             },
 
             HirExprKind::Catch { expr: inner } => HirExprKind::Catch {
-                expr: Box::new(self.rewrite_calls(inner, depth)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn)),
             },
 
             HirExprKind::Handle {
@@ -297,7 +408,7 @@ impl<'a> MonoPass<'a> {
                 clauses,
                 then_clause,
             } => HirExprKind::Handle {
-                expr: Box::new(self.rewrite_calls(inner, depth)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn)),
                 clauses: clauses
                     .iter()
                     .map(|c| HirHandleClause {
@@ -306,22 +417,22 @@ impl<'a> MonoPass<'a> {
                         args: c.args.clone(),
                         arg_types: c.arg_types.clone(),
                         return_type: c.return_type.clone(),
-                        body: self.rewrite_calls(&c.body, depth),
+                        body: self.rewrite_calls(&c.body, depth, current_fn),
                         span: c.span,
                     })
                     .collect(),
                 then_clause: then_clause
                     .as_ref()
-                    .map(|e| Box::new(self.rewrite_calls(e, depth))),
+                    .map(|e| Box::new(self.rewrite_calls(e, depth, current_fn))),
             },
 
             HirExprKind::Resume { value } => HirExprKind::Resume {
-                value: Box::new(self.rewrite_calls(value, depth)),
+                value: Box::new(self.rewrite_calls(value, depth, current_fn)),
             },
 
             HirExprKind::Let { pattern, value } => HirExprKind::Let {
                 pattern: pattern.clone(),
-                value: Box::new(self.rewrite_calls(value, depth)),
+                value: Box::new(self.rewrite_calls(value, depth, current_fn)),
             },
 
             HirExprKind::If {
@@ -329,20 +440,26 @@ impl<'a> MonoPass<'a> {
                 then_branch,
                 else_branch,
             } => HirExprKind::If {
-                condition: Box::new(self.rewrite_calls(condition, depth)),
-                then_branch: Box::new(self.rewrite_calls(then_branch, depth)),
+                condition: Box::new(self.rewrite_calls(condition, depth, current_fn)),
+                then_branch: Box::new(self.rewrite_calls(then_branch, depth, current_fn)),
                 else_branch: else_branch
                     .as_ref()
-                    .map(|e| Box::new(self.rewrite_calls(e, depth))),
+                    .map(|e| Box::new(self.rewrite_calls(e, depth, current_fn))),
             },
 
-            HirExprKind::Block(exprs) => {
-                HirExprKind::Block(exprs.iter().map(|e| self.rewrite_calls(e, depth)).collect())
-            }
+            HirExprKind::Block(exprs) => HirExprKind::Block(
+                exprs
+                    .iter()
+                    .map(|e| self.rewrite_calls(e, depth, current_fn))
+                    .collect(),
+            ),
 
-            HirExprKind::Tuple(exprs) => {
-                HirExprKind::Tuple(exprs.iter().map(|e| self.rewrite_calls(e, depth)).collect())
-            }
+            HirExprKind::Tuple(exprs) => HirExprKind::Tuple(
+                exprs
+                    .iter()
+                    .map(|e| self.rewrite_calls(e, depth, current_fn))
+                    .collect(),
+            ),
 
             HirExprKind::Raw(_) => expr.kind.clone(),
         };
@@ -384,6 +501,37 @@ impl<'a> MonoPass<'a> {
 
         mangled
     }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Returns true when a function's type is the all-Dynamic signature that HIR
+/// lowering produces for bare overlay functions whose env binding was lost
+/// after module scope cleanup.
+///
+/// When `merge_modules_for_codegen` merges two modules that both define a
+/// function with the same short name (e.g. `List.zip` and `Option.zip`), the
+/// merged module contains a bare "zip" entry whose type cannot be resolved
+/// from the type environment (bare names are dropped after each module scope).
+/// HIR lowering falls back to building the type from declaration annotations,
+/// which maps any complex annotation to `Type::Dynamic`.  The resulting
+/// function type is `fn(Dynamic, ...) -> Dynamic` with one Dynamic per
+/// declared parameter.
+///
+/// Such functions should not participate in the poly/mono classification:
+/// they are not genuinely monomorphic (their type is wrong), and treating
+/// them as monomorphic would prevent the module-qualified versions from being
+/// considered when resolving bare name call sites inside the qualified
+/// counterpart (e.g., `zip(xrest, yrest)` inside `List.zip`).
+fn is_all_dynamic_overlay(f: &HirFunction) -> bool {
+    let Type::Function(ft) = &f.ty else {
+        return false;
+    };
+    !ft.params.is_empty()
+        && ft.params.iter().all(|p| matches!(p, Type::Dynamic))
+        && matches!(ft.ret.as_ref(), Type::Dynamic)
 }
 
 // ---------------------------------------------------------------------------
