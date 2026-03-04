@@ -4,8 +4,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use kea_ast::{
-    DeclKind, Expr, ExprDecl, ExprKind, FileId, FnDecl, ImportItems, Module, PatternKind,
-    RecordDef, Span, Spanned, TestDecl, TypeAnnotation, TypeDef, collect_pattern_bindings_pub,
+    Annotation, Argument, DeclKind, Expr, ExprDecl, ExprKind, FileId, FnDecl, ImportItems,
+    Module, PatternKind, RecordDef, Span, Spanned, TestDecl, TypeAnnotation, TypeDef, VariantField,
+    collect_pattern_bindings_pub,
 };
 use kea_codegen::{
     Backend, BackendConfig, CodegenMode, CraneliftBackend, PassStats, collect_pass_stats,
@@ -82,6 +83,14 @@ pub struct ModuleProcessResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+fn span_to_loc(span: Span) -> SourceLocation {
+    SourceLocation {
+        file_id: span.file.0,
+        start: span.start,
+        end: span.end,
+    }
+}
+
 pub fn compile_module(source: &str, file_id: FileId) -> Result<CompilationContext, String> {
     let source_owned = source.to_string();
     run_on_compiler_stack("compile_module", move || {
@@ -95,7 +104,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
 
     let parsed_module = parse_module(tokens, file_id)
         .map_err(|diags| format_diagnostics("parsing failed", &diags))?;
-    let module = expand_impl_methods_for_codegen(&parsed_module);
+    let module = prepare_module_for_compilation(&parsed_module, &mut diagnostics);
 
     let mut env = TypeEnv::new();
     register_builtin_int_bitwise_methods(&mut env);
@@ -104,9 +113,9 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
     let mut traits = TraitRegistry::new();
     let mut sum_types = SumTypeRegistry::new();
 
-    diagnostics.extend(validate_module_fn_annotations(&parsed_module));
-    diagnostics.extend(validate_module_annotations(&parsed_module));
-    diagnostics.extend(validate_unsafe_call_sites(&parsed_module, None, None, None));
+    diagnostics.extend(validate_module_fn_annotations(&module));
+    diagnostics.extend(validate_module_annotations(&module));
+    diagnostics.extend(validate_unsafe_call_sites(&module, None, None, None));
     if has_errors(&diagnostics) {
         return Err(format_diagnostics(
             "type annotation validation failed",
@@ -1047,12 +1056,14 @@ pub fn process_module_in_env(
     sum_types: &mut SumTypeRegistry,
     mut diagnostics: Vec<Diagnostic>,
 ) -> Result<ModuleProcessResult, Vec<Diagnostic>> {
-    diagnostics.extend(validate_module_fn_annotations(module));
-    diagnostics.extend(validate_module_annotations(module));
+    let module = prepare_module_for_compilation(module, &mut diagnostics);
+
+    diagnostics.extend(validate_module_fn_annotations(&module));
+    diagnostics.extend(validate_module_annotations(&module));
     let unsafe_registry = env.module_unsafe_function_registry();
     let unsafe_names = env.unsafe_function_names();
     diagnostics.extend(validate_unsafe_call_sites(
-        module,
+        &module,
         None,
         Some(&unsafe_registry),
         Some(&unsafe_names),
@@ -1062,7 +1073,7 @@ pub fn process_module_in_env(
     }
 
     if register_top_level_declarations(
-        module,
+        &module,
         env,
         records,
         traits,
@@ -1076,7 +1087,7 @@ pub fn process_module_in_env(
     }
 
     let expr_types = match typecheck_functions(
-        module,
+        &module,
         env,
         records,
         traits,
@@ -1088,15 +1099,15 @@ pub fn process_module_in_env(
         Err(_) => return Err(diagnostics),
     };
 
-    let hir = lower_module(module, env, &expr_types);
+    let hir = lower_module(&module, env, &expr_types);
     let hir = kea_hir::monomorphize::monomorphize(&hir);
-    let explicit_borrow_param_map = collect_borrow_param_positions(module, None);
+    let explicit_borrow_param_map = collect_borrow_param_positions(&module, None);
     let borrow_param_map = infer_auto_borrow_param_positions(&hir, &explicit_borrow_param_map);
     diagnostics.extend(check_unique_moves_with_borrow_map(&hir, &borrow_param_map));
     if has_errors(&diagnostics) {
         return Err(diagnostics);
     }
-    diagnostics.extend(validate_fip_annotations(module, &hir));
+    diagnostics.extend(validate_fip_annotations(&module, &hir));
     if has_errors(&diagnostics) {
         return Err(diagnostics);
     }
@@ -1391,6 +1402,619 @@ fn is_main_decl(decl: &kea_ast::Decl) -> bool {
     }
 }
 
+fn prepare_module_for_compilation(module: &Module, diagnostics: &mut Vec<Diagnostic>) -> Module {
+    let with_derived_impls = expand_derived_impls(module, diagnostics);
+    expand_impl_methods_for_codegen(&with_derived_impls)
+}
+
+fn derive_trait_arg_name(arg: &Argument) -> Option<String> {
+    if arg.label.is_some() {
+        return None;
+    }
+    let candidate = match &arg.value.node {
+        ExprKind::Var(name) => Some(name.clone()),
+        ExprKind::Constructor { name, args } if args.is_empty() => Some(name.node.clone()),
+        _ => None,
+    }?;
+    if candidate
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_uppercase())
+    {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn derive_traits_from_annotations(
+    annotations: &[Annotation],
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+    for ann in annotations {
+        if ann.name.node != "derive" {
+            continue;
+        }
+        if ann.args.is_empty() {
+            diagnostics.push(
+                Diagnostic::error(
+                    Category::TypeError,
+                    "`@derive` requires at least one trait name argument",
+                )
+                .at(span_to_loc(ann.span)),
+            );
+            continue;
+        }
+        for arg in &ann.args {
+            let Some(trait_name) = derive_trait_arg_name(arg) else {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        "derive arguments must be positional UpperIdent trait names (e.g. `@derive(Eq, Show)`)",
+                    )
+                    .at(span_to_loc(arg.value.span)),
+                );
+                continue;
+            };
+            if seen.insert(trait_name.clone()) {
+                out.push(trait_name);
+            }
+        }
+    }
+    out
+}
+
+fn type_annotation_mentions_param(ann: &TypeAnnotation, param: &str) -> bool {
+    match ann {
+        TypeAnnotation::Named(name) => name == param,
+        TypeAnnotation::Applied(name, args) => {
+            name == param
+                || args
+                    .iter()
+                    .any(|arg| type_annotation_mentions_param(arg, param))
+        }
+        TypeAnnotation::Row { fields, .. } => fields
+            .iter()
+            .any(|(_, ty)| type_annotation_mentions_param(ty, param)),
+        TypeAnnotation::EffectRow(effect_row) => effect_row.effects.iter().any(|item| {
+            item.payload
+                .as_ref()
+                .is_some_and(|payload| type_annotation_mentions_param(payload, param))
+        }),
+        TypeAnnotation::Tuple(items) => items
+            .iter()
+            .any(|item| type_annotation_mentions_param(item, param)),
+        TypeAnnotation::Forall { ty, .. } => type_annotation_mentions_param(ty, param),
+        TypeAnnotation::Function(params, ret) => {
+            params
+                .iter()
+                .any(|item| type_annotation_mentions_param(item, param))
+                || type_annotation_mentions_param(ret, param)
+        }
+        TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
+            params
+                .iter()
+                .any(|item| type_annotation_mentions_param(item, param))
+                || type_annotation_mentions_param(ret, param)
+                || matches!(
+                    &effect.node,
+                    kea_ast::EffectAnnotation::Row(row)
+                        if row.effects.iter().any(|item| {
+                            item.payload.as_ref().is_some_and(|payload| {
+                                type_annotation_mentions_param(payload, param)
+                            })
+                        })
+                )
+        }
+        TypeAnnotation::Optional(inner) => type_annotation_mentions_param(inner, param),
+        TypeAnnotation::Existential {
+            associated_types, ..
+        } => associated_types
+            .iter()
+            .any(|(_, ty)| type_annotation_mentions_param(ty, param)),
+        TypeAnnotation::Projection { base, name } => base == param || name == param,
+        TypeAnnotation::DimLiteral(_) => false,
+    }
+}
+
+fn type_params_used_in_record(def: &RecordDef) -> Vec<String> {
+    def.params
+        .iter()
+        .filter(|param| {
+            def.fields
+                .iter()
+                .any(|(_, ty)| type_annotation_mentions_param(ty, param))
+        })
+        .cloned()
+        .collect()
+}
+
+fn type_params_used_in_sum(def: &TypeDef) -> Vec<String> {
+    def.params
+        .iter()
+        .filter(|param| {
+            def.variants.iter().any(|variant| {
+                variant
+                    .fields
+                    .iter()
+                    .any(|field| type_annotation_mentions_param(&field.ty.node, param))
+            })
+        })
+        .cloned()
+        .collect()
+}
+
+fn impl_target_type(name: &str, params: &[String]) -> String {
+    if params.is_empty() {
+        name.to_string()
+    } else {
+        format!("{name}({})", params.join(", "))
+    }
+}
+
+fn derive_where_clause(params: &[String], trait_name: &str) -> String {
+    if params.is_empty() {
+        String::new()
+    } else {
+        let bounds = params
+            .iter()
+            .map(|param| format!("{param}: {trait_name}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(" where {bounds}")
+    }
+}
+
+fn constructor_pattern_fields(fields: &[VariantField], prefix: &str) -> (String, Vec<String>) {
+    let mut vars = Vec::new();
+    let mut parts = Vec::new();
+    for (idx, field) in fields.iter().enumerate() {
+        let var = format!("{prefix}{idx}");
+        vars.push(var.clone());
+        if let Some(name) = &field.name {
+            parts.push(format!("{}: {var}", name.node));
+        } else {
+            parts.push(var);
+        }
+    }
+    (parts.join(", "), vars)
+}
+
+fn eq_chain(left_vars: &[String], right_vars: &[String]) -> String {
+    if left_vars.is_empty() {
+        "true".to_string()
+    } else {
+        left_vars
+            .iter()
+            .zip(right_vars.iter())
+            .map(|(left, right)| format!("Eq.eq({left}, {right})"))
+            .collect::<Vec<_>>()
+            .join(" and ")
+    }
+}
+
+fn show_concat_for_constructor(variant_name: &str, vars: &[String]) -> String {
+    if vars.is_empty() {
+        return format!("\"{variant_name}\"");
+    }
+    let mut parts = vec![format!("\"{variant_name}(\"")];
+    for (idx, var) in vars.iter().enumerate() {
+        if idx > 0 {
+            parts.push("\", \"".to_string());
+        }
+        parts.push(format!("Show.show({var})"));
+    }
+    parts.push("\")\"".to_string());
+    parts.join(" ++ ")
+}
+
+fn show_concat_for_record(record_name: &str, field_names: &[String]) -> String {
+    if field_names.is_empty() {
+        return format!("\"{record_name}()\"");
+    }
+    let mut parts = vec![format!("\"{record_name}(\"")];
+    for (idx, field) in field_names.iter().enumerate() {
+        if idx > 0 {
+            parts.push("\", \"".to_string());
+        }
+        parts.push(format!("\"{field}: \""));
+        parts.push(format!("Show.show(x.{field})"));
+    }
+    parts.push("\")\"".to_string());
+    parts.join(" ++ ")
+}
+
+fn ord_compare_chain_lines(comparisons: &[(String, String)], indent: usize) -> Vec<String> {
+    if comparisons.is_empty() {
+        return vec![format!("{}Order.Equal", " ".repeat(indent))];
+    }
+    let (left, right) = &comparisons[0];
+    let pad = " ".repeat(indent);
+    let mut lines = vec![
+        format!("{pad}case Ord.compare({left}, {right})"),
+        format!("{pad}  Order.Equal ->"),
+    ];
+    lines.extend(ord_compare_chain_lines(&comparisons[1..], indent + 4));
+    lines.push(format!("{pad}  other -> other"));
+    lines
+}
+
+fn hash_mix_expr(seed: impl Into<String>, fields: &[String]) -> String {
+    fields.iter().fold(seed.into(), |acc, field| {
+        format!("({acc} * 31 + Hash.hash({field}))")
+    })
+}
+
+fn build_eq_impl_source_for_sum(def: &TypeDef) -> String {
+    let used_params = type_params_used_in_sum(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Eq");
+    let mut source = String::new();
+    source.push_str(&format!("{} as Eq{}\n", target, where_clause));
+    source.push_str(&format!(
+        "  fn eq(x: {}, y: {}) -> Bool\n",
+        target, target
+    ));
+    source.push_str("    case x\n");
+    for variant in &def.variants {
+        let qualified = format!("{}.{}", def.name.node, variant.name.node);
+        if variant.fields.is_empty() {
+            source.push_str(&format!(
+                "      {qualified} ->\n        case y\n          {qualified} -> true\n          _ -> false\n"
+            ));
+            continue;
+        }
+        let (left_pattern, left_vars) = constructor_pattern_fields(&variant.fields, "v");
+        let (right_pattern, right_vars) = constructor_pattern_fields(&variant.fields, "w");
+        let body = eq_chain(&left_vars, &right_vars);
+        source.push_str(&format!(
+            "      {qualified}({left_pattern}) ->\n        case y\n          {qualified}({right_pattern}) -> {body}\n          _ -> false\n"
+        ));
+    }
+    source
+}
+
+fn build_eq_impl_source_for_record(def: &RecordDef) -> String {
+    let used_params = type_params_used_in_record(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Eq");
+    let mut source = String::new();
+    source.push_str(&format!("{} as Eq{}\n", target, where_clause));
+    source.push_str(&format!(
+        "  fn eq(a: {}, b: {}) -> Bool\n",
+        target, target
+    ));
+    if def.fields.is_empty() {
+        source.push_str("    true\n");
+        return source;
+    }
+    let comparisons = def
+        .fields
+        .iter()
+        .map(|(field, _)| format!("Eq.eq(a.{}, b.{})", field.node, field.node))
+        .collect::<Vec<_>>()
+        .join(" and ");
+    source.push_str(&format!("    {comparisons}\n"));
+    source
+}
+
+fn build_show_impl_source_for_sum(def: &TypeDef) -> String {
+    let used_params = type_params_used_in_sum(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Show");
+    let mut source = String::new();
+    source.push_str(&format!("{} as Show{}\n", target, where_clause));
+    source.push_str(&format!("  fn show(x: {}) -> String\n", target));
+    source.push_str("    case x\n");
+    for variant in &def.variants {
+        let qualified = format!("{}.{}", def.name.node, variant.name.node);
+        if variant.fields.is_empty() {
+            source.push_str(&format!(
+                "      {qualified} -> \"{}\"\n",
+                variant.name.node
+            ));
+            continue;
+        }
+        let (pattern, vars) = constructor_pattern_fields(&variant.fields, "v");
+        let body = show_concat_for_constructor(&variant.name.node, &vars);
+        source.push_str(&format!("      {qualified}({pattern}) -> {body}\n"));
+    }
+    source
+}
+
+fn build_show_impl_source_for_record(def: &RecordDef) -> String {
+    let used_params = type_params_used_in_record(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Show");
+    let mut source = String::new();
+    source.push_str(&format!("{} as Show{}\n", target, where_clause));
+    source.push_str(&format!("  fn show(x: {}) -> String\n", target));
+    let field_names = def
+        .fields
+        .iter()
+        .map(|(field, _)| field.node.clone())
+        .collect::<Vec<_>>();
+    source.push_str(&format!(
+        "    {}\n",
+        show_concat_for_record(&def.name.node, &field_names)
+    ));
+    source
+}
+
+fn build_ord_impl_source_for_sum(def: &TypeDef) -> String {
+    let used_params = type_params_used_in_sum(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Ord");
+    let mut source = String::new();
+    source.push_str(&format!("{} as Ord{}\n", target, where_clause));
+    source.push_str(&format!(
+        "  fn compare(x: {}, y: {}) -> Ordering\n",
+        target, target
+    ));
+    source.push_str("    case x\n");
+    for (variant_idx, variant) in def.variants.iter().enumerate() {
+        let qualified = format!("{}.{}", def.name.node, variant.name.node);
+        if variant.fields.is_empty() {
+            source.push_str(&format!("      {qualified} ->\n"));
+        } else {
+            let (left_pattern, left_vars) = constructor_pattern_fields(&variant.fields, "v");
+            source.push_str(&format!("      {qualified}({left_pattern}) ->\n"));
+            source.push_str("        case y\n");
+            for (other_idx, other) in def.variants.iter().enumerate() {
+                let other_qualified = format!("{}.{}", def.name.node, other.name.node);
+                if other_idx == variant_idx {
+                    if other.fields.is_empty() {
+                        source.push_str(&format!("          {other_qualified} -> Order.Equal\n"));
+                    } else {
+                        let (right_pattern, right_vars) =
+                            constructor_pattern_fields(&other.fields, "w");
+                        source.push_str(&format!("          {other_qualified}({right_pattern}) ->\n"));
+                        let comparisons = left_vars
+                            .iter()
+                            .zip(right_vars.iter())
+                            .map(|(left, right)| (left.clone(), right.clone()))
+                            .collect::<Vec<_>>();
+                        for line in ord_compare_chain_lines(&comparisons, 12) {
+                            source.push_str(&line);
+                            source.push('\n');
+                        }
+                    }
+                } else {
+                    let ordering = if variant_idx < other_idx {
+                        "Order.Less"
+                    } else {
+                        "Order.Greater"
+                    };
+                    source.push_str(&format!("          {other_qualified} -> {ordering}\n"));
+                }
+            }
+            continue;
+        }
+        source.push_str("        case y\n");
+        for (other_idx, other) in def.variants.iter().enumerate() {
+            let other_qualified = format!("{}.{}", def.name.node, other.name.node);
+            if other_idx == variant_idx {
+                source.push_str(&format!("          {other_qualified} -> Order.Equal\n"));
+            } else {
+                let ordering = if variant_idx < other_idx {
+                    "Order.Less"
+                } else {
+                    "Order.Greater"
+                };
+                source.push_str(&format!("          {other_qualified} -> {ordering}\n"));
+            }
+        }
+    }
+    source
+}
+
+fn build_ord_impl_source_for_record(def: &RecordDef) -> String {
+    let used_params = type_params_used_in_record(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Ord");
+    let mut source = String::new();
+    source.push_str(&format!("{} as Ord{}\n", target, where_clause));
+    source.push_str(&format!(
+        "  fn compare(a: {}, b: {}) -> Ordering\n",
+        target, target
+    ));
+    if def.fields.is_empty() {
+        source.push_str("    Order.Equal\n");
+        return source;
+    }
+    let comparisons = def
+        .fields
+        .iter()
+        .map(|(field, _)| (format!("a.{}", field.node), format!("b.{}", field.node)))
+        .collect::<Vec<_>>();
+    for line in ord_compare_chain_lines(&comparisons, 4) {
+        source.push_str(&line);
+        source.push('\n');
+    }
+    source
+}
+
+fn build_hash_impl_source_for_sum(def: &TypeDef) -> String {
+    let used_params = type_params_used_in_sum(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Hash");
+    let mut source = String::new();
+    source.push_str(&format!("{} as Hash{}\n", target, where_clause));
+    source.push_str(&format!("  fn hash(x: {}) -> Int\n", target));
+    source.push_str("    case x\n");
+    for (variant_idx, variant) in def.variants.iter().enumerate() {
+        let qualified = format!("{}.{}", def.name.node, variant.name.node);
+        let seed = variant_idx.to_string();
+        if variant.fields.is_empty() {
+            source.push_str(&format!("      {qualified} -> {seed}\n"));
+            continue;
+        }
+        let (pattern, vars) = constructor_pattern_fields(&variant.fields, "v");
+        let expr = hash_mix_expr(seed, &vars);
+        source.push_str(&format!("      {qualified}({pattern}) -> {expr}\n"));
+    }
+    source
+}
+
+fn build_hash_impl_source_for_record(def: &RecordDef) -> String {
+    let used_params = type_params_used_in_record(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Hash");
+    let mut source = String::new();
+    source.push_str(&format!("{} as Hash{}\n", target, where_clause));
+    source.push_str(&format!("  fn hash(x: {}) -> Int\n", target));
+    if def.fields.is_empty() {
+        source.push_str("    0\n");
+        return source;
+    }
+    let fields = def
+        .fields
+        .iter()
+        .map(|(field, _)| format!("x.{}", field.node))
+        .collect::<Vec<_>>();
+    source.push_str(&format!("    {}\n", hash_mix_expr("0", &fields)));
+    source
+}
+
+fn parse_generated_impl_decl(
+    source: &str,
+    file_id: FileId,
+    context_span: Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<kea_ast::Decl> {
+    let Ok((tokens, mut lex_diags)) = lex_layout(source, file_id) else {
+        diagnostics.push(
+            Diagnostic::error(
+                Category::TypeError,
+                "internal derive synthesis failed during lexing",
+            )
+            .at(span_to_loc(context_span)),
+        );
+        return None;
+    };
+    if !lex_diags.is_empty() {
+        diagnostics.append(&mut lex_diags);
+        return None;
+    }
+    let Ok(parsed) = parse_module(tokens, file_id) else {
+        diagnostics.push(
+            Diagnostic::error(
+                Category::TypeError,
+                "internal derive synthesis failed during parsing",
+            )
+            .at(span_to_loc(context_span)),
+        );
+        return None;
+    };
+    let Some(decl) = parsed.declarations.into_iter().next() else {
+        diagnostics.push(
+            Diagnostic::error(
+                Category::TypeError,
+                "internal derive synthesis produced no declarations",
+            )
+            .at(span_to_loc(context_span)),
+        );
+        return None;
+    };
+    if !matches!(decl.node, DeclKind::ImplBlock(_)) {
+        diagnostics.push(
+            Diagnostic::error(
+                Category::TypeError,
+                "internal derive synthesis did not produce an impl block",
+            )
+            .at(span_to_loc(context_span)),
+        );
+        return None;
+    }
+    Some(decl)
+}
+
+fn expand_derived_impls(module: &Module, diagnostics: &mut Vec<Diagnostic>) -> Module {
+    let mut declarations = module.declarations.clone();
+    let mut existing_impls: BTreeSet<(String, String)> = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::ImplBlock(ib) => Some((ib.trait_name.node.clone(), ib.type_name.node.clone())),
+            _ => None,
+        })
+        .collect();
+
+    for decl in &module.declarations {
+        match &decl.node {
+            DeclKind::TypeDef(def) => {
+                let derive_traits = derive_traits_from_annotations(&def.annotations, diagnostics);
+                for trait_name in derive_traits {
+                    if existing_impls.contains(&(trait_name.clone(), def.name.node.clone())) {
+                        continue;
+                    }
+                    let source = match trait_name.as_str() {
+                        "Eq" => build_eq_impl_source_for_sum(def),
+                        "Show" => build_show_impl_source_for_sum(def),
+                        "Ord" => build_ord_impl_source_for_sum(def),
+                        "Hash" => build_hash_impl_source_for_sum(def),
+                        other => {
+                            diagnostics.push(
+                                Diagnostic::error(
+                                    Category::TypeError,
+                                    format!("unsupported derive trait `{other}`"),
+                                )
+                                .at(span_to_loc(decl.span)),
+                            );
+                            continue;
+                        }
+                    };
+                    if let Some(impl_decl) =
+                        parse_generated_impl_decl(&source, module.span.file, decl.span, diagnostics)
+                    {
+                        declarations.push(impl_decl);
+                        existing_impls.insert((trait_name, def.name.node.clone()));
+                    }
+                }
+            }
+            DeclKind::RecordDef(def) => {
+                let derive_traits = derive_traits_from_annotations(&def.annotations, diagnostics);
+                for trait_name in derive_traits {
+                    if existing_impls.contains(&(trait_name.clone(), def.name.node.clone())) {
+                        continue;
+                    }
+                    let source = match trait_name.as_str() {
+                        "Eq" => build_eq_impl_source_for_record(def),
+                        "Show" => build_show_impl_source_for_record(def),
+                        "Ord" => build_ord_impl_source_for_record(def),
+                        "Hash" => build_hash_impl_source_for_record(def),
+                        other => {
+                            diagnostics.push(
+                                Diagnostic::error(
+                                    Category::TypeError,
+                                    format!("unsupported derive trait `{other}`"),
+                                )
+                                .at(span_to_loc(decl.span)),
+                            );
+                            continue;
+                        }
+                    };
+                    if let Some(impl_decl) =
+                        parse_generated_impl_decl(&source, module.span.file, decl.span, diagnostics)
+                    {
+                        declarations.push(impl_decl);
+                        existing_impls.insert((trait_name, def.name.node.clone()));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Module {
+        doc: module.doc.clone(),
+        declarations,
+        span: module.span,
+    }
+}
+
 fn build_test_main_decl(test_fn_name: &str, file_id: FileId) -> Result<kea_ast::Decl, String> {
     // Parse the body from source but strip return_annotation so the purity
     // validator skips the synthetic main (the guard checks
@@ -1603,7 +2227,8 @@ fn typecheck_loaded_modules(
     let mut qualified_borrow_param_map = BTreeMap::new();
     let unsafe_registry = collect_unsafe_function_registry(loaded_modules);
     for loaded in loaded_modules {
-        let expanded = expand_impl_methods_for_codegen(&loaded.module);
+        let mut prepass_diags = Vec::new();
+        let expanded = prepare_module_for_compilation(&loaded.module, &mut prepass_diags);
         for (name, positions) in
             collect_borrow_param_positions(&expanded, Some(&loaded.module_path))
         {
@@ -1622,12 +2247,12 @@ fn typecheck_loaded_modules(
             env.push_scope();
         }
 
-        let expanded = expand_impl_methods_for_codegen(&loaded.module);
+        let expanded = prepare_module_for_compilation(&loaded.module, &mut diagnostics);
 
-        diagnostics.extend(validate_module_fn_annotations(&loaded.module));
-        diagnostics.extend(validate_module_annotations(&loaded.module));
+        diagnostics.extend(validate_module_fn_annotations(&expanded));
+        diagnostics.extend(validate_module_annotations(&expanded));
         diagnostics.extend(validate_unsafe_call_sites(
-            &loaded.module,
+            &expanded,
             Some(&loaded.module_path),
             Some(&unsafe_registry),
             None,
@@ -1984,6 +2609,14 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
     let mut declarations = module.declarations.clone();
     let mut trait_method_counts: BTreeMap<(String, String), usize> = BTreeMap::new();
     let mut bare_trait_method_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let locally_defined_traits: BTreeSet<String> = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::TraitDef(trait_def) => Some(trait_def.name.node.clone()),
+            _ => None,
+        })
+        .collect();
     let mut existing_function_names: BTreeSet<String> = module
         .declarations
         .iter()
@@ -2020,19 +2653,29 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
                 .get(&(trait_name.clone(), method_name.clone()))
                 .copied()
                 .unwrap_or(1);
-            // When a trait method has one impl in-module, lift it under
-            // `Trait.method` so trait-qualified calls compile on the current
-            // monomorphic backend path. Multiple impls get disambiguated names.
-            let runtime_name = if duplicate_count == 1 {
-                format!("{trait_name}.{method_name}")
-            } else {
-                format!("{trait_name}.{type_name}.{method_name}")
-            };
-            lifted.name.node = runtime_name;
+            // Always emit a disambiguated trait-method symbol.
+            let typed_runtime_name = format!("{trait_name}.{type_name}.{method_name}");
+            lifted.name.node = typed_runtime_name;
             declarations.push(kea_ast::Spanned::new(
                 DeclKind::Function(lifted),
                 method.span,
             ));
+
+            // Keep `Trait.method` as a compatibility alias only when this
+            // module defines the trait locally and contributes a single
+            // implementation for the trait method.
+            //
+            // Without the local-trait guard, non-owner modules can leak
+            // `Trait.method` aliases that collide with the owning module's
+            // namespace and route calls to the wrong impl body.
+            if duplicate_count == 1 && locally_defined_traits.contains(&trait_name) {
+                let mut trait_alias = method.clone();
+                trait_alias.name.node = format!("{trait_name}.{method_name}");
+                declarations.push(kea_ast::Spanned::new(
+                    DeclKind::Function(trait_alias),
+                    method.span,
+                ));
+            }
 
             // Provide an unqualified alias only when the method name is unique
             // in this module and does not collide with an existing top-level
@@ -2136,6 +2779,18 @@ fn register_top_level_declarations(
                 }
                 _ => {}
             }
+        }
+    }
+
+    // Register nominal type ownership before impl registration so derived/manual
+    // impls for module-defined enums/records/aliases/opaques satisfy orphan checks.
+    for decl in &module.declarations {
+        match &decl.node {
+            DeclKind::TypeDef(def) => traits.register_type_owner(&def.name.node, &owner),
+            DeclKind::RecordDef(def) => traits.register_type_owner(&def.name.node, &owner),
+            DeclKind::AliasDecl(def) => traits.register_type_owner(&def.name.node, &owner),
+            DeclKind::OpaqueTypeDef(def) => traits.register_type_owner(&def.name.node, &owner),
+            _ => {}
         }
     }
 
@@ -2246,6 +2901,7 @@ fn register_top_level_declarations(
                     &impl_block.type_name.node,
                     &impl_block.methods,
                     records,
+                    Some(sum_types),
                 );
                 if let Err(diag) = traits.add_impl_methods(method_types) {
                     traits.rollback_last_impl();

@@ -1866,7 +1866,7 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
             {
                 HirExprKind::Call {
                     func: Box::new(HirExpr {
-                        kind: HirExprKind::Var("show".to_string()),
+                        kind: HirExprKind::Var("Show.show".to_string()),
                         ty: Type::Dynamic,
                         span: func.span,
                     }),

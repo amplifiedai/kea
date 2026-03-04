@@ -41,6 +41,7 @@ doc
 
     [1, 2, 3].List.fold(0, |acc, x| acc + x)   -- => 6
 
+@derive(Eq)
 enum List a
   Nil
   Cons(a, List a)

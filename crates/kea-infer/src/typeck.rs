@@ -5640,12 +5640,12 @@ fn annotation_name_known(name: &str) -> bool {
     matches!(
         name,
         "rename" | "default" | "skip_if" | "tagged" | "deprecated" | "intrinsic" | "fip"
-            | "unsafe" | "unboxed"
+            | "unsafe" | "unboxed" | "derive"
     )
 }
 
 fn annotation_name_suggestion(name: &str) -> Option<&'static str> {
-    const KNOWN: [&str; 9] = [
+    const KNOWN: [&str; 10] = [
         "rename",
         "default",
         "skip_if",
@@ -5655,6 +5655,7 @@ fn annotation_name_suggestion(name: &str) -> Option<&'static str> {
         "fip",
         "unsafe",
         "unboxed",
+        "derive",
     ];
     let mut best: Option<(&str, usize)> = None;
     for candidate in KNOWN {
@@ -5691,8 +5692,23 @@ fn annotation_is_serialization(name: &str) -> bool {
     matches!(name, "rename" | "default" | "skip_if" | "tagged")
 }
 
-fn has_serialize_derive(derives: &[kea_ast::Spanned<String>]) -> bool {
-    derives.iter().any(|d| d.node == "Serialize")
+fn has_serialize_derive(annotations: &[kea_ast::Annotation]) -> bool {
+    annotations
+        .iter()
+        .filter(|ann| ann.name.node == "derive")
+        .flat_map(|ann| ann.args.iter())
+        .any(|arg| {
+            if arg.label.is_some() {
+                return false;
+            }
+            match &arg.value.node {
+                ExprKind::Var(name) => name == "Serialize",
+                ExprKind::Constructor { name, args } => {
+                    args.is_empty() && name.node == "Serialize"
+                }
+                _ => false,
+            }
+        })
 }
 
 fn is_string_literal_expr(expr: &Expr) -> bool {
@@ -6132,6 +6148,59 @@ fn validate_annotation_arguments(
                 );
             }
         }
+        "derive" => {
+            if !matches!(target, AnnotationTargetKind::Record | AnnotationTargetKind::TypeDef) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!("`@derive` is not valid on {}", target.label()),
+                    )
+                    .at(span_to_loc(ann.span)),
+                );
+            }
+            if ann.args.is_empty() {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        "`@derive` expects one or more trait names (e.g. `@derive(Eq, Show)`)",
+                    )
+                    .at(span_to_loc(ann.span)),
+                );
+            }
+            for arg in &ann.args {
+                if arg.label.is_some() {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            Category::TypeError,
+                            "`@derive` arguments must be positional trait names",
+                        )
+                        .at(span_to_loc(arg.value.span)),
+                    );
+                    continue;
+                }
+                match &arg.value.node {
+                    ExprKind::Var(name)
+                        if name
+                            .chars()
+                            .next()
+                            .is_some_and(|ch| ch.is_ascii_uppercase()) => {}
+                    ExprKind::Constructor { name, args }
+                        if args.is_empty()
+                            && name
+                                .node
+                                .chars()
+                                .next()
+                                .is_some_and(|ch| ch.is_ascii_uppercase()) => {}
+                    _ => diagnostics.push(
+                        Diagnostic::error(
+                            Category::TypeError,
+                            "`@derive` arguments must be UpperIdent trait names",
+                        )
+                        .at(span_to_loc(arg.value.span)),
+                    ),
+                }
+            }
+        }
         _ => {}
     }
 
@@ -6173,7 +6242,7 @@ pub fn validate_module_annotations(module: &kea_ast::Module) -> Vec<Diagnostic> 
                 }
             }
             kea_ast::DeclKind::RecordDef(rd) => {
-                let serializable = has_serialize_derive(&rd.derives);
+                let serializable = has_serialize_derive(&rd.annotations);
                 let is_unboxed = rd.annotations.iter().any(|ann| ann.name.node == "unboxed");
                 for ann in &rd.annotations {
                     diagnostics.extend(validate_annotation_arguments(
@@ -6195,7 +6264,7 @@ pub fn validate_module_annotations(module: &kea_ast::Module) -> Vec<Diagnostic> 
                                 Diagnostic::warning(
                                     Category::TypeError,
                                     format!(
-                                        "annotation `@{}` has no effect without `deriving Serialize`",
+                                        "annotation `@{}` has no effect without `@derive(Serialize)`",
                                         ann.name.node
                                     ),
                                 )
@@ -6222,7 +6291,7 @@ pub fn validate_module_annotations(module: &kea_ast::Module) -> Vec<Diagnostic> 
                 }
             }
             kea_ast::DeclKind::TypeDef(td) => {
-                let serializable = has_serialize_derive(&td.derives);
+                let serializable = has_serialize_derive(&td.annotations);
                 for ann in &td.annotations {
                     diagnostics.extend(validate_annotation_arguments(
                         ann,
@@ -6234,7 +6303,7 @@ pub fn validate_module_annotations(module: &kea_ast::Module) -> Vec<Diagnostic> 
                             Diagnostic::warning(
                                 Category::TypeError,
                                 format!(
-                                    "annotation `@{}` has no effect without `deriving Serialize`",
+                                    "annotation `@{}` has no effect without `@derive(Serialize)`",
                                     ann.name.node
                                 ),
                             )
@@ -6254,7 +6323,7 @@ pub fn validate_module_annotations(module: &kea_ast::Module) -> Vec<Diagnostic> 
                                 Diagnostic::warning(
                                     Category::TypeError,
                                     format!(
-                                        "annotation `@{}` has no effect without `deriving Serialize`",
+                                        "annotation `@{}` has no effect without `@derive(Serialize)`",
                                         ann.name.node
                                     ),
                                 )
@@ -6274,7 +6343,7 @@ pub fn validate_module_annotations(module: &kea_ast::Module) -> Vec<Diagnostic> 
                                     Diagnostic::warning(
                                         Category::TypeError,
                                         format!(
-                                            "annotation `@{}` has no effect without `deriving Serialize`",
+                                            "annotation `@{}` has no effect without `@derive(Serialize)`",
                                             ann.name.node
                                         ),
                                     )
@@ -11564,8 +11633,27 @@ fn infer_expr_bidir(
                         left_ty
                     }
                 }
-                // Comparison: both sides same type, result Bool.
-                BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Lte | BinOp::Gt | BinOp::Gte => {
+                // Equality: both sides same type, result Bool, and when `Eq`
+                // is available in scope add a trait obligation.
+                BinOp::Eq | BinOp::Neq => {
+                    constrain_type_eq(
+                        unifier,
+                        &left_ty,
+                        &right_ty,
+                        &prov(Reason::BinaryOp(op_name)),
+                    );
+                    if traits.lookup_trait("Eq").is_some() {
+                        constrain_trait_obligation(
+                            unifier,
+                            &left_ty,
+                            "Eq",
+                            &prov(Reason::BinaryOp(op_name)),
+                        );
+                    }
+                    Type::Bool
+                }
+                // Order comparison: both sides same type, result Bool.
+                BinOp::Lt | BinOp::Lte | BinOp::Gt | BinOp::Gte => {
                     constrain_type_eq(
                         unifier,
                         &left_ty,
@@ -15874,19 +15962,6 @@ pub fn build_actor_protocol(
     }
 }
 
-/// Resolve a type annotation with `Self` mapping to a concrete type.
-///
-/// Wraps [`resolve_annotation`] with an additional check: if the annotation
-/// is `Named("Self")`, returns the `self_type` instead of looking up "Self"
-/// in the record registry (which would fail).
-fn resolve_annotation_with_self(
-    ann: &TypeAnnotation,
-    records: &RecordRegistry,
-    self_type: &Type,
-) -> Option<Type> {
-    resolve_annotation_with_self_and_assoc(ann, records, None, self_type, &BTreeMap::new())
-}
-
 /// Resolve a type annotation with `Self` and associated types in scope.
 ///
 /// `Self` maps to `self_type`. `Self.Name` resolves via `assoc_types`.
@@ -16602,8 +16677,12 @@ pub fn concrete_method_types_from_decls(
     type_name: &str,
     methods: &[kea_ast::FnDecl],
     records: &RecordRegistry,
+    sum_types: Option<&SumTypeRegistry>,
 ) -> BTreeMap<String, Type> {
-    let self_type = records.to_type(type_name).unwrap_or(Type::Dynamic);
+    let self_type = records
+        .to_type(type_name)
+        .or_else(|| sum_types.and_then(|registry| registry.to_type(type_name)))
+        .unwrap_or(Type::Dynamic);
 
     let mut result = BTreeMap::new();
     for method in methods {
@@ -16615,7 +16694,13 @@ pub fn concrete_method_types_from_decls(
                 params.push(self_type.clone());
             } else if let Some(ann) = &param.annotation {
                 params.push(
-                    resolve_annotation_with_self(&ann.node, records, &self_type)
+                    resolve_annotation_with_self_and_assoc(
+                        &ann.node,
+                        records,
+                        sum_types,
+                        &self_type,
+                        &BTreeMap::new(),
+                    )
                         .unwrap_or(Type::Dynamic),
                 );
             } else {
@@ -16628,7 +16713,15 @@ pub fn concrete_method_types_from_decls(
         let ret = method
             .return_annotation
             .as_ref()
-            .and_then(|ann| resolve_annotation_with_self(&ann.node, records, &self_type))
+            .and_then(|ann| {
+                resolve_annotation_with_self_and_assoc(
+                    &ann.node,
+                    records,
+                    sum_types,
+                    &self_type,
+                    &BTreeMap::new(),
+                )
+            })
             .unwrap_or(Type::Unit);
 
         result.insert(

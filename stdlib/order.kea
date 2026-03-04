@@ -1,8 +1,12 @@
+use Eq
+use Show
+
 doc
   Order defines ordering values and helpers.
 
   Use `Ordering` with `case` for readable branching and avoid
   ad-hoc integer sentinel values.
+@derive(Eq, Show)
 enum Ordering
   Less
   Equal
