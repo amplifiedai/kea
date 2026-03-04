@@ -2260,6 +2260,20 @@ fn compile_accepts_derive_eq_on_sum_for_typechecking() {
 }
 
 #[test]
+fn compile_and_execute_derive_eq_semantics_on_sum_exit_code() {
+    let source_path = write_temp_source(
+        "use Eq\n\n@derive(Eq)\nenum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  let a = PairBox.Pair(1, 2)\n  let b = PairBox.Pair(1, 2)\n  let c = PairBox.Pair(2, 1)\n  if a == b and a != c\n    42\n  else\n    0\n",
+        "kea-cli-derive-eq-semantics-sum",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("run should compile and execute");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_equality_without_eq_impl() {
     let source_path = write_temp_source(
         "enum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  if PairBox.Pair(1, 2) == PairBox.Pair(1, 2)\n    0\n  else\n    1\n",

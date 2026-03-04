@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{BinOp, DeclKind, ExprKind as AstExprKind, TypeAnnotation, UnaryOp};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirHandleClause, HirModule, HirPattern};
-use kea_types::{EffectRow, FunctionType, Label, SumType, Type};
+use kea_types::{EffectRow, FunctionType, Label, RecordType, RowType, SumType, Type};
 
 /// Configuration for MIR lowering passes.
 #[derive(Debug, Clone, Default)]
@@ -5857,12 +5857,16 @@ impl FunctionLoweringCtx {
                 if expr.ty == Type::Bool && matches!(op, BinOp::And | BinOp::Or) {
                     return self.lower_short_circuit_binary(*op, left, right);
                 }
-                if matches!(op, BinOp::Eq | BinOp::Neq)
-                    && !is_primitive_equality_type(&left.ty)
-                    && is_concrete_nominal_equality_type(&left.ty)
-                    && let Some(value) = self.lower_eq_via_trait_call(*op, left, right)
-                {
-                    return Some(value);
+                if matches!(op, BinOp::Eq | BinOp::Neq) {
+                    let left_eq_ty = self.resolve_equality_operand_type(left);
+                    let right_eq_ty = self.resolve_equality_operand_type(right);
+                    if left_eq_ty == right_eq_ty
+                        && !is_primitive_equality_type(&left_eq_ty)
+                        && is_concrete_nominal_equality_type(&left_eq_ty)
+                        && let Some(value) = self.lower_eq_via_trait_call(*op, left, right)
+                    {
+                        return Some(value);
+                    }
                 }
                 let left_value = self.lower_expr(left)?;
                 let right_value = self.lower_expr(right)?;
@@ -7153,7 +7157,9 @@ impl FunctionLoweringCtx {
             if ft.params.len() != 2 {
                 continue;
             }
-            if ft.params[0] != *ty || ft.params[1] != *ty {
+            if !same_nominal_equality_type(ty, &ft.params[0])
+                || !same_nominal_equality_type(ty, &ft.params[1])
+            {
                 continue;
             }
             let score = if name == &format!("Eq.{type_name}.eq") {
@@ -7178,7 +7184,12 @@ impl FunctionLoweringCtx {
         left: &HirExpr,
         right: &HirExpr,
     ) -> Option<MirValueId> {
-        let callee_name = self.resolve_eq_trait_callee_for_type(&left.ty)?;
+        let left_ty = self.resolve_equality_operand_type(left);
+        let right_ty = self.resolve_equality_operand_type(right);
+        if left_ty != right_ty {
+            return None;
+        }
+        let callee_name = self.resolve_eq_trait_callee_for_type(&left_ty)?;
 
         let left_value = self.lower_expr(left)?;
         let right_value = self.lower_expr(right)?;
@@ -7186,7 +7197,7 @@ impl FunctionLoweringCtx {
         self.emit_inst(MirInst::Call {
             callee: MirCallee::Local(callee_name),
             args: vec![left_value, right_value],
-            arg_types: vec![left.ty.clone(), right.ty.clone()],
+            arg_types: vec![left_ty, right_ty],
             result: Some(eq_dest.clone()),
             ret_type: Type::Bool,
             callee_fail_result_abi: false,
@@ -7203,6 +7214,39 @@ impl FunctionLoweringCtx {
             operand: eq_dest,
         });
         Some(neq_dest)
+    }
+
+    fn resolve_equality_operand_type(&self, expr: &HirExpr) -> Type {
+        match &expr.kind {
+            HirExprKind::Var(name) => {
+                let fallback = self
+                    .var_types
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| expr.ty.clone());
+                if fallback != Type::Dynamic {
+                    return fallback;
+                }
+                if let Some(record_type) = self.var_record_types.get(name) {
+                    return Type::Record(RecordType {
+                        name: record_type.clone(),
+                        params: vec![],
+                        row: RowType::empty_closed(),
+                    });
+                }
+                if let Some(value_id) = self.vars.get(name)
+                    && let Some(sum_type) = self.sum_value_types.get(value_id)
+                {
+                    return Type::Sum(SumType {
+                        name: sum_type.clone(),
+                        type_args: vec![],
+                        variants: vec![],
+                    });
+                }
+                fallback
+            }
+            _ => expr.ty.clone(),
+        }
     }
 
     fn dispatch_effects_for_function_expr(&self, expr: &HirExpr) -> Vec<String> {
@@ -7921,6 +7965,30 @@ fn is_concrete_nominal_equality_type(ty: &Type) -> bool {
         }
         Type::Sum(sum) => !sum.type_args.iter().any(type_contains_inference_var),
         _ => false,
+    }
+}
+
+fn same_nominal_equality_type(query: &Type, candidate: &Type) -> bool {
+    match (query, candidate) {
+        (Type::Record(query_record), Type::Record(candidate_record)) => {
+            query_record.name == candidate_record.name
+                && query_record.params.len() == candidate_record.params.len()
+                && query_record
+                    .params
+                    .iter()
+                    .zip(candidate_record.params.iter())
+                    .all(|(lhs, rhs)| lhs == rhs || *lhs == Type::Dynamic || *rhs == Type::Dynamic)
+        }
+        (Type::Sum(query_sum), Type::Sum(candidate_sum)) => {
+            query_sum.name == candidate_sum.name
+                && query_sum.type_args.len() == candidate_sum.type_args.len()
+                && query_sum
+                    .type_args
+                    .iter()
+                    .zip(candidate_sum.type_args.iter())
+                    .all(|(lhs, rhs)| lhs == rhs || *lhs == Type::Dynamic || *rhs == Type::Dynamic)
+        }
+        _ => query == candidate,
     }
 }
 
