@@ -8414,6 +8414,24 @@ fn compile_rejects_actor_send_borrow_parameter_message_wrapper() {
 }
 
 #[test]
+fn compile_rejects_actor_send_borrow_parameter_message_wrapper_through_alias() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor ((Unique Int, Int)), borrow value: Unique Int) -> Unit\n  let message = (value, 0)\n  send(actor, message)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-actor-send-message-wrapper-alias-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("sending aliased borrowed unique in message wrapper should fail");
+    assert!(
+        err.contains("borrowed value") && err.contains("cannot be consumed"),
+        "expected borrow-consumption diagnostic for send message wrapper alias, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_actor_send_borrow_parameter_argument_through_alias() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  let forwarded = value\n  send(actor, :push, forwarded)\n\nfn main() -> Int\n  0\n",
@@ -8480,6 +8498,24 @@ fn compile_rejects_actor_call_borrow_parameter_message_wrapper() {
     assert!(
         err.contains("borrowed value `value` cannot be consumed"),
         "expected borrow-consumption diagnostic for call message wrapper, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_actor_call_borrow_parameter_message_wrapper_through_alias() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor ((Unique Int, Int)), borrow value: Unique Int) -> Unit\n  let message = (value, 0)\n  let _ = call(actor, message)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-actor-call-message-wrapper-alias-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("calling with aliased borrowed unique in message wrapper should fail");
+    assert!(
+        err.contains("borrowed value") && err.contains("cannot be consumed"),
+        "expected borrow-consumption diagnostic for call message wrapper alias, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
