@@ -269,6 +269,13 @@ pub struct TypeEnv {
     /// Short module name → full module path (e.g. "Math" → "Kea.Math").
     /// Populated during import resolution and session init.
     module_aliases: BTreeMap<String, String>,
+    /// Full module path → package scope key.
+    ///
+    /// Root package modules (local + stdlib) use the reserved root scope key.
+    /// Dependency modules use their dependency package name.
+    module_package_scopes: BTreeMap<String, String>,
+    /// Package scope key for the module currently being typechecked.
+    current_package_scope: String,
     /// Trait names currently in scope for unqualified method dispatch.
     in_scope_traits: BTreeSet<String>,
     /// Stack of enclosing stream element types for `stream { ... }` blocks.
@@ -290,6 +297,8 @@ pub struct TypeEnv {
 }
 
 impl TypeEnv {
+    const ROOT_PACKAGE_SCOPE: &'static str = "__kea_root__";
+
     fn apply_effect_row_to_scheme(scheme: &mut TypeScheme, row: &EffectRow) {
         if let Type::Function(ft) = &mut scheme.ty {
             ft.effects = row.clone();
@@ -359,6 +368,8 @@ impl TypeEnv {
             module_structs: BTreeMap::new(),
             inherent_methods_by_type: BTreeMap::new(),
             module_aliases: BTreeMap::new(),
+            module_package_scopes: BTreeMap::new(),
+            current_package_scope: Self::ROOT_PACKAGE_SCOPE.to_string(),
             in_scope_traits: BTreeSet::new(),
             stream_contexts: Vec::new(),
             actor_context_depth: 0,
@@ -518,6 +529,24 @@ impl TypeEnv {
             .insert(short.to_string(), full_path.to_string());
     }
 
+    fn package_scope_key(package_name: Option<&str>) -> String {
+        package_name
+            .filter(|name| !name.is_empty())
+            .unwrap_or(Self::ROOT_PACKAGE_SCOPE)
+            .to_string()
+    }
+
+    /// Record the package scope owning a module path.
+    pub fn register_module_package_scope(&mut self, module_path: &str, package_name: Option<&str>) {
+        self.module_package_scopes
+            .insert(module_path.to_string(), Self::package_scope_key(package_name));
+    }
+
+    /// Set package scope for the module currently being typechecked.
+    pub fn set_current_package_scope(&mut self, package_name: Option<&str>) {
+        self.current_package_scope = Self::package_scope_key(package_name);
+    }
+
     /// Register a module item visibility bit for later policy enforcement.
     pub fn register_module_item_visibility(&mut self, module_path: &str, name: &str, public: bool) {
         self.module_item_visibility
@@ -533,6 +562,28 @@ impl TypeEnv {
             .get(module_path)
             .and_then(|items| items.get(name))
             .copied()
+    }
+
+    fn crosses_package_boundary(&self, module_path: &str) -> bool {
+        self.module_package_scopes
+            .get(module_path)
+            .map(String::as_str)
+            .unwrap_or(Self::ROOT_PACKAGE_SCOPE)
+            != self.current_package_scope
+    }
+
+    fn module_item_accessible(&self, module_path: &str, name: &str) -> bool {
+        !(self.crosses_package_boundary(module_path)
+            && self.module_item_visibility(module_path, name) == Some(false))
+    }
+
+    /// Returns true when an item exists but is private across a package boundary.
+    pub fn module_item_inaccessible(&self, module_short: &str, name: &str) -> bool {
+        let Some(module_path) = self.resolve_module_path(module_short) else {
+            return false;
+        };
+        self.crosses_package_boundary(&module_path)
+            && self.module_item_visibility(&module_path, name) == Some(false)
     }
 
     /// Register implicit module struct metadata.
@@ -630,11 +681,17 @@ impl TypeEnv {
         // Check module-scoped type schemes first (primary path).
         if let Some(module) = self.module_type_schemes.get(&module_path) {
             if let Some((scheme, _)) = module.get(field) {
+                if !self.module_item_accessible(&module_path, field) {
+                    return None;
+                }
                 return Some(scheme);
             }
             // Try prefixed form (e.g. "len" → "list_len").
             let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
             if let Some((scheme, _)) = module.get(&prefixed) {
+                if !self.module_item_accessible(&module_path, &prefixed) {
+                    return None;
+                }
                 return Some(scheme);
             }
         }
@@ -647,10 +704,16 @@ impl TypeEnv {
 
         if let Some(module) = self.module_type_schemes.get(&module_path) {
             if let Some((_, effects)) = module.get(field) {
+                if !self.module_item_accessible(&module_path, field) {
+                    return None;
+                }
                 return Some(*effects);
             }
             let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
             if let Some((_, effects)) = module.get(&prefixed) {
+                if !self.module_item_accessible(&module_path, &prefixed) {
+                    return None;
+                }
                 return Some(*effects);
             }
         }
@@ -667,11 +730,17 @@ impl TypeEnv {
 
         if let Some(module) = self.module_type_schemes.get(&module_path) {
             if let Some((scheme, effects)) = module.get(field) {
+                if !self.module_item_accessible(&module_path, field) {
+                    return None;
+                }
                 return Self::effect_row_from_scheme(scheme)
                     .or_else(|| Some(effect_row_from_effects(*effects)));
             }
             let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
             if let Some((scheme, effects)) = module.get(&prefixed) {
+                if !self.module_item_accessible(&module_path, &prefixed) {
+                    return None;
+                }
                 return Self::effect_row_from_scheme(scheme)
                     .or_else(|| Some(effect_row_from_effects(*effects)));
             }
@@ -690,6 +759,9 @@ impl TypeEnv {
         // Try module-qualified key first to avoid collision with bare-name globals.
         let qualified_key = format!("{module_path}.{field}");
         if candidates.iter().any(|name| name == field) {
+            if !self.module_item_accessible(&module_path, field) {
+                return None;
+            }
             if let Some(sig) = self.function_signature(&qualified_key) {
                 return Some(sig);
             }
@@ -701,6 +773,9 @@ impl TypeEnv {
         }
         let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
         if candidates.iter().any(|name| name == &prefixed) {
+            if !self.module_item_accessible(&module_path, &prefixed) {
+                return None;
+            }
             let prefixed_qualified = format!("{module_path}.{prefixed}");
             if let Some(sig) = self.function_signature(&prefixed_qualified) {
                 return Some(sig);
@@ -11850,6 +11925,17 @@ fn infer_expr_bidir(
                 && env.lookup(module_name).is_none()
                 && looks_like_module_name(module_name)
             {
+                if env.module_item_inaccessible(module_name, &field.node) {
+                    unifier.push_error(
+                        Diagnostic::error(
+                            Category::TypeError,
+                            format!("`{module_name}.{}` is not public in its package", field.node),
+                        )
+                        .at(span_to_loc(field.span)),
+                    );
+                    return unifier.fresh_type();
+                }
+
                 if let Some(scheme) = env.resolve_qualified(module_name, &field.node) {
                     return instantiate_with_span(scheme, unifier, field.span);
                 }
@@ -15015,6 +15101,7 @@ fn resolve_module_qualified_variant(
             if env
                 .module_item_visibility(&module_path, type_name)
                 .is_some()
+                && env.module_item_accessible(&module_path, type_name)
                 && info
                     .variants
                     .iter()
