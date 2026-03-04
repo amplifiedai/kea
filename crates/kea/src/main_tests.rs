@@ -8592,6 +8592,24 @@ fn compile_rejects_control_send_borrow_parameter_signal() {
 }
 
 #[test]
+fn compile_rejects_control_send_borrow_parameter_tuple_wrapper_signal() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  control_send(actor, (value, 0))\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-control-send-tuple-signal-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("control_send with borrowed unique tuple signal should fail");
+    assert!(
+        err.contains("borrowed value `value` cannot be consumed"),
+        "expected borrow-consumption diagnostic for control_send tuple signal, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_control_send_borrow_parameter_signal_through_alias() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  let forwarded = value\n  control_send(actor, forwarded)\n\nfn main() -> Int\n  0\n",
@@ -8604,6 +8622,24 @@ fn compile_rejects_control_send_borrow_parameter_signal_through_alias() {
     assert!(
         err.contains("borrowed value") && err.contains("cannot be consumed"),
         "expected borrow-consumption diagnostic for control_send alias signal, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_control_send_borrow_parameter_tuple_wrapper_signal_through_alias() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  let signal = (value, 0)\n  control_send(actor, signal)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-control-send-tuple-signal-alias-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("control_send with aliased borrowed unique tuple signal should fail");
+    assert!(
+        err.contains("borrowed value") && err.contains("cannot be consumed"),
+        "expected borrow-consumption diagnostic for control_send tuple signal alias, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
