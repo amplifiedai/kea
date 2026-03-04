@@ -8209,6 +8209,24 @@ fn compile_rejects_state_effect_payload_with_unique_type() {
 }
 
 #[test]
+fn compile_rejects_state_effect_payload_with_nested_unique_type() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\ntype Wrapped = { value: Unique(Int), tag: Int }\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn bad() -[State Wrapped]> Int\n  0\n\nfn main() -> Int\n  0\n",
+        "kea-cli-state-nested-unique-effect-payload",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("State payload containing nested Unique should fail");
+    assert!(
+        err.contains("State effect payload cannot contain `Unique`"),
+        "expected State/Unique payload diagnostic, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_and_execute_unique_roundtrip_through_tail_resumptive_handler_exit_code() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect Echo A\n  fn echo(value: A) -> A\n\nfn roundtrip(value: UniqueInt) -[Echo UniqueInt]> Int\n  let out = Echo.echo(value)\n  case out\n    Unique(v) -> v\n\nfn main() -> Int\n  handle roundtrip(Unique(7))\n    Echo.echo(v) -> resume v\n",
