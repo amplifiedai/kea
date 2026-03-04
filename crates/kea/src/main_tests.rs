@@ -8328,6 +8328,24 @@ fn compile_rejects_spawning_borrow_parameter() {
 }
 
 #[test]
+fn compile_rejects_spawning_borrow_parameter_through_alias() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(borrow value: Unique Int) -[Spawn]> Unit\n  let forwarded = value\n  let task = spawn forwarded\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-spawn-alias-consume-rejected",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("spawning an aliased borrowed unique parameter should fail");
+    assert!(
+        err.contains("borrowed value") && err.contains("cannot be consumed"),
+        "expected borrow-consumption diagnostic through alias, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_passing_borrow_parameter_into_effect_operation() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect Echo A\n  fn echo(value: A) -> A\n\nfn bad(borrow value: UniqueInt) -[Echo UniqueInt]> Int\n  let out = Echo.echo(value)\n  case out\n    Unique(v) -> v\n\nfn main() -> Int\n  0\n",
