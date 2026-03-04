@@ -17,3 +17,6 @@ kea-mir.workspace = true
 kea-syntax.workspace = true
 kea-diag.workspace = true
 kea-types.workspace = true
+serde.workspace = true
+toml.workspace = true
+sha2.workspace = true

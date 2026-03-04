@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::package::{dependency_namespaces, resolve_graph_for_entry, resolve_graph_for_test_entry};
+
 use kea_ast::{
     Annotation, Argument, DeclKind, Expr, ExprDecl, ExprKind, FileId, FnDecl, ImportItems,
     Module, PatternKind, RecordDef, Span, Spanned, TestDecl, TypeAnnotation, TypeDef, VariantField,
@@ -919,7 +921,7 @@ pub fn run_file(input: &Path) -> Result<RunResult, String> {
 }
 
 pub fn run_test_file(input: &Path) -> Result<TestRunResult, String> {
-    let loaded_modules = collect_project_modules(input)?;
+    let loaded_modules = collect_project_modules_for_tests(input)?;
     let entry_module_path = module_path_from_entry(input);
     let Some(entry_module) = loaded_modules
         .iter()
@@ -1139,16 +1141,43 @@ pub fn process_module_in_env(
 struct LoadedModule {
     module_path: String,
     module: Module,
+    origin: ModuleOrigin,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ModuleOrigin {
+    Local,
+    Stdlib,
+    Dependency { package_name: String },
+}
+
+#[derive(Debug, Clone)]
+struct DependencyRoot {
+    package_name: String,
+    src_root: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedModulePath {
+    file_path: PathBuf,
+    origin: ModuleOrigin,
 }
 
 #[derive(Debug)]
 struct ModuleResolver {
     stdlib_roots: Vec<PathBuf>,
     source_roots: Vec<PathBuf>,
+    package_roots: BTreeMap<String, DependencyRoot>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DependencyResolutionProfile {
+    Build,
+    Test,
 }
 
 impl ModuleResolver {
-    fn for_entry(entry: &Path) -> Self {
+    fn for_entry(entry: &Path, profile: DependencyResolutionProfile) -> Result<Self, String> {
         let mut stdlib_roots = Vec::new();
         if let Ok(path) = std::env::var("KEA_STDLIB_PATH") {
             stdlib_roots.push(PathBuf::from(path));
@@ -1181,57 +1210,132 @@ impl ModuleResolver {
             source_roots.push(cwd);
         }
 
-        fn dedup_existing(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-            let mut seen = BTreeSet::new();
-            let mut out = Vec::new();
-            for path in paths {
-                if !path.is_dir() {
-                    continue;
-                }
-                let canonical = fs::canonicalize(&path).unwrap_or(path);
-                if seen.insert(canonical.clone()) {
-                    out.push(canonical);
+        let stdlib_roots = dedup_existing_paths(stdlib_roots);
+        let source_roots = dedup_existing_paths(source_roots);
+
+        let mut package_roots = BTreeMap::new();
+        let graph = match profile {
+            DependencyResolutionProfile::Build => resolve_graph_for_entry(entry)?,
+            DependencyResolutionProfile::Test => resolve_graph_for_test_entry(entry)?,
+        };
+        if let Some(graph) = graph {
+            let dep_namespaces = dependency_namespaces(&graph);
+            for namespace in dep_namespaces {
+                if local_namespace_exists(&namespace, &source_roots) {
+                    return Err(format!(
+                        "dependency namespace collision: `{namespace}` exists as both a dependency and a local module; rename one to resolve ambiguity"
+                    ));
                 }
             }
-            out
+            for (namespace, root) in graph.package_roots {
+                package_roots.insert(
+                    namespace,
+                    DependencyRoot {
+                        package_name: root.package_name,
+                        src_root: root.src_root,
+                    },
+                );
+            }
         }
 
-        Self {
-            stdlib_roots: dedup_existing(stdlib_roots),
-            source_roots: dedup_existing(source_roots),
-        }
+        Ok(Self {
+            stdlib_roots,
+            source_roots,
+            package_roots,
+        })
     }
 
-    fn resolve(&self, module_path: &str) -> Option<PathBuf> {
-        let rel = module_path
+    fn resolve_with_origin(&self, module_path: &str) -> Option<ResolvedModulePath> {
+        let segments = module_path
             .split('.')
             .filter(|segment| !segment.is_empty())
-            .map(|segment| segment.to_ascii_lowercase())
             .collect::<Vec<_>>();
-        if rel.is_empty() {
+        if segments.is_empty() {
             return None;
         }
 
-        let mut rel_path = PathBuf::new();
-        for segment in rel {
-            rel_path.push(segment);
+        if let Some(dep_root) = self.package_roots.get(segments[0]) {
+            let dep_rel = if segments.len() == 1 {
+                vec![package_root_module_stem(&dep_root.package_name)]
+            } else {
+                segments[1..]
+                    .iter()
+                    .map(|segment| segment.to_ascii_lowercase())
+                    .collect::<Vec<_>>()
+            };
+            let mut dep_rel_path = PathBuf::new();
+            for part in dep_rel {
+                dep_rel_path.push(part);
+            }
+            dep_rel_path.set_extension("kea");
+            let candidate = dep_root.src_root.join(dep_rel_path);
+            if candidate.is_file() {
+                return Some(ResolvedModulePath {
+                    file_path: candidate,
+                    origin: ModuleOrigin::Dependency {
+                        package_name: dep_root.package_name.clone(),
+                    },
+                });
+            }
         }
-        rel_path.set_extension("kea");
+
+        let rel_path = module_rel_path(segments.iter().copied());
 
         for root in &self.source_roots {
             let candidate = root.join(&rel_path);
             if candidate.is_file() {
-                return Some(candidate);
+                return Some(ResolvedModulePath {
+                    file_path: candidate,
+                    origin: ModuleOrigin::Local,
+                });
             }
         }
         for root in &self.stdlib_roots {
             let candidate = root.join(&rel_path);
             if candidate.is_file() {
-                return Some(candidate);
+                return Some(ResolvedModulePath {
+                    file_path: candidate,
+                    origin: ModuleOrigin::Stdlib,
+                });
             }
         }
         None
     }
+}
+
+fn dedup_existing_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for path in paths {
+        if !path.is_dir() {
+            continue;
+        }
+        let canonical = fs::canonicalize(&path).unwrap_or(path);
+        if seen.insert(canonical.clone()) {
+            out.push(canonical);
+        }
+    }
+    out
+}
+
+fn module_rel_path<'a>(segments: impl Iterator<Item = &'a str>) -> PathBuf {
+    let mut rel_path = PathBuf::new();
+    for segment in segments {
+        rel_path.push(segment.to_ascii_lowercase());
+    }
+    rel_path.set_extension("kea");
+    rel_path
+}
+
+fn package_root_module_stem(package_name: &str) -> String {
+    package_name.replace('-', "_").to_ascii_lowercase()
+}
+
+fn local_namespace_exists(namespace: &str, source_roots: &[PathBuf]) -> bool {
+    let stem = namespace.to_ascii_lowercase();
+    source_roots.iter().any(|root| {
+        root.join(format!("{stem}.kea")).is_file() || root.join(&stem).is_dir()
+    })
 }
 
 fn parse_module_file(path: &Path, file_id: FileId) -> Result<Module, String> {
@@ -2051,6 +2155,17 @@ fn build_test_main_decl(test_fn_name: &str, file_id: FileId) -> Result<kea_ast::
 }
 
 fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
+    collect_project_modules_with_profile(entry, DependencyResolutionProfile::Build)
+}
+
+fn collect_project_modules_for_tests(entry: &Path) -> Result<Vec<LoadedModule>, String> {
+    collect_project_modules_with_profile(entry, DependencyResolutionProfile::Test)
+}
+
+fn collect_project_modules_with_profile(
+    entry: &Path,
+    profile: DependencyResolutionProfile,
+) -> Result<Vec<LoadedModule>, String> {
     struct VisitState {
         next_file_id: u32,
         visiting: Vec<String>,
@@ -2064,6 +2179,7 @@ fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
             &mut self,
             module_path: &str,
             file_path: &Path,
+            origin: ModuleOrigin,
             resolver: &ModuleResolver,
         ) -> Result<(), String> {
             if let Some(idx) = self.visiting.iter().position(|name| name == module_path) {
@@ -2089,12 +2205,17 @@ fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
                     continue;
                 };
                 let dep_module = import.module.node.clone();
-                let dep_path = resolver.resolve(&dep_module).ok_or_else(|| {
+                let resolved = resolver.resolve_with_origin(&dep_module).ok_or_else(|| {
                     format!(
                         "module `{dep_module}` not found while resolving imports for `{module_path}`"
                     )
                 })?;
-                self.visit(&dep_module, &dep_path, resolver)?;
+                self.visit(
+                    &dep_module,
+                    &resolved.file_path,
+                    resolved.origin,
+                    resolver,
+                )?;
             }
             self.visiting.pop();
 
@@ -2105,6 +2226,7 @@ fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
                 LoadedModule {
                     module_path: module_path.to_string(),
                     module,
+                    origin,
                 },
             );
             Ok(())
@@ -2113,7 +2235,7 @@ fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
 
     let entry_path = fs::canonicalize(entry)
         .map_err(|err| format!("failed to read `{}`: {err}", entry.display()))?;
-    let resolver = ModuleResolver::for_entry(&entry_path);
+    let resolver = ModuleResolver::for_entry(&entry_path, profile)?;
     let entry_module_path = module_path_from_entry(&entry_path);
     let mut state = VisitState {
         next_file_id: 0,
@@ -2124,12 +2246,17 @@ fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
     };
 
     for prelude in configured_prelude_modules() {
-        if let Some(prelude_path) = resolver.resolve(&prelude) {
-            state.visit(&prelude, &prelude_path, &resolver)?;
+        if let Some(resolved) = resolver.resolve_with_origin(&prelude) {
+            state.visit(&prelude, &resolved.file_path, resolved.origin, &resolver)?;
         }
     }
 
-    state.visit(&entry_module_path, &entry_path, &resolver)?;
+    state.visit(
+        &entry_module_path,
+        &entry_path,
+        ModuleOrigin::Local,
+        &resolver,
+    )?;
 
     Ok(state
         .order
@@ -2236,6 +2363,13 @@ fn typecheck_loaded_modules(
     let mut typed_modules = Vec::new();
     let mut all_expr_types = std::collections::BTreeMap::new();
     let mut qualified_borrow_param_map = BTreeMap::new();
+    let module_origins = loaded_modules
+        .iter()
+        .map(|loaded| (loaded.module_path.clone(), loaded.origin.clone()))
+        .collect::<BTreeMap<_, _>>();
+    for (module_path, origin) in &module_origins {
+        env.register_module_package_scope(module_path, package_scope_for_origin(origin));
+    }
     let unsafe_registry = collect_unsafe_function_registry(loaded_modules);
     for loaded in loaded_modules {
         let mut prepass_diags = Vec::new();
@@ -2250,6 +2384,7 @@ fn typecheck_loaded_modules(
     }
 
     for loaded in loaded_modules {
+        env.set_current_package_scope(package_scope_for_origin(&loaded.origin));
         let is_entry_module = loaded.module_path == entry_module_path;
         let is_prelude_module = prelude_modules.contains(&loaded.module_path);
         let alias_snapshot = (!is_entry_module).then(|| env.snapshot_module_aliases());
@@ -2288,8 +2423,14 @@ fn typecheck_loaded_modules(
             Some(&loaded.module_path),
         )?;
 
-        let imported_symbols =
-            apply_module_imports(&expanded, &mut env, &traits, &mut diagnostics)?;
+        let imported_symbols = apply_module_imports(
+            &expanded,
+            &loaded.origin,
+            &module_origins,
+            &mut env,
+            &traits,
+            &mut diagnostics,
+        )?;
 
         // String interpolation desugars to `show(...)` calls in the parser.
         // Re-export hardcoded prelude symbols before typechecking module bodies
@@ -2366,6 +2507,7 @@ fn typecheck_loaded_modules(
     }
 
     apply_hardcoded_prelude_reexports(&mut env, &traits);
+    env.set_current_package_scope(None);
 
     let module = merge_modules_for_codegen(&typed_modules);
     let hir = lower_module(&module, &env, &all_expr_types);
@@ -2416,10 +2558,26 @@ fn bind_imported_item(
     module_path: &str,
     item_name: &str,
     span: Span,
+    visibility: &ImportVisibility<'_>,
     env: &mut TypeEnv,
     diagnostics: &mut Vec<Diagnostic>,
     imported_symbols: &mut Vec<String>,
 ) {
+    if env.module_item_inaccessible(module_path, item_name) {
+        diagnostics.push(
+            Diagnostic::error(
+                Category::TypeError,
+                format!("`{module_path}.{item_name}` is not public in its package"),
+            )
+            .at(SourceLocation {
+                file_id: span.file.0,
+                start: span.start,
+                end: span.end,
+            }),
+        );
+        return;
+    }
+
     let Some(scheme) = env.resolve_qualified(module_path, item_name).cloned() else {
         let available = env
             .module_function_names(module_path)
@@ -2440,6 +2598,24 @@ fn bind_imported_item(
         diagnostics.push(diag);
         return;
     };
+
+    if let Some(target_origin) = visibility.module_origins.get(module_path)
+        && crosses_package_boundary(visibility.current_origin, target_origin)
+        && env.module_item_visibility(module_path, item_name) == Some(false)
+    {
+        diagnostics.push(
+            Diagnostic::error(
+                Category::TypeError,
+                format!("`{module_path}.{item_name}` is not public in its package"),
+            )
+            .at(SourceLocation {
+                file_id: span.file.0,
+                start: span.start,
+                end: span.end,
+            }),
+        );
+        return;
+    }
 
     env.bind(item_name.to_string(), prune_type_scheme_quantifiers(scheme));
     imported_symbols.push(item_name.to_string());
@@ -2540,10 +2716,16 @@ fn extend_safe_higher_order_forwarders_with_import_aliases(
 
 fn apply_module_imports(
     module: &Module,
+    current_origin: &ModuleOrigin,
+    module_origins: &BTreeMap<String, ModuleOrigin>,
     env: &mut TypeEnv,
     traits: &TraitRegistry,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<Vec<String>, String> {
+    let visibility = ImportVisibility {
+        current_origin,
+        module_origins,
+    };
     let mut imported_symbols = Vec::new();
 
     for decl in &module.declarations {
@@ -2576,6 +2758,7 @@ fn apply_module_imports(
                                 &module_path,
                                 &method.name,
                                 import.module.span,
+                                &visibility,
                                 env,
                                 diagnostics,
                                 &mut imported_symbols,
@@ -2594,6 +2777,23 @@ fn apply_module_imports(
         for item in items {
             let item_name = item.node.clone();
             if traits.trait_owner(&item_name) == Some(module_owner.as_str()) {
+                if let Some(target_origin) = visibility.module_origins.get(&module_path)
+                    && crosses_package_boundary(visibility.current_origin, target_origin)
+                    && env.module_item_visibility(&module_path, &item_name) == Some(false)
+                {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            Category::TypeError,
+                            format!("`{module_path}.{item_name}` is not public in its package"),
+                        )
+                        .at(SourceLocation {
+                            file_id: item.span.file.0,
+                            start: item.span.start,
+                            end: item.span.end,
+                        }),
+                    );
+                    continue;
+                }
                 env.mark_trait_in_scope(&item_name);
                 imported_symbols.push(item_name);
                 continue;
@@ -2602,6 +2802,7 @@ fn apply_module_imports(
                 &module_path,
                 &item_name,
                 item.span,
+                &visibility,
                 env,
                 diagnostics,
                 &mut imported_symbols,
@@ -2614,6 +2815,37 @@ fn apply_module_imports(
     }
 
     Ok(imported_symbols)
+}
+
+struct ImportVisibility<'a> {
+    current_origin: &'a ModuleOrigin,
+    module_origins: &'a BTreeMap<String, ModuleOrigin>,
+}
+
+fn package_scope_for_origin(origin: &ModuleOrigin) -> Option<&str> {
+    match origin {
+        ModuleOrigin::Dependency { package_name } => Some(package_name.as_str()),
+        ModuleOrigin::Local | ModuleOrigin::Stdlib => None,
+    }
+}
+
+fn crosses_package_boundary(current: &ModuleOrigin, target: &ModuleOrigin) -> bool {
+    match (current, target) {
+        (
+            ModuleOrigin::Dependency {
+                package_name: current_package,
+            },
+            ModuleOrigin::Dependency {
+                package_name: target_package,
+            },
+        ) => current_package != target_package,
+        (ModuleOrigin::Dependency { .. }, ModuleOrigin::Local | ModuleOrigin::Stdlib) => false,
+        (ModuleOrigin::Local | ModuleOrigin::Stdlib, ModuleOrigin::Dependency { .. }) => true,
+        (ModuleOrigin::Local, ModuleOrigin::Local)
+        | (ModuleOrigin::Stdlib, ModuleOrigin::Stdlib)
+        | (ModuleOrigin::Local, ModuleOrigin::Stdlib)
+        | (ModuleOrigin::Stdlib, ModuleOrigin::Local) => false,
+    }
 }
 
 fn expand_impl_methods_for_codegen(module: &Module) -> Module {

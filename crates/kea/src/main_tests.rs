@@ -15,7 +15,7 @@ fn parse_build_with_output() {
     assert_eq!(
         command,
         Command::Build {
-            input: PathBuf::from("main.kea"),
+            input: Some(PathBuf::from("main.kea")),
             output: Some(PathBuf::from("out/main.o")),
         }
     );
@@ -32,7 +32,233 @@ fn parse_test_command() {
     assert_eq!(
         command,
         Command::Test {
-            input: PathBuf::from("suite.kea"),
+            input: Some(PathBuf::from("suite.kea")),
+        }
+    );
+}
+
+#[test]
+fn discover_package_test_files_finds_tests_and_src_test_suffixes() {
+    let project_dir = temp_project_dir("kea-cli-package-test-discovery");
+    let src_dir = project_dir.join("src");
+    let nested_src = src_dir.join("unit");
+    let tests_dir = project_dir.join("tests");
+    std::fs::create_dir_all(&nested_src).expect("nested source dir should be created");
+    std::fs::create_dir_all(&tests_dir).expect("tests dir should be created");
+
+    std::fs::write(src_dir.join("main.kea"), "fn main() -> Int\n  0\n")
+        .expect("main file write should succeed");
+    std::fs::write(src_dir.join("alpha_test.kea"), "test \"alpha\"\n  ()\n")
+        .expect("alpha test file write should succeed");
+    std::fs::write(nested_src.join("beta_test.kea"), "test \"beta\"\n  ()\n")
+        .expect("beta test file write should succeed");
+    std::fs::write(src_dir.join("helper.kea"), "fn helper() -> Unit\n  ()\n")
+        .expect("helper file write should succeed");
+    std::fs::write(tests_dir.join("integration.kea"), "test \"integration\"\n  ()\n")
+        .expect("integration test file write should succeed");
+    std::fs::write(tests_dir.join("README.md"), "ignored").expect("README write should succeed");
+
+    let discovered = discover_package_test_files(&project_dir).expect("test discovery should succeed");
+    let mut relative = discovered
+        .iter()
+        .map(|path| {
+            path.strip_prefix(&project_dir)
+                .expect("path should be inside project")
+                .to_path_buf()
+        })
+        .collect::<Vec<_>>();
+    relative.sort();
+    assert_eq!(
+        relative,
+        vec![
+            PathBuf::from("src/alpha_test.kea"),
+            PathBuf::from("src/unit/beta_test.kea"),
+            PathBuf::from("tests/integration.kea"),
+        ]
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn resolve_test_targets_preserves_explicit_file_selection() {
+    let explicit = PathBuf::from("tests/suite.kea");
+    let targets =
+        resolve_test_targets(Some(explicit.clone())).expect("explicit test input resolution should succeed");
+    assert_eq!(
+        targets,
+        TestTargets {
+            files: vec![explicit],
+            package_dir: None,
+        }
+    );
+}
+
+#[test]
+fn resolve_test_targets_without_input_discovers_package_files_from_manifest_root() {
+    let project_dir = temp_project_dir("kea-cli-package-test-targets-from-manifest");
+    let src_dir = project_dir.join("src");
+    let tests_dir = project_dir.join("tests");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    std::fs::create_dir_all(&tests_dir).expect("tests dir should be created");
+
+    std::fs::write(
+        project_dir.join("kea.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nkea = \"0.1\"\n",
+    )
+    .expect("manifest write should succeed");
+    std::fs::write(src_dir.join("main_test.kea"), "test \"unit\"\n  ()\n")
+        .expect("src test write should succeed");
+    std::fs::write(tests_dir.join("integration.kea"), "test \"integration\"\n  ()\n")
+        .expect("integration test write should succeed");
+
+    let targets = resolve_test_targets_from_cwd(None, &src_dir)
+        .expect("manifest-root test target resolution should succeed");
+    let canonical_project_dir =
+        std::fs::canonicalize(&project_dir).expect("project path should canonicalize");
+    assert_eq!(
+        targets.package_dir.as_deref(),
+        Some(canonical_project_dir.as_path())
+    );
+    let mut relative = targets
+        .files
+        .iter()
+        .map(|path| {
+            path.strip_prefix(&canonical_project_dir)
+                .expect("target path should be inside project")
+                .to_path_buf()
+        })
+        .collect::<Vec<_>>();
+    relative.sort();
+    assert_eq!(
+        relative,
+        vec![
+            PathBuf::from("src/main_test.kea"),
+            PathBuf::from("tests/integration.kea"),
+        ]
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn run_test_file_resolves_dev_dependencies_for_package_tests() {
+    let project_dir = temp_project_dir("kea-cli-package-dev-deps-for-test");
+    let src_dir = project_dir.join("src");
+    let deps_dir = project_dir.join("deps").join("quickcheck");
+    let deps_src = deps_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    std::fs::create_dir_all(&deps_src).expect("dependency source dir should be created");
+
+    std::fs::write(
+        project_dir.join("kea.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nkea = \"0.1\"\n\n[dev-dependencies]\nquickcheck = { path = \"deps/quickcheck\" }\n",
+    )
+    .expect("root manifest write should succeed");
+    std::fs::write(
+        deps_dir.join("kea.toml"),
+        "[package]\nname = \"quickcheck\"\nversion = \"0.1.0\"\nkea = \"0.1\"\n",
+    )
+    .expect("dependency manifest write should succeed");
+    std::fs::write(deps_src.join("quickcheck.kea"), "pub fn answer() -> Int\n  42\n")
+        .expect("dependency module write should succeed");
+    let test_path = src_dir.join("main_test.kea");
+    std::fs::write(
+        &test_path,
+        "use Test\nuse Quickcheck\n\ntest \"dev dependency available in tests\"\n  Test.assert(Quickcheck.answer() == 42)\n",
+    )
+    .expect("test module write should succeed");
+
+    let run = run_test_file(&test_path).expect("test run should succeed");
+    assert_eq!(run.cases.len(), 1);
+    assert!(run.cases[0].passed, "expected test to pass with dev deps");
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn run_file_excludes_dev_dependencies_outside_test_mode() {
+    let project_dir = temp_project_dir("kea-cli-package-dev-deps-build-scope");
+    let src_dir = project_dir.join("src");
+    let deps_dir = project_dir.join("deps").join("quickcheck");
+    let deps_src = deps_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    std::fs::create_dir_all(&deps_src).expect("dependency source dir should be created");
+
+    std::fs::write(
+        project_dir.join("kea.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nkea = \"0.1\"\n\n[dev-dependencies]\nquickcheck = { path = \"deps/quickcheck\" }\n",
+    )
+    .expect("root manifest write should succeed");
+    std::fs::write(
+        deps_dir.join("kea.toml"),
+        "[package]\nname = \"quickcheck\"\nversion = \"0.1.0\"\nkea = \"0.1\"\n",
+    )
+    .expect("dependency manifest write should succeed");
+    std::fs::write(deps_src.join("quickcheck.kea"), "pub fn answer() -> Int\n  42\n")
+        .expect("dependency module write should succeed");
+    let app_path = src_dir.join("main.kea");
+    std::fs::write(
+        &app_path,
+        "use Quickcheck\n\nfn main() -> Int\n  Quickcheck.answer()\n",
+    )
+    .expect("app module write should succeed");
+
+    let err = run_file(&app_path).expect_err("dev dependencies should not resolve in run mode");
+    assert!(
+        err.contains("module `Quickcheck` not found"),
+        "expected unresolved module error, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn parse_run_without_input_uses_manifest_entry() {
+    let args = vec!["kea".to_string(), "run".to_string()];
+    let command = parse_cli(&args).expect("cli parse should succeed");
+    assert_eq!(command, Command::Run { input: None });
+}
+
+#[test]
+fn parse_pkg_add_path_dependency() {
+    let args = vec![
+        "kea".to_string(),
+        "pkg".to_string(),
+        "add".to_string(),
+        "utils".to_string(),
+        "--path".to_string(),
+        "../utils".to_string(),
+    ];
+    let command = parse_cli(&args).expect("pkg add parse should succeed");
+    assert_eq!(
+        command,
+        Command::Pkg {
+            command: PackageCommand::Add {
+                name: "utils".to_string(),
+                spec: DepSpec::Path {
+                    path: PathBuf::from("../utils"),
+                },
+            },
+        }
+    );
+}
+
+#[test]
+fn parse_pkg_update_single_dependency() {
+    let args = vec![
+        "kea".to_string(),
+        "pkg".to_string(),
+        "update".to_string(),
+        "json".to_string(),
+    ];
+    let command = parse_cli(&args).expect("pkg update parse should succeed");
+    assert_eq!(
+        command,
+        Command::Pkg {
+            command: PackageCommand::Update {
+                dependency: Some("json".to_string()),
+            },
         }
     );
 }
@@ -1438,6 +1664,118 @@ fn compile_project_tracks_module_item_visibility_metadata() {
     assert!(
         inherent_methods.iter().any(|name| name == "hidden"),
         "expected Math.hidden to be registered as an inherent module method",
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn compile_project_rejects_private_import_from_dependency_package() {
+    let project_dir = temp_project_dir("kea-cli-package-private-import");
+    let src_dir = project_dir.join("src");
+    let dep_dir = project_dir.join("deps").join("json");
+    let dep_src = dep_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    std::fs::create_dir_all(&dep_src).expect("dependency source dir should be created");
+
+    std::fs::write(
+        project_dir.join("kea.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nkea = \"0.1\"\n\n[dependencies]\njson = { path = \"deps/json\" }\n",
+    )
+    .expect("root manifest write should succeed");
+    std::fs::write(
+        dep_dir.join("kea.toml"),
+        "[package]\nname = \"json\"\nversion = \"0.1.0\"\nkea = \"0.1\"\n",
+    )
+    .expect("dep manifest write should succeed");
+    std::fs::write(
+        dep_src.join("json.kea"),
+        "pub fn encode(x: Int) -> Int\n  x\n\nfn hidden(x: Int) -> Int\n  x + 1\n",
+    )
+    .expect("dep module write should succeed");
+    let app_path = src_dir.join("main.kea");
+    std::fs::write(
+        &app_path,
+        "use Json.{hidden}\n\nfn main() -> Int\n  hidden(1)\n",
+    )
+    .expect("app module write should succeed");
+
+    let err = run_file(&app_path).expect_err("private dependency imports should fail");
+    assert!(
+        err.contains("not public"),
+        "expected package-boundary visibility error, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn compile_project_rejects_private_module_qualified_access_from_dependency_package() {
+    let project_dir = temp_project_dir("kea-cli-package-private-qualified-access");
+    let src_dir = project_dir.join("src");
+    let dep_dir = project_dir.join("deps").join("json");
+    let dep_src = dep_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    std::fs::create_dir_all(&dep_src).expect("dependency source dir should be created");
+
+    std::fs::write(
+        project_dir.join("kea.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nkea = \"0.1\"\n\n[dependencies]\njson = { path = \"deps/json\" }\n",
+    )
+    .expect("root manifest write should succeed");
+    std::fs::write(
+        dep_dir.join("kea.toml"),
+        "[package]\nname = \"json\"\nversion = \"0.1.0\"\nkea = \"0.1\"\n",
+    )
+    .expect("dep manifest write should succeed");
+    std::fs::write(
+        dep_src.join("json.kea"),
+        "pub fn encode(x: Int) -> Int\n  x\n\nfn hidden(x: Int) -> Int\n  x + 1\n",
+    )
+    .expect("dep module write should succeed");
+    let app_path = src_dir.join("main.kea");
+    std::fs::write(&app_path, "use Json\n\nfn main() -> Int\n  Json.hidden(1)\n")
+        .expect("app module write should succeed");
+
+    let err = run_file(&app_path).expect_err("private module-qualified dependency access should fail");
+    assert!(
+        err.contains("not public"),
+        "expected package-boundary visibility error, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn compile_project_rejects_dependency_namespace_collision_with_local_module() {
+    let project_dir = temp_project_dir("kea-cli-package-namespace-collision");
+    let src_dir = project_dir.join("src");
+    let dep_dir = project_dir.join("deps").join("json");
+    let dep_src = dep_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    std::fs::create_dir_all(&dep_src).expect("dependency source dir should be created");
+
+    std::fs::write(
+        project_dir.join("kea.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nkea = \"0.1\"\n\n[dependencies]\njson = { path = \"deps/json\" }\n",
+    )
+    .expect("root manifest write should succeed");
+    std::fs::write(
+        dep_dir.join("kea.toml"),
+        "[package]\nname = \"json\"\nversion = \"0.1.0\"\nkea = \"0.1\"\n",
+    )
+    .expect("dep manifest write should succeed");
+    std::fs::write(dep_src.join("json.kea"), "pub fn ping() -> Int\n  1\n")
+        .expect("dep module write should succeed");
+    std::fs::write(src_dir.join("json.kea"), "fn local() -> Int\n  0\n")
+        .expect("local conflicting module write should succeed");
+    let app_path = src_dir.join("main.kea");
+    std::fs::write(&app_path, "fn main() -> Int\n  0\n").expect("app module write should succeed");
+
+    let err = run_file(&app_path).expect_err("namespace collisions should fail");
+    assert!(
+        err.contains("dependency namespace collision"),
+        "expected namespace collision error, got: {err}"
     );
 
     let _ = std::fs::remove_dir_all(project_dir);

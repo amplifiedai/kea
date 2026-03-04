@@ -1,10 +1,15 @@
+use std::collections::BTreeSet;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kea::{compile_file, emit_diagnostics, run_file, run_test_file};
+use kea::{
+    DepSpec, PackageCommand, PackageManifest, compile_file, emit_diagnostics, execute_pkg_command,
+    find_manifest, run_file, run_test_file,
+};
 use kea_codegen::CodegenMode;
 
 static TEMP_NONCE: AtomicU64 = AtomicU64::new(0);
@@ -22,6 +27,7 @@ fn run() -> Result<(), String> {
 
     match command {
         Command::Run { input } => {
+            let input = resolve_command_input(input)?;
             let result = run_file(&input)?;
             emit_diagnostics(&result.diagnostics);
             if result.exit_code != 0 {
@@ -30,6 +36,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         Command::Build { input, output } => {
+            let input = resolve_command_input(input)?;
             let output = output.unwrap_or_else(|| default_build_output_path(&input));
             let result = compile_file(&input, CodegenMode::Aot)?;
             emit_diagnostics(&result.diagnostics);
@@ -57,47 +64,79 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         Command::Test { input } => {
-            let result = run_test_file(&input)?;
-            if result.cases.is_empty() {
-                println!("no tests found in {}", input.display());
+            let mut passed = 0usize;
+            let mut failed = 0usize;
+            let mut observed_cases = 0usize;
+            let test_targets = resolve_test_targets(input)?;
+            if test_targets.files.is_empty() {
+                if let Some(package_dir) = &test_targets.package_dir {
+                    println!("no tests found in {}", package_dir.display());
+                } else {
+                    println!("no tests found");
+                }
                 return Ok(());
             }
 
-            let mut passed = 0usize;
-            let mut failed = 0usize;
-            for case in result.cases {
-                if case.passed {
-                    passed += 1;
-                    println!(
-                        "ok   {} ({} run{})",
-                        case.name,
-                        case.iterations,
-                        if case.iterations == 1 { "" } else { "s" }
-                    );
-                } else {
-                    failed += 1;
-                    match case.error {
-                        Some(err) => println!(
-                            "FAIL {} ({} run{}): {}",
-                            case.name,
-                            case.iterations,
-                            if case.iterations == 1 { "" } else { "s" },
-                            err
-                        ),
-                        None => println!(
-                            "FAIL {} ({} run{})",
-                            case.name,
+            let multi_file = test_targets.files.len() > 1;
+            for file in test_targets.files {
+                let result = run_test_file(&file)?;
+                if result.cases.is_empty() {
+                    continue;
+                }
+                let file_label = format_test_file_label(&file, test_targets.package_dir.as_deref());
+                for case in result.cases {
+                    observed_cases += 1;
+                    let case_name = if multi_file {
+                        format!("{file_label}::{}", case.name)
+                    } else {
+                        case.name.clone()
+                    };
+                    if case.passed {
+                        passed += 1;
+                        println!(
+                            "ok   {} ({} run{})",
+                            case_name,
                             case.iterations,
                             if case.iterations == 1 { "" } else { "s" }
-                        ),
+                        );
+                    } else {
+                        failed += 1;
+                        match case.error {
+                            Some(err) => println!(
+                                "FAIL {} ({} run{}): {}",
+                                case_name,
+                                case.iterations,
+                                if case.iterations == 1 { "" } else { "s" },
+                                err
+                            ),
+                            None => println!(
+                                "FAIL {} ({} run{})",
+                                case_name,
+                                case.iterations,
+                                if case.iterations == 1 { "" } else { "s" }
+                            ),
+                        }
                     }
                 }
             }
 
+            if observed_cases == 0 {
+                if let Some(package_dir) = &test_targets.package_dir {
+                    println!("no tests found in {}", package_dir.display());
+                } else {
+                    println!("no tests found");
+                }
+                return Ok(());
+            }
             println!("{passed} passed; {failed} failed");
             if failed > 0 {
                 std::process::exit(1);
             }
+            Ok(())
+        }
+        Command::Pkg { command } => {
+            let message = execute_pkg_command(command)?;
+            println!("{message}");
             Ok(())
         }
     }
@@ -106,31 +145,38 @@ fn run() -> Result<(), String> {
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
     Run {
-        input: PathBuf,
+        input: Option<PathBuf>,
     },
     Build {
-        input: PathBuf,
+        input: Option<PathBuf>,
         output: Option<PathBuf>,
     },
     Test {
-        input: PathBuf,
+        input: Option<PathBuf>,
+    },
+    Pkg {
+        command: PackageCommand,
     },
 }
 
 fn parse_cli(args: &[String]) -> Result<Command, String> {
-    if args.len() < 3 {
+    if args.len() < 2 {
         return Err(usage());
     }
 
     match args[1].as_str() {
-        "run" => Ok(Command::Run {
-            input: PathBuf::from(&args[2]),
-        }),
+        "run" => {
+            let input = args.get(2).map(PathBuf::from);
+            if args.len() > 3 {
+                return Err(format!("unexpected arguments for `run`\n{}", usage()));
+            }
+            Ok(Command::Run { input })
+        }
         "build" => {
-            let input = PathBuf::from(&args[2]);
+            let mut input = None;
             let mut output = None;
 
-            let mut idx = 3;
+            let mut idx = 2;
             while idx < args.len() {
                 match args[idx].as_str() {
                     "-o" | "--output" => {
@@ -141,22 +187,263 @@ fn parse_cli(args: &[String]) -> Result<Command, String> {
                         idx += 2;
                     }
                     unknown => {
-                        return Err(format!("unknown argument `{unknown}`\n{}", usage()));
+                        if unknown.starts_with('-') {
+                            return Err(format!("unknown argument `{unknown}`\n{}", usage()));
+                        }
+                        if input.is_some() {
+                            return Err(format!(
+                                "multiple input files are not supported (`{unknown}` is extra)\n{}",
+                                usage()
+                            ));
+                        }
+                        input = Some(PathBuf::from(unknown));
+                        idx += 1;
                     }
                 }
             }
 
             Ok(Command::Build { input, output })
         }
-        "test" => Ok(Command::Test {
-            input: PathBuf::from(&args[2]),
-        }),
+        "test" => {
+            let input = args.get(2).map(PathBuf::from);
+            if args.len() > 3 {
+                return Err(format!("unexpected arguments for `test`\n{}", usage()));
+            }
+            Ok(Command::Test { input })
+        }
+        "pkg" => parse_pkg_cli(args),
         _ => Err(usage()),
     }
 }
 
+fn parse_pkg_cli(args: &[String]) -> Result<Command, String> {
+    if args.len() < 3 {
+        return Err(format!("missing pkg subcommand\n{}", usage()));
+    }
+    match args[2].as_str() {
+        "init" => {
+            if args.len() != 3 {
+                return Err(format!("`kea pkg init` takes no arguments\n{}", usage()));
+            }
+            Ok(Command::Pkg {
+                command: PackageCommand::Init,
+            })
+        }
+        "add" => {
+            if args.len() < 5 {
+                return Err(
+                    "usage: kea pkg add <name> (--git <url> [--tag <tag>|--rev <rev>|--branch <branch>] | --path <path>)"
+                        .to_string(),
+                );
+            }
+            let name = args[3].clone();
+            let mut git = None;
+            let mut path = None;
+            let mut tag = None;
+            let mut rev = None;
+            let mut branch = None;
+            let mut idx = 4;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--git" => {
+                        if idx + 1 >= args.len() {
+                            return Err("missing value for --git".to_string());
+                        }
+                        git = Some(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--path" => {
+                        if idx + 1 >= args.len() {
+                            return Err("missing value for --path".to_string());
+                        }
+                        path = Some(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--tag" => {
+                        if idx + 1 >= args.len() {
+                            return Err("missing value for --tag".to_string());
+                        }
+                        tag = Some(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--rev" => {
+                        if idx + 1 >= args.len() {
+                            return Err("missing value for --rev".to_string());
+                        }
+                        rev = Some(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--branch" => {
+                        if idx + 1 >= args.len() {
+                            return Err("missing value for --branch".to_string());
+                        }
+                        branch = Some(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    unknown => {
+                        return Err(format!("unknown argument `{unknown}`\n{}", usage()));
+                    }
+                }
+            }
+
+            let spec = match (git, path) {
+                (Some(url), None) => DepSpec::Git {
+                    url,
+                    tag,
+                    rev,
+                    branch,
+                },
+                (None, Some(path)) => {
+                    if tag.is_some() || rev.is_some() || branch.is_some() {
+                        return Err(
+                            "`--tag`, `--rev`, and `--branch` are only valid with `--git`"
+                                .to_string(),
+                        );
+                    }
+                    DepSpec::Path {
+                        path: PathBuf::from(path),
+                    }
+                }
+                (Some(_), Some(_)) => {
+                    return Err("dependency can use either --git or --path, not both".to_string());
+                }
+                (None, None) => {
+                    return Err("dependency must specify either --git or --path".to_string());
+                }
+            };
+
+            Ok(Command::Pkg {
+                command: PackageCommand::Add { name, spec },
+            })
+        }
+        "update" => {
+            if args.len() > 4 {
+                return Err(format!(
+                    "usage: kea pkg update [dependency-name]\n{}",
+                    usage()
+                ));
+            }
+            Ok(Command::Pkg {
+                command: PackageCommand::Update {
+                    dependency: args.get(3).cloned(),
+                },
+            })
+        }
+        unknown => Err(format!("unknown pkg subcommand `{unknown}`\n{}", usage())),
+    }
+}
+
 fn usage() -> String {
-    "usage:\n  kea run <file.kea>\n  kea build <file.kea> [-o output|output.o]\n  kea test <file.kea>".to_string()
+    "usage:\n  kea run [file.kea]\n  kea build [file.kea] [-o output|output.o]\n  kea test [file.kea]\n  kea pkg init\n  kea pkg add <name> (--git <url> [--tag <tag>|--rev <rev>|--branch <branch>] | --path <path>)\n  kea pkg update [dependency-name]".to_string()
+}
+
+fn resolve_command_input(input: Option<PathBuf>) -> Result<PathBuf, String> {
+    if let Some(path) = input {
+        return Ok(path);
+    }
+    let cwd = std::env::current_dir().map_err(|err| format!("failed to read cwd: {err}"))?;
+    let manifest_path = find_manifest(&cwd).ok_or_else(|| {
+        "no input file provided and no `kea.toml` found in current directory or ancestors"
+            .to_string()
+    })?;
+    let manifest = PackageManifest::load(&manifest_path)?;
+    Ok(manifest.entry_path())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TestTargets {
+    files: Vec<PathBuf>,
+    package_dir: Option<PathBuf>,
+}
+
+fn resolve_test_targets(input: Option<PathBuf>) -> Result<TestTargets, String> {
+    let cwd = std::env::current_dir().map_err(|err| format!("failed to read cwd: {err}"))?;
+    resolve_test_targets_from_cwd(input, &cwd)
+}
+
+fn resolve_test_targets_from_cwd(input: Option<PathBuf>, cwd: &Path) -> Result<TestTargets, String> {
+    if let Some(path) = input {
+        return Ok(TestTargets {
+            files: vec![path],
+            package_dir: None,
+        });
+    }
+
+    let Some(manifest_path) = find_manifest(cwd) else {
+        return Err(
+            "no input file provided and no `kea.toml` found in current directory or ancestors"
+                .to_string(),
+        );
+    };
+    let manifest = PackageManifest::load(&manifest_path)?;
+    let package_dir = manifest.package_dir();
+    let files = discover_package_test_files(&package_dir)?;
+    Ok(TestTargets {
+        files,
+        package_dir: Some(package_dir),
+    })
+}
+
+fn discover_package_test_files(package_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = BTreeSet::new();
+
+    let tests_dir = package_dir.join("tests");
+    if tests_dir.is_dir() {
+        let mut entries = fs::read_dir(&tests_dir)
+            .map_err(|err| format!("failed to list `{}`: {err}", tests_dir.display()))?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        entries.sort();
+        for path in entries {
+            if path.is_file() && path.extension().and_then(OsStr::to_str) == Some("kea") {
+                files.insert(path);
+            }
+        }
+    }
+
+    let src_dir = package_dir.join("src");
+    if src_dir.is_dir() {
+        discover_src_test_files(&src_dir, &mut files)?;
+    }
+
+    Ok(files.into_iter().collect())
+}
+
+fn discover_src_test_files(dir: &Path, out: &mut BTreeSet<PathBuf>) -> Result<(), String> {
+    let mut entries = fs::read_dir(dir)
+        .map_err(|err| format!("failed to list `{}`: {err}", dir.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            discover_src_test_files(&path, out)?;
+            continue;
+        }
+        if path.extension().and_then(OsStr::to_str) != Some("kea") {
+            continue;
+        }
+        if !path
+            .file_stem()
+            .and_then(OsStr::to_str)
+            .is_some_and(|stem| stem.ends_with("_test"))
+        {
+            continue;
+        }
+        out.insert(path);
+    }
+    Ok(())
+}
+
+fn format_test_file_label(file: &Path, package_dir: Option<&Path>) -> String {
+    if let Some(package_dir) = package_dir
+        && let Ok(relative) = file.strip_prefix(package_dir)
+    {
+        return relative.display().to_string();
+    }
+    file.display().to_string()
 }
 
 fn default_build_output_path(input: &Path) -> PathBuf {
