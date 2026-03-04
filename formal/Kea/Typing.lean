@@ -7548,6 +7548,68 @@ theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_stutter_co
   ⟩
 
 /--
+Proposition-level local existence+preservation contract for mismatch-extended
+stutter reduction on typed handles.
+-/
+def native_handler_step_ext_with_mismatch_stutter_local_exists_and_preserves_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty →
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem native_core_stutter_step
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty
+
+/--
+`native_handler_step_ext_with_mismatch_stutter_local_exists_and_preserves_prop`
+holds by lifting preserving extended-native stutter steps.
+-/
+theorem native_handler_step_ext_with_mismatch_stutter_local_exists_and_preserves
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_stutter_local_exists_and_preserves_prop
+      clauseSem mismatchSem := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_stutter_core_soundness_via_ext
+    clauseSem mismatchSem h_typed
+
+/--
+Zero-or-one normal-form proposition-level local existence+preservation contract
+for mismatch-extended stutter reduction on typed handles.
+-/
+def native_handler_step_ext_with_mismatch_stutter_local_exists_and_preserves_zero_or_one_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty →
+    (resumeSummary clauseBody = .zero ∨ resumeSummary clauseBody = .one)
+      ∧
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem native_core_stutter_step
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty
+
+/--
+`native_handler_step_ext_with_mismatch_stutter_local_exists_and_preserves_zero_or_one_prop`
+holds.
+-/
+theorem native_handler_step_ext_with_mismatch_stutter_local_exists_and_preserves_zero_or_one
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_stutter_local_exists_and_preserves_zero_or_one_prop
+      clauseSem mismatchSem := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_stutter_core_soundness_via_ext_zero_or_one
+    clauseSem mismatchSem h_typed
+
+/--
 Assumption-free native progress-gap closure under the canonical stutter
 body-step relation.
 -/
