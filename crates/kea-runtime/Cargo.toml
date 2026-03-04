@@ -7,6 +7,9 @@ repository.workspace = true
 
 [dependencies]
 crossbeam-deque = "0.8"
+rayon = "1"
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 divan.workspace = true
