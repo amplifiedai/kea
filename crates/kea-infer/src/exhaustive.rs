@@ -2,7 +2,7 @@
 //!
 //! After type inference resolves the scrutinee type, this module checks
 //! whether all constructors are covered by the case arms' patterns.
-//! For finite types (Bool, Option, Result) it checks constructor coverage.
+//! For finite types (Bool, sum types including Option and Result) it checks constructor coverage.
 //! For infinite types (Int, Float, String) it requires a wildcard or
 //! variable pattern.
 
@@ -35,10 +35,15 @@ pub fn check_exhaustiveness(
 
     match &resolved {
         Type::Bool => check_bool(patterns),
-        Type::Option(_) => check_option(patterns),
-        Type::Result(_, _) => check_result(patterns),
-        // Lists: need both [] and [_, .._] (or wildcard)
-        Type::List(_) => check_list(patterns),
+        // Stdlib List: has Nil/Cons variants — needs [] and [_, .._] patterns
+        // Only route to check_list for the actual stdlib List, not user-defined types named "List"
+        Type::Sum(st)
+            if st.name == "List"
+                && st.variants.iter().any(|(v, _)| v == "Nil")
+                && st.variants.iter().any(|(v, _)| v == "Cons") =>
+        {
+            check_list(patterns)
+        }
         // Infinite types: must have wildcard/var (already checked above)
         Type::Int | Type::Float | Type::String => {
             vec!["_".to_string()]
@@ -54,7 +59,7 @@ pub fn check_exhaustiveness(
                 vec!["()".to_string()]
             }
         }
-        // Sum types: check variant coverage
+        // Sum types: check variant coverage (includes Option and Result via Type::sum())
         Type::Sum(st) => check_sum_type(st, patterns),
         // Opaque types behave like a single-constructor nominal wrapper.
         Type::Opaque { name, .. } => check_opaque_type(name, patterns),
@@ -119,6 +124,13 @@ fn check_list(patterns: &[&kea_ast::Pattern]) -> Vec<String> {
                 }
                 // Fixed-length like [x] or [x, y] don't cover all non-empty
             }
+            // Constructor-style list patterns: Nil/Cons from stdlib definitions or derive impls
+            PatternKind::Constructor { name, args, .. } if name == "Nil" && args.is_empty() => {
+                has_empty = true;
+            }
+            PatternKind::Constructor { name, .. } if name == "Cons" => {
+                has_nonempty_rest = true;
+            }
             PatternKind::Wildcard | PatternKind::Var(_) => return vec![],
             _ => {}
         }
@@ -130,52 +142,6 @@ fn check_list(patterns: &[&kea_ast::Pattern]) -> Vec<String> {
     }
     if !has_nonempty_rest {
         missing.push("[_, .._]".to_string());
-    }
-    missing
-}
-
-fn check_option(patterns: &[&kea_ast::Pattern]) -> Vec<String> {
-    let mut has_some = false;
-    let mut has_none = false;
-
-    for p in patterns {
-        match &p.node {
-            PatternKind::Constructor { name, .. } if name == "Some" => has_some = true,
-            PatternKind::Constructor { name, .. } if name == "None" => has_none = true,
-            PatternKind::Wildcard | PatternKind::Var(_) => return vec![],
-            _ => {}
-        }
-    }
-
-    let mut missing = vec![];
-    if !has_some {
-        missing.push("Some(_)".to_string());
-    }
-    if !has_none {
-        missing.push("None".to_string());
-    }
-    missing
-}
-
-fn check_result(patterns: &[&kea_ast::Pattern]) -> Vec<String> {
-    let mut has_ok = false;
-    let mut has_err = false;
-
-    for p in patterns {
-        match &p.node {
-            PatternKind::Constructor { name, .. } if name == "Ok" => has_ok = true,
-            PatternKind::Constructor { name, .. } if name == "Err" => has_err = true,
-            PatternKind::Wildcard | PatternKind::Var(_) => return vec![],
-            _ => {}
-        }
-    }
-
-    let mut missing = vec![];
-    if !has_ok {
-        missing.push("Ok(_)".to_string());
-    }
-    if !has_err {
-        missing.push("Err(_)".to_string());
     }
     missing
 }
