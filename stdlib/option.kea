@@ -111,3 +111,28 @@ fn is_none(opt: Option a) -> Bool
   case opt
     None -> true
     _ -> false
+
+doc
+  Collapse a nested Option into one level.
+
+    Option.flatten(Some(Some(7)))   -- => Some(7)
+    Option.flatten(Some(None))      -- => None
+    Option.flatten(None)            -- => None
+fn flatten(opt: Option (Option a)) -> Option a
+  case opt
+    Some(inner) -> inner
+    None -> None
+
+doc
+  Combine two Options into an Option of a pair.
+
+    Option.zip(Some(1), Some(2))   -- => Some((1, 2))
+    Option.zip(None, Some(2))      -- => None
+    Option.zip(Some(1), None)      -- => None
+fn zip(a: Option x, b: Option y) -> Option (x, y)
+  case a
+    Some(va) ->
+      case b
+        Some(vb) -> Some((va, vb))
+        None -> None
+    None -> None

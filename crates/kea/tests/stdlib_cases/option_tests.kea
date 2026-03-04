@@ -34,3 +34,15 @@ test "Option.unwrap.catch"
   case err
     Ok(_) -> Test.assert(false)
     Err(_) -> Test.assert(true)
+
+test "Option.flatten"
+  Test.assert(Option.is_some(Option.flatten(Some(Some(7)))))
+  Test.assert(Option.unwrap_or(Option.flatten(Some(Some(7))), 0) == 7)
+  Test.assert(Option.is_none(Option.flatten(Some(None))))
+  Test.assert(Option.is_none(Option.flatten(None)))
+
+test "Option.zip"
+  let zipped = Option.zip(Some(1), Some(2))
+  Test.assert(Option.is_some(zipped))
+  Test.assert(Option.is_none(Option.zip(None, Some(2))))
+  Test.assert(Option.is_none(Option.zip(Some(1), None)))
