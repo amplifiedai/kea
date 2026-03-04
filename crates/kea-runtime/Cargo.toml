@@ -7,3 +7,10 @@ repository.workspace = true
 
 [dependencies]
 crossbeam-deque = "0.8"
+
+[dev-dependencies]
+divan.workspace = true
+
+[[bench]]
+name = "runtime_pool"
+harness = false

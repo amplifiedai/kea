@@ -1,5 +1,5 @@
 use crossbeam_deque::{Injector, Steal, Stealer, Worker};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -29,6 +29,53 @@ where
 }
 
 type Job = Box<dyn Runnable + Send + 'static>;
+
+#[derive(Default)]
+struct RuntimeCounters {
+    enqueued: AtomicU64,
+    executed: AtomicU64,
+    local_pops: AtomicU64,
+    injector_steals: AtomicU64,
+    peer_steals: AtomicU64,
+    park_waits: AtomicU64,
+    wake_signals: AtomicU64,
+}
+
+/// Runtime counter snapshot for observability and tuning.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RuntimeStats {
+    pub enqueued: u64,
+    pub executed: u64,
+    pub local_pops: u64,
+    pub injector_steals: u64,
+    pub peer_steals: u64,
+    pub park_waits: u64,
+    pub wake_signals: u64,
+}
+
+impl RuntimeCounters {
+    fn snapshot(&self) -> RuntimeStats {
+        RuntimeStats {
+            enqueued: self.enqueued.load(Ordering::Relaxed),
+            executed: self.executed.load(Ordering::Relaxed),
+            local_pops: self.local_pops.load(Ordering::Relaxed),
+            injector_steals: self.injector_steals.load(Ordering::Relaxed),
+            peer_steals: self.peer_steals.load(Ordering::Relaxed),
+            park_waits: self.park_waits.load(Ordering::Relaxed),
+            wake_signals: self.wake_signals.load(Ordering::Relaxed),
+        }
+    }
+
+    fn reset(&self) {
+        self.enqueued.store(0, Ordering::Relaxed);
+        self.executed.store(0, Ordering::Relaxed);
+        self.local_pops.store(0, Ordering::Relaxed);
+        self.injector_steals.store(0, Ordering::Relaxed);
+        self.peer_steals.store(0, Ordering::Relaxed);
+        self.park_waits.store(0, Ordering::Relaxed);
+        self.wake_signals.store(0, Ordering::Relaxed);
+    }
+}
 
 struct JobEnvelope {
     hint: EffectHint,
@@ -75,11 +122,14 @@ struct RuntimeInner {
     park: ParkState,
     shutdown: AtomicBool,
     stealers: Arc<Vec<Stealer<JobEnvelope>>>,
+    counters: RuntimeCounters,
 }
 
 impl RuntimeInner {
     fn enqueue(&self, job: JobEnvelope) {
         self.injector.push(job);
+        self.counters.enqueued.fetch_add(1, Ordering::Relaxed);
+        self.counters.wake_signals.fetch_add(1, Ordering::Relaxed);
         self.park.wake_one();
     }
 }
@@ -125,6 +175,7 @@ impl Runtime {
             park: ParkState::new(),
             shutdown: AtomicBool::new(false),
             stealers: stealers.clone(),
+            counters: RuntimeCounters::default(),
         });
 
         let mut workers = Vec::with_capacity(threads);
@@ -197,6 +248,16 @@ impl Runtime {
             .map(|slot| slot.expect("parallel map slot missing result"))
             .collect()
     }
+
+    /// Snapshot internal runtime counters.
+    pub fn stats(&self) -> RuntimeStats {
+        self.inner.counters.snapshot()
+    }
+
+    /// Reset runtime counters back to zero.
+    pub fn reset_stats(&self) {
+        self.inner.counters.reset();
+    }
 }
 
 impl Drop for Runtime {
@@ -210,17 +271,23 @@ impl Drop for Runtime {
     }
 }
 
+enum WorkSource {
+    Local,
+    InjectorSteal,
+    PeerSteal,
+}
+
 fn try_pop_work(
     local: &Worker<JobEnvelope>,
     inner: &RuntimeInner,
     worker_id: usize,
-) -> Option<JobEnvelope> {
+) -> Option<(JobEnvelope, WorkSource)> {
     if let Some(local_job) = local.pop() {
-        return Some(local_job);
+        return Some((local_job, WorkSource::Local));
     }
 
     match inner.injector.steal_batch_and_pop(local) {
-        Steal::Success(job) => return Some(job),
+        Steal::Success(job) => return Some((job, WorkSource::InjectorSteal)),
         Steal::Retry | Steal::Empty => {}
     }
 
@@ -229,7 +296,7 @@ fn try_pop_work(
             continue;
         }
         match stealer.steal_batch_and_pop(local) {
-            Steal::Success(job) => return Some(job),
+            Steal::Success(job) => return Some((job, WorkSource::PeerSteal)),
             Steal::Retry | Steal::Empty => {}
         }
     }
@@ -239,8 +306,23 @@ fn try_pop_work(
 
 fn worker_loop(worker_id: usize, local: Worker<JobEnvelope>, inner: Arc<RuntimeInner>) {
     loop {
-        if let Some(job) = try_pop_work(&local, &inner, worker_id) {
+        if let Some((job, source)) = try_pop_work(&local, &inner, worker_id) {
+            match source {
+                WorkSource::Local => {
+                    inner.counters.local_pops.fetch_add(1, Ordering::Relaxed);
+                }
+                WorkSource::InjectorSteal => {
+                    inner
+                        .counters
+                        .injector_steals
+                        .fetch_add(1, Ordering::Relaxed);
+                }
+                WorkSource::PeerSteal => {
+                    inner.counters.peer_steals.fetch_add(1, Ordering::Relaxed);
+                }
+            }
             job.run();
+            inner.counters.executed.fetch_add(1, Ordering::Relaxed);
             continue;
         }
 
@@ -249,6 +331,7 @@ fn worker_loop(worker_id: usize, local: Worker<JobEnvelope>, inner: Arc<RuntimeI
         }
 
         let guard = inner.park.mutex.lock().expect("park mutex poisoned");
+        inner.counters.park_waits.fetch_add(1, Ordering::Relaxed);
         let _ = inner
             .park
             .cv
@@ -259,7 +342,7 @@ fn worker_loop(worker_id: usize, local: Worker<JobEnvelope>, inner: Arc<RuntimeI
 
 #[cfg(test)]
 mod tests {
-    use super::{EffectHint, Runtime};
+    use super::{EffectHint, Runtime, RuntimeStats};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
@@ -283,6 +366,9 @@ mod tests {
         }
 
         assert_eq!(counter.load(Ordering::Relaxed), 1000);
+        let stats = runtime.stats();
+        assert_eq!(stats.enqueued, 1000);
+        assert_eq!(stats.executed, 1000);
     }
 
     #[test]
@@ -327,5 +413,24 @@ mod tests {
         values.sort_unstable();
         assert_eq!(values.first(), Some(&0));
         assert_eq!(values.last(), Some(&(63 * 63)));
+    }
+
+    #[test]
+    fn stats_reset_clears_counters() {
+        let runtime = Runtime::new(2);
+        let handles = (0..32)
+            .map(|_| runtime.spawn(|| 1usize))
+            .collect::<Vec<_>>();
+        for handle in handles {
+            assert_eq!(handle.join(), 1);
+        }
+
+        let before_reset = runtime.stats();
+        assert!(before_reset.enqueued >= 32);
+        assert!(before_reset.executed >= 32);
+
+        runtime.reset_stats();
+        let after_reset = runtime.stats();
+        assert_eq!(after_reset, RuntimeStats::default());
     }
 }
