@@ -7455,6 +7455,36 @@ theorem native_handler_step_ext_exists_and_preserves_of_stutter_core_soundness
     e' ty h_typed h_step⟩
 
 /--
+Zero-or-one normal-form variant of
+`native_handler_step_ext_exists_and_preserves_of_stutter_core_soundness`.
+-/
+theorem native_handler_step_ext_exists_and_preserves_of_stutter_core_soundness_zero_or_one
+    (clauseSem : NativeHandlerClauseSem)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    (resumeSummary clauseBody = .zero ∨ resumeSummary clauseBody = .one)
+      ∧
+    ∃ e',
+      NativeHandlerStepExt clauseSem native_core_stutter_step
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  exact ⟨
+    native_handler_clause_summary_zero_or_one h_typed,
+    native_handler_step_ext_exists_and_preserves_of_stutter_core_soundness
+      clauseSem h_typed
+  ⟩
+
+/--
 Assumption-free native progress-gap closure under the canonical stutter
 body-step relation.
 -/
