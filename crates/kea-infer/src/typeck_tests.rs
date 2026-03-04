@@ -11300,7 +11300,7 @@ fn concrete_method_types_self_return_resolves_to_record() {
         var("self"),
     );
 
-    let result = concrete_method_types_from_decls("Counter", &[decl], &records);
+    let result = concrete_method_types_from_decls("Counter", &[decl], &records, None);
     assert_eq!(result.len(), 1);
     let inc_ty = &result["inc"];
     if let Type::Function(ft) = inc_ty {
@@ -11334,7 +11334,7 @@ fn concrete_method_types_no_return_annotation_defaults_to_unit() {
 
     let decl = make_method_decl("fire", vec![self_param()], None, lit_unit());
 
-    let result = concrete_method_types_from_decls("Counter", &[decl], &records);
+    let result = concrete_method_types_from_decls("Counter", &[decl], &records, None);
     assert_eq!(result.len(), 1);
     let fire_ty = &result["fire"];
     if let Type::Function(ft) = fire_ty {
@@ -11369,7 +11369,7 @@ fn concrete_method_types_unknown_annotation_resolves_to_dynamic() {
         lit_int(0),
     );
 
-    let result = concrete_method_types_from_decls("Counter", &[decl], &records);
+    let result = concrete_method_types_from_decls("Counter", &[decl], &records, None);
     assert_eq!(result.len(), 1);
     let foo_ty = &result["foo"];
     if let Type::Function(ft) = foo_ty {
