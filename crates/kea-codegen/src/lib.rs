@@ -309,16 +309,13 @@ fn fail_payload_type(row: &EffectRow) -> Option<Type> {
 
 fn runtime_function_signature(function: &MirFunction) -> RuntimeFunctionSig {
     if is_fail_only_effect_row(&function.signature.effects)
-        && !matches!(function.signature.ret, Type::Result(_, _))
+        && function.signature.ret.as_result().is_none()
         && let Some(err_ty) = fail_payload_type(&function.signature.effects)
     {
         return RuntimeFunctionSig {
             runtime_params: function.signature.params.clone(),
             logical_return: function.signature.ret.clone(),
-            runtime_return: Type::Result(
-                Box::new(function.signature.ret.clone()),
-                Box::new(err_ty),
-            ),
+            runtime_return: Type::result(function.signature.ret.clone(), err_ty),
             fail_result_abi: true,
         };
     }
@@ -1385,8 +1382,6 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
         | Type::AnonRecord(_)
         | Type::Tuple(_)
         | Type::Sum(_)
-        | Type::Option(_)
-        | Type::Result(_, _)
         | Type::Function(_)
         | Type::Opaque { .. } => Ok(types::I64),
         unsupported => Err(CodegenError::UnsupportedType {
@@ -1709,20 +1704,13 @@ fn is_managed_heap_type(ty: &Type, layout_plan: &BackendLayoutPlan) -> bool {
     }
     matches!(
         ty,
-        Type::String
-            | Type::Record(_)
-            | Type::Tuple(_)
-            | Type::Sum(_)
-            | Type::Option(_)
-            | Type::Result(_, _)
+        Type::String | Type::Record(_) | Type::Tuple(_) | Type::Sum(_)
     )
 }
 
 fn drop_sum_name_for_type(ty: &Type) -> Option<&str> {
     match ty {
         Type::Sum(sum) => Some(sum.name.as_str()),
-        Type::Option(_) => Some("Option"),
-        Type::Result(_, _) => Some("Result"),
         _ => None,
     }
 }
@@ -4722,7 +4710,7 @@ fn lower_instruction<M: Module>(
                                 .to_string(),
                     });
                 }
-                if let Type::Result(_, err_ty) = &ctx.current_runtime_sig.runtime_return {
+                if let Some((_, err_ty)) = ctx.current_runtime_sig.runtime_return.as_result() {
                     let payload_value_id = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
                         function: function_name.to_string(),
                         detail:
@@ -5794,11 +5782,11 @@ fn annotation_to_backend_type(
         kea_ast::TypeAnnotation::Applied(name, args) => {
             if name == "Option" && args.len() == 1 {
                 let inner = annotation_to_backend_type(&args[0], record_names, sum_names);
-                Type::Option(Box::new(inner))
+                Type::option(inner)
             } else if name == "Result" && args.len() == 2 {
                 let ok_ty = annotation_to_backend_type(&args[0], record_names, sum_names);
                 let err_ty = annotation_to_backend_type(&args[1], record_names, sum_names);
-                Type::Result(Box::new(ok_ty), Box::new(err_ty))
+                Type::result(ok_ty, err_ty)
             } else if record_names.contains(name) {
                 Type::Record(RecordType {
                     name: name.clone(),
@@ -5815,9 +5803,9 @@ fn annotation_to_backend_type(
                 Type::Dynamic
             }
         }
-        kea_ast::TypeAnnotation::Optional(inner) => Type::Option(Box::new(
-            annotation_to_backend_type(inner, record_names, sum_names),
-        )),
+        kea_ast::TypeAnnotation::Optional(inner) => {
+            Type::option(annotation_to_backend_type(inner, record_names, sum_names))
+        }
         _ => Type::Dynamic,
     }
 }
@@ -6417,8 +6405,6 @@ fn heap_layout_key_from_type(ty: &Type) -> Option<String> {
     match ty {
         Type::Record(record) => Some(format!("record:{}", record.name)),
         Type::Sum(sum) => Some(format!("sum:{}", sum.name)),
-        Type::Option(_) => Some("sum:Option".to_string()),
-        Type::Result(_, _) => Some("sum:Result".to_string()),
         _ => None,
     }
 }
@@ -9363,7 +9349,7 @@ mod tests {
                 name: "fail_only".to_string(),
                 signature: MirFunctionSignature {
                     params: vec![],
-                    ret: Type::Result(Box::new(Type::Int), Box::new(Type::Int)),
+                    ret: Type::result(Type::Int, Type::Int),
                     effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                 },
                 entry: MirBlockId(0),

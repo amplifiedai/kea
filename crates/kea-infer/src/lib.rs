@@ -1159,30 +1159,12 @@ impl Unifier {
                     self.unify_dim(left_dim, right_dim, provenance);
                 }
             }
-            (Type::List(a), Type::List(b)) => {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    "List(A) ~ List(B) → unify A ~ B".into(),
-                );
-                self.unify_immediate(a, b, provenance);
-            }
             (Type::Set(a), Type::Set(b)) => {
                 self.push_unify_step(
                     crate::trace::UnifyAction::Decompose,
                     &expected,
                     &actual,
                     "Set(A) ~ Set(B) → unify A ~ B".into(),
-                );
-                self.unify_immediate(a, b, provenance);
-            }
-            (Type::Option(a), Type::Option(b)) => {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    "Option(A) ~ Option(B) → unify A ~ B".into(),
                 );
                 self.unify_immediate(a, b, provenance);
             }
@@ -1195,16 +1177,6 @@ impl Unifier {
                 );
                 self.unify_immediate(k1, k2, provenance);
                 self.unify_immediate(v1, v2, provenance);
-            }
-            (Type::Result(ok1, err1), Type::Result(ok2, err2)) => {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    "Result(A,E1) ~ Result(B,E2) → unify A~B, E1~E2".into(),
-                );
-                self.unify_immediate(ok1, ok2, provenance);
-                self.unify_immediate(err1, err2, provenance);
             }
             (
                 Type::Existential {
@@ -1790,12 +1762,10 @@ impl Unifier {
         let ty = self.substitution.apply(ty);
         match &ty {
             Type::Var(v) => *v == var,
-            Type::List(inner)
-            | Type::Set(inner)
-            | Type::Option(inner)
+            Type::Set(inner)
             | Type::FixedSizeList { element: inner, .. }
             | Type::Tensor { element: inner, .. } => self.occurs_in(var, inner),
-            Type::Map(k, v) | Type::Result(k, v) => {
+            Type::Map(k, v) => {
                 self.occurs_in(var, k) || self.occurs_in(var, v)
             }
             Type::Existential {
@@ -1811,6 +1781,13 @@ impl Unifier {
                 } else {
                     self.occurs_in(var, &scheme.ty)
                 }
+            }
+            Type::Sum(st) => {
+                st.type_args.iter().any(|t| self.occurs_in(var, t))
+                    || st
+                        .variants
+                        .iter()
+                        .any(|(_, fields)| fields.iter().any(|t| self.occurs_in(var, t)))
             }
             Type::Record(rt) => rt.row.fields.iter().any(|(_, t)| self.occurs_in(var, t)),
             Type::Opaque { params, .. } => params.iter().any(|t| self.occurs_in(var, t)),
@@ -3129,8 +3106,8 @@ mod tests {
     fn unify_compound_types() {
         let mut u = Unifier::new();
         let var = TypeVarId(0);
-        let expected = Type::List(Box::new(Type::Var(var)));
-        let actual = Type::List(Box::new(Type::Int));
+        let expected = Type::list(Type::Var(var));
+        let actual = Type::list(Type::Int);
         u.unify(&expected, &actual, &test_prov());
         assert!(!u.has_errors());
         assert_eq!(u.substitution.apply(&Type::Var(var)), Type::Int);
@@ -3142,7 +3119,7 @@ mod tests {
         let f = u.fresh_type_var();
         let a = u.fresh_type_var();
         let expected = Type::App(Box::new(Type::Var(f)), vec![Type::Var(a)]);
-        let actual = Type::Option(Box::new(Type::Int));
+        let actual = Type::option(Type::Int);
 
         u.unify(&expected, &actual, &test_prov());
         assert!(!u.has_errors());
@@ -3163,7 +3140,7 @@ mod tests {
         let f = u.fresh_type_var();
         let a = u.fresh_type_var();
         let expected = Type::App(Box::new(Type::Var(f)), vec![Type::Var(a)]);
-        let actual = Type::Result(Box::new(Type::Int), Box::new(Type::String));
+        let actual = Type::result(Type::Int, Type::String);
 
         u.unify(&expected, &actual, &test_prov());
         assert!(!u.has_errors());
@@ -3272,7 +3249,7 @@ mod tests {
         // Try to unify T with List(T) — should fail.
         u.unify(
             &Type::Var(var),
-            &Type::List(Box::new(Type::Var(var))),
+            &Type::list(Type::Var(var)),
             &test_prov(),
         );
         assert!(u.has_errors());

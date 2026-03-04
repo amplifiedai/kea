@@ -1190,13 +1190,13 @@ fn lower_pattern_type_annotation_with_seen(
                 .collect(),
         ),
         TypeAnnotation::Optional(inner) => {
-            Type::Option(Box::new(lower_pattern_type_annotation_with_seen(
+            Type::option(lower_pattern_type_annotation_with_seen(
                 inner,
                 known_record_defs,
                 known_sum_defs,
                 known_alias_defs,
                 seen_aliases,
-            )))
+            ))
         }
         TypeAnnotation::Function(params, ret) => Type::Function(kea_types::FunctionType::pure(
             params
@@ -1294,62 +1294,69 @@ fn seed_builtin_variant_tags(
     pattern_duplicates: &mut BTreeSet<String>,
 ) {
     let dynamic = Type::Dynamic;
-    register_variant_meta(
-        "Option",
-        "Some",
-        0,
-        1,
-        vec![dynamic.clone()],
-        vec![None],
-        unqualified,
-        qualified,
-        duplicates,
-        pattern_unqualified,
-        pattern_qualified,
-        pattern_duplicates,
-    );
-    register_variant_meta(
-        "Option",
-        "None",
-        1,
-        0,
-        vec![],
-        vec![],
-        unqualified,
-        qualified,
-        duplicates,
-        pattern_unqualified,
-        pattern_qualified,
-        pattern_duplicates,
-    );
-    register_variant_meta(
-        "Result",
-        "Ok",
-        0,
-        1,
-        vec![dynamic.clone()],
-        vec![None],
-        unqualified,
-        qualified,
-        duplicates,
-        pattern_unqualified,
-        pattern_qualified,
-        pattern_duplicates,
-    );
-    register_variant_meta(
-        "Result",
-        "Err",
-        1,
-        1,
-        vec![dynamic],
-        vec![None],
-        unqualified,
-        qualified,
-        duplicates,
-        pattern_unqualified,
-        pattern_qualified,
-        pattern_duplicates,
-    );
+    // Only seed Option builtins when not already defined in source (same check MIR uses).
+    // Tag order matches option.kea source: None=tag0 (first), Some=tag1 (second).
+    if !pattern_qualified.contains_key(&("Option".to_string(), "Some".to_string())) {
+        register_variant_meta(
+            "Option",
+            "None",
+            0,
+            0,
+            vec![],
+            vec![],
+            unqualified,
+            qualified,
+            duplicates,
+            pattern_unqualified,
+            pattern_qualified,
+            pattern_duplicates,
+        );
+        register_variant_meta(
+            "Option",
+            "Some",
+            1,
+            1,
+            vec![dynamic.clone()],
+            vec![None],
+            unqualified,
+            qualified,
+            duplicates,
+            pattern_unqualified,
+            pattern_qualified,
+            pattern_duplicates,
+        );
+    }
+    // Only seed Result builtins when not already defined in source.
+    if !pattern_qualified.contains_key(&("Result".to_string(), "Ok".to_string())) {
+        register_variant_meta(
+            "Result",
+            "Ok",
+            0,
+            1,
+            vec![dynamic.clone()],
+            vec![None],
+            unqualified,
+            qualified,
+            duplicates,
+            pattern_unqualified,
+            pattern_qualified,
+            pattern_duplicates,
+        );
+        register_variant_meta(
+            "Result",
+            "Err",
+            1,
+            1,
+            vec![dynamic],
+            vec![None],
+            unqualified,
+            qualified,
+            duplicates,
+            pattern_unqualified,
+            pattern_qualified,
+            pattern_duplicates,
+        );
+    }
 }
 
 fn collect_variant_tags(
@@ -1888,6 +1895,20 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
                 HirExprKind::SumConstructor {
                     sum_type: meta.sum_type,
                     variant: field.node.clone(),
+                    tag: meta.tag,
+                    fields,
+                }
+            } else if let ExprKind::Var(name) = &func.node
+                && let Some(meta) = resolve_unqualified_constructor_meta(
+                    name,
+                    args.len(),
+                    ctx.pattern_variant_tags,
+                )
+                && let Some(fields) = lower_constructor_fields(args, &meta, ctx)
+            {
+                HirExprKind::SumConstructor {
+                    sum_type: meta.sum_type,
+                    variant: name.clone(),
                     tag: meta.tag,
                     fields,
                 }

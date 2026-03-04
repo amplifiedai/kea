@@ -3998,7 +3998,7 @@ fn uses_fail_result_abi_from_type(ty: &Type) -> bool {
                     .fields
                     .iter()
                     .all(|(label, _)| label.as_str() == "Fail")
-                && !matches!(ft.ret.as_ref(), Type::Result(_, _))
+                && ft.ret.as_result().is_none()
         }
         _ => false,
     }
@@ -4048,21 +4048,22 @@ fn collect_layout_metadata(raw_decl: &DeclKind, layouts: &mut MirLayoutCatalog) 
 fn seed_builtin_sum_layouts(layouts: &mut MirLayoutCatalog) {
     let has_option = layouts.sums.iter().any(|sum| sum.name == "Option");
     if !has_option {
+        // Tag order matches option.kea source: None=tag0 (first), Some=tag1 (second).
         layouts.sums.push(MirSumLayout {
             name: "Option".to_string(),
             variants: vec![
                 MirVariantLayout {
-                    name: "Some".to_string(),
+                    name: "None".to_string(),
                     tag: 0,
+                    fields: vec![],
+                },
+                MirVariantLayout {
+                    name: "Some".to_string(),
+                    tag: 1,
                     fields: vec![MirVariantFieldLayout {
                         name: None,
                         annotation: kea_ast::TypeAnnotation::Named("Dynamic".to_string()),
                     }],
-                },
-                MirVariantLayout {
-                    name: "None".to_string(),
-                    tag: 1,
-                    fields: vec![],
                 },
             ],
         });
@@ -5860,6 +5861,12 @@ impl FunctionLoweringCtx {
                 if matches!(op, BinOp::Eq | BinOp::Neq) {
                     let left_eq_ty = self.resolve_equality_operand_type(left);
                     let right_eq_ty = self.resolve_equality_operand_type(right);
+                    if std::env::var("KEA_DEBUG_EQ").is_ok() {
+                        eprintln!("[eq debug] fn={} left_ty={left_eq_ty:?} right_ty={right_eq_ty:?} same={} not_prim={} conc={}", self.function_name, left_eq_ty == right_eq_ty, !is_primitive_equality_type(&left_eq_ty), is_concrete_nominal_equality_type(&left_eq_ty));
+                        eprintln!("[eq debug] left_hir_ty={:?}", left.ty);
+                        let callee = self.resolve_eq_trait_callee_for_type(&left_eq_ty);
+                        eprintln!("[eq debug] callee={callee:?}");
+                    }
                     if left_eq_ty == right_eq_ty
                         && !is_primitive_equality_type(&left_eq_ty)
                         && is_concrete_nominal_equality_type(&left_eq_ty)
@@ -6027,6 +6034,9 @@ impl FunctionLoweringCtx {
                     fields: lowered_fields,
                 });
                 self.sum_value_types.insert(dest.clone(), sum_type.clone());
+                if std::env::var("KEA_DEBUG_EQ").is_ok() {
+                    eprintln!("[sum-init] sum_type={sum_type} variant={variant} dest={dest:?}");
+                }
                 Some(dest)
             }
             HirExprKind::FieldAccess { expr: base, field } => {
@@ -7131,6 +7141,20 @@ impl FunctionLoweringCtx {
         {
             self.sum_value_types.insert(dest.clone(), sum_type);
         }
+        // If `call_ret_type` didn't give us a sum type but the callee is a
+        // known unambiguous constructor (e.g. `Some`, `Ok`), record the sum
+        // type from the ctor candidate table so that equality dispatch can
+        // identify the type of the resulting value.
+        if let Some(dest) = &result
+            && !self.sum_value_types.contains_key(dest)
+            && let HirExprKind::Var(callee_name) = &func.kind
+            && let Some(candidates) = self.sum_ctor_candidates.get(callee_name)
+            && candidates.len() == 1
+            && candidates[0].arity == args.len()
+        {
+            self.sum_value_types
+                .insert(dest.clone(), candidates[0].sum_type.clone());
+        }
         if let Some(dest) = &result
             && let Some(record_type) = self.infer_record_type_from_type(&call_ret_type)
         {
@@ -7148,7 +7172,10 @@ impl FunctionLoweringCtx {
 
         let mut best: Option<(usize, String)> = None;
         for (name, scheme_ty) in &self.known_function_types {
-            if !name.ends_with(".eq") {
+            // Accept both plain `.eq` names and monomorphized variants (`Eq.Option.eq$m3$Int`).
+            // Monomorphized names use the format `{base}$m{id}[${type_suffix}]`.
+            let base_name = name.split("$m").next().unwrap_or(name.as_str());
+            if !base_name.ends_with(".eq") {
                 continue;
             }
             let Type::Function(ft) = scheme_ty else {
@@ -7162,11 +7189,12 @@ impl FunctionLoweringCtx {
             {
                 continue;
             }
-            let score = if name == &format!("Eq.{type_name}.eq") {
-                4
-            } else if name.ends_with(&format!(".{type_name}.eq")) {
+            let score = if base_name == format!("Eq.{type_name}.eq") {
+                // Monomorphized exact match scores highest; unspecialized generic is next.
+                if name.contains("$m") { 5 } else { 4 }
+            } else if base_name.ends_with(&format!(".{type_name}.eq")) {
                 3
-            } else if name == "Eq.eq" {
+            } else if base_name == "Eq.eq" {
                 2
             } else {
                 1
@@ -7224,6 +7252,11 @@ impl FunctionLoweringCtx {
                     .get(name)
                     .cloned()
                     .unwrap_or_else(|| expr.ty.clone());
+                if std::env::var("KEA_DEBUG_EQ").is_ok() {
+                    let vid = self.vars.get(name);
+                    let sum = vid.and_then(|v| self.sum_value_types.get(v));
+                    eprintln!("[eq-resolve] fn={} name={name} var_types={:?} vars={:?} sum={:?}", self.function_name, self.var_types.get(name), vid, sum);
+                }
                 if fallback != Type::Dynamic {
                     return fallback;
                 }
@@ -7308,8 +7341,6 @@ impl FunctionLoweringCtx {
     fn infer_sum_type_from_type(&self, ty: &Type) -> Option<String> {
         match ty {
             Type::Sum(sum_ty) => Some(sum_ty.name.clone()),
-            Type::Option(_) => Some("Option".to_string()),
-            Type::Result(_, _) => Some("Result".to_string()),
             _ => None,
         }
     }
@@ -7539,14 +7570,16 @@ impl FunctionLoweringCtx {
         if args.len() != 1 {
             return None;
         }
-        let target_ty = try_from_target_type_from_name(func_name).or_else(|| match &expr.ty {
-            Type::Option(inner) => match inner.as_ref() {
-                Type::IntN(_, _) => Some((**inner).clone()),
-                _ => None,
-            },
-            _ => None,
+        let target_ty = try_from_target_type_from_name(func_name).or_else(|| {
+            expr.ty.as_option().and_then(|inner| {
+                if matches!(inner, Type::IntN(_, _)) {
+                    Some(inner.clone())
+                } else {
+                    None
+                }
+            })
         })?;
-        let option_ty = Type::Option(Box::new(target_ty.clone()));
+        let option_ty = Type::option(target_ty.clone());
         let (min, max) = Self::integer_bounds_for_target(&target_ty)?;
 
         let source = self.lower_expr(&args[0])?;
@@ -7631,11 +7664,12 @@ impl FunctionLoweringCtx {
             else_block: some_block.clone(),
         });
 
+        // Tag order matches option.kea source: None=tag0, Some=tag1.
         self.switch_to(none_block);
         let none_value = self.new_value();
         self.emit_inst(MirInst::Const {
             dest: none_value.clone(),
-            literal: MirLiteral::Int(1),
+            literal: MirLiteral::Int(0),
         });
         self.ensure_jump_to(join_block.clone(), vec![none_value]);
 
@@ -7645,7 +7679,7 @@ impl FunctionLoweringCtx {
             dest: some_value.clone(),
             sum_type: "Option".to_string(),
             variant: "Some".to_string(),
-            tag: 0,
+            tag: 1,
             fields: vec![source_int],
         });
         self.sum_value_types
@@ -7977,16 +8011,40 @@ fn same_nominal_equality_type(query: &Type, candidate: &Type) -> bool {
                     .params
                     .iter()
                     .zip(candidate_record.params.iter())
-                    .all(|(lhs, rhs)| lhs == rhs || *lhs == Type::Dynamic || *rhs == Type::Dynamic)
+                    .all(|(lhs, rhs)| {
+                        lhs == rhs
+                            || *lhs == Type::Dynamic
+                            || *rhs == Type::Dynamic
+                            || matches!(lhs, Type::Var(_))
+                            || matches!(rhs, Type::Var(_))
+                    })
         }
         (Type::Sum(query_sum), Type::Sum(candidate_sum)) => {
-            query_sum.name == candidate_sum.name
-                && query_sum.type_args.len() == candidate_sum.type_args.len()
+            if query_sum.name != candidate_sum.name {
+                return false;
+            }
+            // If one side has erased type args (empty, e.g. from sum_ctor_candidates)
+            // and the other side has only TypeVar/Dynamic args, accept as compatible.
+            let q_len = query_sum.type_args.len();
+            let c_len = candidate_sum.type_args.len();
+            if q_len == 0 && candidate_sum.type_args.iter().all(|t| matches!(t, Type::Var(_) | Type::Dynamic)) {
+                return true;
+            }
+            if c_len == 0 && query_sum.type_args.iter().all(|t| matches!(t, Type::Var(_) | Type::Dynamic)) {
+                return true;
+            }
+            q_len == c_len
                 && query_sum
                     .type_args
                     .iter()
                     .zip(candidate_sum.type_args.iter())
-                    .all(|(lhs, rhs)| lhs == rhs || *lhs == Type::Dynamic || *rhs == Type::Dynamic)
+                    .all(|(lhs, rhs)| {
+                        lhs == rhs
+                            || *lhs == Type::Dynamic
+                            || *rhs == Type::Dynamic
+                            || matches!(lhs, Type::Var(_))
+                            || matches!(rhs, Type::Var(_))
+                    })
         }
         _ => query == candidate,
     }
@@ -7995,14 +8053,12 @@ fn same_nominal_equality_type(query: &Type, candidate: &Type) -> bool {
 fn type_contains_inference_var(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
-        Type::List(inner)
-        | Type::Set(inner)
-        | Type::Option(inner)
+        Type::Set(inner)
         | Type::Stream(inner)
         | Type::Task(inner)
         | Type::Actor(inner)
         | Type::Arc(inner) => type_contains_inference_var(inner),
-        Type::Map(key, value) | Type::Result(key, value) => {
+        Type::Map(key, value) => {
             type_contains_inference_var(key) || type_contains_inference_var(value)
         }
         Type::Tuple(items) => items.iter().any(type_contains_inference_var),
@@ -8073,7 +8129,6 @@ fn is_heap_managed_type(ty: &Type, layouts: &MirLayoutCatalog) -> bool {
         Type::String
         | Type::AnonRecord(_)
         | Type::Tuple(_)
-        | Type::Result(_, _)
         | Type::Function(_)
         | Type::Opaque { .. } => true,
         Type::Record(record) => !layouts
@@ -8227,10 +8282,11 @@ mod tests {
             .iter()
             .find(|sum| sum.name == "Option")
             .expect("expected built-in Option layout");
+        // Tag order matches option.kea source: None=tag0 (first), Some=tag1 (second).
         assert_eq!(option.variants.len(), 2);
-        assert_eq!(option.variants[0].name, "Some");
+        assert_eq!(option.variants[0].name, "None");
         assert_eq!(option.variants[0].tag, 0);
-        assert_eq!(option.variants[1].name, "None");
+        assert_eq!(option.variants[1].name, "Some");
         assert_eq!(option.variants[1].tag, 1);
 
         let result = mir
@@ -8643,10 +8699,10 @@ mod tests {
                             kind: HirExprKind::Var("Int8.try_from".to_string()),
                             ty: Type::Function(FunctionType::pure(
                                 vec![Type::Int],
-                                Type::Option(Box::new(Type::IntN(
+                                Type::option(Type::IntN(
                                     kea_types::IntWidth::I8,
                                     kea_types::Signedness::Signed,
-                                ))),
+                                )),
                             )),
                             span: kea_ast::Span::synthetic(),
                         }),
@@ -8656,18 +8712,18 @@ mod tests {
                             span: kea_ast::Span::synthetic(),
                         }],
                     },
-                    ty: Type::Option(Box::new(Type::IntN(
+                    ty: Type::option(Type::IntN(
                         kea_types::IntWidth::I8,
                         kea_types::Signedness::Signed,
-                    ))),
+                    )),
                     span: kea_ast::Span::synthetic(),
                 },
                 ty: Type::Function(FunctionType::pure(
                     vec![],
-                    Type::Option(Box::new(Type::IntN(
+                    Type::option(Type::IntN(
                         kea_types::IntWidth::I8,
                         kea_types::Signedness::Signed,
-                    ))),
+                    )),
                 )),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
@@ -8716,7 +8772,7 @@ mod tests {
                         variant,
                         tag,
                         ..
-                    } if sum_type == "Option" && variant == "Some" && *tag == 0
+                    } if sum_type == "Option" && variant == "Some" && *tag == 1
                 )),
             "expected Some construction in try_from lowering"
         );
@@ -8724,10 +8780,10 @@ mod tests {
 
     #[test]
     fn lower_hir_module_widens_signed_fixed_width_input_before_try_from_checks() {
-        let option_int8 = Type::Option(Box::new(Type::IntN(
+        let option_int8 = Type::option(Type::IntN(
             kea_types::IntWidth::I8,
             kea_types::Signedness::Signed,
-        )));
+        ));
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
                 name: "narrow_param".to_string(),

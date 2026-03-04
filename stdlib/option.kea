@@ -1,3 +1,8 @@
+use Eq
+use Show
+use Ord
+use Order
+
 doc
   Option represents a value that may or may not be present.
 
@@ -10,6 +15,12 @@ doc
 
   Use `Option.unwrap` only at boundaries where converting `None`
   into a `Fail` is the right behavior.
+
+@derive(Eq, Show, Ord)
+enum Option a
+  None
+  Some(a)
+
 effect Fail E
   doc
     Abort the current computation with an error payload.

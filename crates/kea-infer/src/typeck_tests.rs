@@ -841,7 +841,7 @@ fn check_expr_context_pushes_expected_precision_into_left_arg_application_argume
 
 #[test]
 fn check_expr_context_pushes_expected_precision_into_some_constructor_payload() {
-    let expected = Type::Option(Box::new(Type::IntN(IntWidth::I8, Signedness::Signed)));
+    let expected = Type::option(Type::IntN(IntWidth::I8, Signedness::Signed));
     let expr = constructor("Some", vec![lit_int(200)]);
     let mut env = TypeEnv::new();
     let mut ctx = InferenceContext::new();
@@ -872,10 +872,7 @@ fn check_expr_context_pushes_expected_precision_into_some_constructor_payload() 
 
 #[test]
 fn check_expr_context_pushes_expected_precision_into_err_constructor_payload() {
-    let expected = Type::Result(
-        Box::new(Type::Int),
-        Box::new(Type::IntN(IntWidth::I8, Signedness::Signed)),
-    );
+    let expected = Type::result(Type::Int, Type::IntN(IntWidth::I8, Signedness::Signed));
     let expr = constructor("Err", vec![lit_int(200)]);
     let mut env = TypeEnv::new();
     let mut ctx = InferenceContext::new();
@@ -906,7 +903,7 @@ fn check_expr_context_pushes_expected_precision_into_err_constructor_payload() {
 
 #[test]
 fn check_expr_context_pushes_expected_precision_into_list_elements() {
-    let expected = Type::List(Box::new(Type::IntN(IntWidth::I8, Signedness::Signed)));
+    let expected = Type::list(Type::IntN(IntWidth::I8, Signedness::Signed));
     let expr = list(vec![lit_int(200)]);
     let mut env = TypeEnv::new();
     let mut ctx = InferenceContext::new();
@@ -2257,7 +2254,7 @@ fn infer_nested_stream_call_resolves_inner_type_parameter() {
             bounds: BTreeMap::new(),
             kinds: Default::default(),
             ty: Type::Function(FunctionType {
-                params: vec![Type::List(Box::new(Type::Var(a)))],
+                params: vec![Type::list(Type::Var(a))],
                 ret: Box::new(Type::Stream(Box::new(Type::Var(a)))),
                 effects: EffectRow::pure(),
             }),
@@ -2364,8 +2361,8 @@ fn infer_nested_list_call_resolves_inner_type_parameter() {
             bounds: BTreeMap::new(),
             kinds: Default::default(),
             ty: Type::Function(FunctionType {
-                params: vec![Type::List(Box::new(Type::Var(a)))],
-                ret: Box::new(Type::List(Box::new(Type::Var(a)))),
+                params: vec![Type::list(Type::Var(a))],
+                ret: Box::new(Type::list(Type::Var(a))),
                 effects: EffectRow::pure(),
             }),
         },
@@ -2382,14 +2379,14 @@ fn infer_nested_list_call_resolves_inner_type_parameter() {
             kinds: Default::default(),
             ty: Type::Function(FunctionType {
                 params: vec![
-                    Type::List(Box::new(Type::Var(b))),
+                    Type::list(Type::Var(b)),
                     Type::Function(FunctionType {
                         params: vec![Type::Var(b)],
                         ret: Box::new(Type::Var(c)),
                         effects: EffectRow::pure(),
                     }),
                 ],
-                ret: Box::new(Type::List(Box::new(Type::Var(c)))),
+                ret: Box::new(Type::list(Type::Var(c))),
                 effects: EffectRow::pure(),
             }),
         },
@@ -2408,7 +2405,7 @@ fn infer_nested_list_call_resolves_inner_type_parameter() {
 
     let (ty, u) = infer_with_env(&expr, &mut env);
     assert!(!u.has_errors(), "Errors: {:?}", u.errors());
-    assert_eq!(ty, Type::List(Box::new(Type::Int)));
+    assert_eq!(ty, Type::list(Type::Int));
 }
 
 // ===========================================================================
@@ -2461,7 +2458,7 @@ fn infer_if_option_is_some_narrows_true_branch() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
-        TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+        TypeScheme::mono(Type::option(Type::Int)),
     );
     let expr = if_expr(
         call(field_access(var("Option"), "is_some"), vec![var("x")]),
@@ -2482,7 +2479,7 @@ fn infer_if_option_is_none_narrows_else_branch() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
-        TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+        TypeScheme::mono(Type::option(Type::Int)),
     );
     let expr = if_expr(
         call(field_access(var("Option"), "is_none"), vec![var("x")]),
@@ -2503,7 +2500,7 @@ fn infer_if_not_option_is_none_narrows_true_branch() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
-        TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+        TypeScheme::mono(Type::option(Type::Int)),
     );
     let expr = if_expr(
         unary(
@@ -2527,7 +2524,7 @@ fn infer_if_not_option_is_some_narrows_else_branch() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
-        TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+        TypeScheme::mono(Type::option(Type::Int)),
     );
     let expr = if_expr(
         unary(
@@ -2551,7 +2548,7 @@ fn infer_if_left_arg_application_guard_narrows_true_branch() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
-        TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+        TypeScheme::mono(Type::option(Type::Int)),
     );
     let expr = if_expr(
         apply_first_arg(var("x"), field_access(var("Option"), "is_some")),
@@ -2572,7 +2569,7 @@ fn infer_if_result_guard_narrows_both_branches() {
     let mut env = TypeEnv::new();
     env.bind(
         "r".into(),
-        TypeScheme::mono(Type::Result(Box::new(Type::Int), Box::new(Type::String))),
+        TypeScheme::mono(Type::result(Type::Int, Type::String)),
     );
     let expr = if_expr(
         call(field_access(var("Result"), "is_ok"), vec![var("r")]),
@@ -2593,7 +2590,7 @@ fn infer_if_and_short_circuit_sees_narrowed_rhs() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
-        TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+        TypeScheme::mono(Type::option(Type::Int)),
     );
     let expr = if_expr(
         binop(
@@ -2618,7 +2615,7 @@ fn infer_if_or_short_circuit_sees_complement_narrowed_rhs() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
-        TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+        TypeScheme::mono(Type::option(Type::Int)),
     );
     let expr = if_expr(
         binop(
@@ -2643,12 +2640,12 @@ fn infer_if_intermediate_bool_does_not_narrow() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
-        TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+        TypeScheme::mono(Type::option(Type::Int)),
     );
     env.bind(
         "is_some".into(),
         TypeScheme::mono(Type::Function(FunctionType {
-            params: vec![Type::Option(Box::new(Type::Int))],
+            params: vec![Type::option(Type::Int)],
             ret: Box::new(Type::Bool),
             effects: EffectRow::pure(),
         })),
@@ -2673,12 +2670,12 @@ fn infer_if_non_narrowing_bool_function_does_not_narrow() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
-        TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+        TypeScheme::mono(Type::option(Type::Int)),
     );
     env.bind(
         "my_check".into(),
         TypeScheme::mono(Type::Function(FunctionType {
-            params: vec![Type::Option(Box::new(Type::Int))],
+            params: vec![Type::option(Type::Int)],
             ret: Box::new(Type::Bool),
             effects: EffectRow::pure(),
         })),
@@ -2708,7 +2705,7 @@ fn infer_if_narrowing_does_not_leak_after_expression() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
-        TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+        TypeScheme::mono(Type::option(Type::Int)),
     );
     let expr = block(vec![
         if_expr(
@@ -2905,7 +2902,7 @@ fn infer_cond_guard_narrows_arm_body() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
-        TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+        TypeScheme::mono(Type::option(Type::Int)),
     );
     let expr = cond_expr(vec![
         cond_arm(
@@ -3199,7 +3196,7 @@ fn infer_homogeneous_list() {
     let expr = list(vec![lit_int(1), lit_int(2), lit_int(3)]);
     let (ty, u) = infer(&expr);
     assert!(!u.has_errors());
-    assert_eq!(ty, Type::List(Box::new(Type::Int)));
+    assert_eq!(ty, Type::list(Type::Int));
 }
 
 #[test]
@@ -3533,7 +3530,7 @@ fn infer_some() {
     let expr = constructor("Some", vec![lit_int(42)]);
     let (ty, u) = infer(&expr);
     assert!(!u.has_errors());
-    assert_eq!(ty, Type::Option(Box::new(Type::Int)));
+    assert_eq!(ty, Type::option(Type::Int));
 }
 
 #[test]
@@ -3542,10 +3539,7 @@ fn infer_none() {
     let expr = sp(ExprKind::None);
     let (ty, u) = infer(&expr);
     assert!(!u.has_errors());
-    match &ty {
-        Type::Option(_) => {} // Good — inner is some fresh var
-        _ => panic!("Expected Option, got {ty:?}"),
-    }
+    assert!(ty.as_option().is_some(), "Expected Option, got {ty:?}");
 }
 
 #[test]
@@ -3559,7 +3553,7 @@ fn infer_ascription_refines_empty_list() {
     );
     let (ty, u) = infer(&expr);
     assert!(!u.has_errors(), "Errors: {:?}", u.errors());
-    assert_eq!(ty, Type::List(Box::new(Type::Int)));
+    assert_eq!(ty, Type::list(Type::Int));
 }
 
 #[test]
@@ -4094,9 +4088,9 @@ fn infer_ok() {
     let expr = constructor("Ok", vec![lit_int(42)]);
     let (ty, u) = infer(&expr);
     assert!(!u.has_errors());
-    match &ty {
-        Type::Result(ok, _) => assert_eq!(ok.as_ref(), &Type::Int),
-        _ => panic!("Expected Result, got {ty:?}"),
+    match ty.as_result() {
+        Some((ok, _)) => assert_eq!(ok, &Type::Int),
+        None => panic!("Expected Result, got {ty:?}"),
     }
 }
 
@@ -4106,9 +4100,9 @@ fn infer_err() {
     let expr = constructor("Err", vec![lit_str("oops")]);
     let (ty, u) = infer(&expr);
     assert!(!u.has_errors());
-    match &ty {
-        Type::Result(_, err) => assert_eq!(err.as_ref(), &Type::String),
-        _ => panic!("Expected Result, got {ty:?}"),
+    match ty.as_result() {
+        Some((_, err)) => assert_eq!(err, &Type::String),
+        None => panic!("Expected Result, got {ty:?}"),
     }
 }
 
@@ -4353,7 +4347,7 @@ fn infer_case_patterns_constrain_variable_scrutinee_type() {
     assert_eq!(
         u.substitution.apply(&ty),
         Type::Function(FunctionType {
-            params: vec![Type::Option(Box::new(Type::Int))],
+            params: vec![Type::option(Type::Int)],
             ret: Box::new(Type::Int),
             effects: EffectRow::pure(),
         })
@@ -4962,7 +4956,7 @@ fn builtin_constructor_arity_mismatch_rejected() {
     );
     assert_eq!(
         resolve_annotation(&ann, &records, Some(&sums)),
-        Some(Type::List(Box::new(Type::Int))),
+        Some(Type::list(Type::Int)),
         "List(Int) should resolve"
     );
 }
@@ -5115,12 +5109,15 @@ fn infer_list_of_bare_decimal_annotation_typechecks() {
     match ty {
         Type::Function(ft) => {
             assert!(
-                matches!(ft.params.first(), Some(Type::List(inner)) if matches!(&**inner, Type::Decimal { .. })),
+                ft.params.first()
+                    .and_then(|t| t.as_list())
+                    .is_some_and(|inner| matches!(inner, Type::Decimal { .. })),
                 "expected List(Decimal) parameter type, got {:?}",
                 ft.params
             );
             assert!(
-                matches!(ft.ret.as_ref(), Type::List(inner) if matches!(inner.as_ref(), Type::Decimal { .. })),
+                ft.ret.as_list()
+                    .is_some_and(|inner| matches!(inner, Type::Decimal { .. })),
                 "expected List(Decimal) return type, got {:?}",
                 ft.ret
             );
@@ -5442,8 +5439,8 @@ fn partial_type_op_wraps_record_fields_in_option() {
     assert!(!u.has_errors(), "unexpected errors: {:?}", u.errors());
     let resolved = u.substitution.apply(&ty);
     let expected_row = RowType::closed(vec![
-        (Label::new("age"), Type::Option(Box::new(Type::Int))),
-        (Label::new("name"), Type::Option(Box::new(Type::String))),
+        (Label::new("age"), Type::option(Type::Int)),
+        (Label::new("name"), Type::option(Type::String)),
     ]);
     match resolved {
         Type::Function(ft) => {
@@ -6654,7 +6651,7 @@ fn catch_over_higher_order_fail_parameter_is_accepted() {
     match &ty {
         Type::Function(ft) => {
             assert!(
-                matches!(*ft.ret, Type::Result(_, _)),
+                ft.ret.as_result().is_some(),
                 "expected return type to be Result, got {:?}",
                 ft.ret
             );
@@ -7263,12 +7260,12 @@ fn trait_parametric_impl_satisfies_recursive_bounds() {
     assert!(has_unique_impl(
         &traits,
         "Show",
-        Type::List(Box::new(Type::Int))
+        Type::list(Type::Int)
     ));
     assert!(!has_unique_impl(
         &traits,
         "Show",
-        Type::List(Box::new(Type::Float))
+        Type::list(Type::Float)
     ));
 }
 
@@ -7436,19 +7433,19 @@ fn sendable_parametric_dispatch_handles_nested_and_non_sendable_cases() {
     assert!(has_unique_impl(
         &traits,
         "Sendable",
-        Type::List(Box::new(Type::Int))
+        Type::list(Type::Int)
     ));
     assert!(has_unique_impl(
         &traits,
         "Sendable",
-        Type::List(Box::new(Type::List(Box::new(Type::String))))
+        Type::list(Type::list(Type::String))
     ));
     assert!(has_unique_impl(
         &traits,
         "Sendable",
         Type::Map(
             Box::new(Type::String),
-            Box::new(Type::List(Box::new(Type::Int))),
+            Box::new(Type::list(Type::Int)),
         )
     ));
 
@@ -7460,7 +7457,7 @@ fn sendable_parametric_dispatch_handles_nested_and_non_sendable_cases() {
     assert!(!has_unique_impl(
         &traits,
         "Sendable",
-        Type::List(Box::new(fn_ty))
+        Type::list(fn_ty)
     ));
 }
 
@@ -8316,7 +8313,7 @@ fn trait_bounds_checked_against_registry() {
         span: s(),
         reason: crate::Reason::LetAnnotation,
     };
-    unifier.unify(&ty, &Type::List(Box::new(Type::Int)), &prov);
+    unifier.unify(&ty, &Type::list(Type::Int), &prov);
     assert!(!unifier.has_errors());
 
     // Check bounds — should succeed.
@@ -10314,12 +10311,10 @@ fn infer_await_and_await_safe_types() {
             assert_eq!(items[0], Type::Int);
             assert_eq!(
                 items[1],
-                Type::Result(
-                    Box::new(Type::Int),
-                    Box::new(
-                        kea_types::builtin_error_sum_type("ActorError")
-                            .expect("builtin ActorError type"),
-                    ),
+                Type::result(
+                    Type::Int,
+                    kea_types::builtin_error_sum_type("ActorError")
+                        .expect("builtin ActorError type"),
                 )
             );
         }
@@ -10707,9 +10702,9 @@ fn try_send_known_method_typechecks() {
     assert!(!unifier.has_errors(), "errors: {:?}", unifier.errors());
     assert_eq!(
         ty,
-        Type::Result(
-            Box::new(Type::Unit),
-            Box::new(kea_types::builtin_error_sum_type("ActorError").expect("builtin error type"))
+        Type::result(
+            Type::Unit,
+            kea_types::builtin_error_sum_type("ActorError").expect("builtin error type"),
         )
     );
 }
@@ -10829,9 +10824,9 @@ fn call_safe_returns_result_of_method_return_type() {
     assert!(!unifier.has_errors(), "errors: {:?}", unifier.errors());
     assert_eq!(
         ty,
-        Type::Result(
-            Box::new(Type::Int),
-            Box::new(kea_types::builtin_error_sum_type("ActorError").expect("builtin error type"))
+        Type::result(
+            Type::Int,
+            kea_types::builtin_error_sum_type("ActorError").expect("builtin error type"),
         )
     );
 }
@@ -11057,7 +11052,7 @@ fn atom_in_list_infers_list_atom() {
     let expr = sp(ExprKind::List(vec![atom_expr("foo"), atom_expr("bar")]));
     let (ty, u) = infer(&expr);
     assert!(!u.has_errors());
-    assert_eq!(ty, Type::List(Box::new(Type::Atom)));
+    assert_eq!(ty, Type::list(Type::Atom));
 }
 
 #[test]
@@ -11795,7 +11790,7 @@ fn impl_default_associated_type_can_project_self_assoc() {
         base_trait: "Container".to_string(),
         base_ty: Type::Int,
         assoc: "Wrapped".to_string(),
-        rhs: Type::Option(Box::new(Type::String)),
+        rhs: Type::option(Type::String),
     });
     assert!(matches!(outcome, SolveOutcome::Unique(_)));
 }
@@ -11855,7 +11850,7 @@ fn impl_associated_type_defaults_resolve_in_fixpoint_order() {
         base_trait: "Container".to_string(),
         base_ty: Type::Int,
         assoc: "Wrapped".to_string(),
-        rhs: Type::Option(Box::new(Type::String)),
+        rhs: Type::option(Type::String),
     });
     assert!(matches!(wrapped_outcome, SolveOutcome::Unique(_)));
 }
@@ -11958,7 +11953,7 @@ fn impl_explicit_associated_type_projection_is_order_invariant() {
         base_trait: "Container".to_string(),
         base_ty: Type::Int,
         assoc: "Wrapped".to_string(),
-        rhs: Type::Option(Box::new(Type::String)),
+        rhs: Type::option(Type::String),
     });
     assert!(matches!(wrapped, SolveOutcome::Unique(_)));
 }
@@ -12499,7 +12494,7 @@ fn solve_goal_reports_ambiguous_param_bound_reason() {
 
     let outcome = traits.solve_goal(&TraitGoal::Implements {
         trait_name: "Wrap".to_string(),
-        ty: Type::List(Box::new(Type::Int)),
+        ty: Type::list(Type::Int),
     });
     assert!(matches!(
         outcome,

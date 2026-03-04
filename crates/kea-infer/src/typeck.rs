@@ -1559,6 +1559,85 @@ impl SumTypeRegistry {
             );
         }
 
+        // Option(T) = None | Some(T)
+        let option_variants = vec![
+            VariantInfo {
+                name: "None".to_string(),
+                fields: vec![],
+                where_constraints: vec![],
+                recursive_fields: vec![],
+                definition_span: None,
+            },
+            VariantInfo {
+                name: "Some".to_string(),
+                fields: vec![VariantFieldInfo {
+                    name: None,
+                    ty: Type::Var(TypeVarId(0)),
+                }],
+                where_constraints: vec![],
+                recursive_fields: vec![false],
+                definition_span: None,
+            },
+        ];
+        for variant in &option_variants {
+            self.variant_to_types
+                .entry(variant.name.clone())
+                .or_default()
+                .push("Option".to_string());
+        }
+        self.types.insert(
+            "Option".to_string(),
+            SumTypeInfo {
+                params: vec!["t".to_string()],
+                variants: option_variants,
+                is_recursive: false,
+                definition_span: None,
+                doc: Some("Optional value. `Some(t)` holds a value, `None` is absent.".to_string()),
+                public: true,
+            },
+        );
+
+        // Result(T, E) = Ok(T) | Err(E)
+        let result_variants = vec![
+            VariantInfo {
+                name: "Ok".to_string(),
+                fields: vec![VariantFieldInfo {
+                    name: None,
+                    ty: Type::Var(TypeVarId(0)),
+                }],
+                where_constraints: vec![],
+                recursive_fields: vec![false],
+                definition_span: None,
+            },
+            VariantInfo {
+                name: "Err".to_string(),
+                fields: vec![VariantFieldInfo {
+                    name: None,
+                    ty: Type::Var(TypeVarId(1)),
+                }],
+                where_constraints: vec![],
+                recursive_fields: vec![false],
+                definition_span: None,
+            },
+        ];
+        for variant in &result_variants {
+            self.variant_to_types
+                .entry(variant.name.clone())
+                .or_default()
+                .push("Result".to_string());
+        }
+        self.types.insert(
+            "Result".to_string(),
+            SumTypeInfo {
+                params: vec!["t".to_string(), "e".to_string()],
+                variants: result_variants,
+                is_recursive: false,
+                definition_span: None,
+                doc: Some("Result of a computation. `Ok(t)` is success, `Err(e)` is failure.".to_string()),
+                public: true,
+            },
+        );
+
         // Validated(T, E) = Valid(T) | Invalid(List(E))
         // Error-accumulating Applicative for collecting multiple validation errors.
         let validated_variants = vec![
@@ -1576,7 +1655,7 @@ impl SumTypeRegistry {
                 name: "Invalid".to_string(),
                 fields: vec![VariantFieldInfo {
                     name: None,
-                    ty: Type::List(Box::new(Type::Var(TypeVarId(1)))),
+                    ty: Type::list(Type::Var(TypeVarId(1))),
                 }],
                 where_constraints: vec![],
                 recursive_fields: vec![false],
@@ -1742,18 +1821,30 @@ impl SumTypeRegistry {
         }
 
         // Pre-validate type-name collisions.
+        // Option and Result are pre-registered as builtin stubs so inference tests without stdlib
+        // can still use them. When stdlib actually defines them, remove the stub and let the
+        // real definition take over.
+        const STDLIB_REPLACEABLE_BUILTINS: &[&str] = &["Option", "Result"];
         let mut batch_names = BTreeSet::new();
         for def in defs {
             if self.types.contains_key(&def.name.node) {
-                return Err(Diagnostic::error(
-                    Category::TypeMismatch,
-                    format!("type `{}` is already defined", def.name.node),
-                )
-                .at(SourceLocation {
-                    file_id: def.name.span.file.0,
-                    start: def.name.span.start,
-                    end: def.name.span.end,
-                }));
+                if STDLIB_REPLACEABLE_BUILTINS.contains(&def.name.node.as_str()) {
+                    // Remove the stub; the stdlib definition replaces it.
+                    self.types.remove(&def.name.node);
+                    for variants in self.variant_to_types.values_mut() {
+                        variants.retain(|t| t != &def.name.node);
+                    }
+                } else {
+                    return Err(Diagnostic::error(
+                        Category::TypeMismatch,
+                        format!("type `{}` is already defined", def.name.node),
+                    )
+                    .at(SourceLocation {
+                        file_id: def.name.span.file.0,
+                        start: def.name.span.start,
+                        end: def.name.span.end,
+                    }));
+                }
             }
             if !batch_names.insert(def.name.node.clone()) {
                 return Err(Diagnostic::error(
@@ -1773,7 +1864,16 @@ impl SumTypeRegistry {
         let mut new_variant_to_type: BTreeMap<String, String> = BTreeMap::new();
         for def in defs {
             for variant in &def.variants {
-                if matches!(variant.name.node.as_str(), "Some" | "None" | "Ok" | "Err") {
+                // Allow the stdlib Option/Result types to define these constructors.
+                // Block any OTHER type from shadowing them.
+                let is_stdlib_option = def.name.node == "Option"
+                    && matches!(variant.name.node.as_str(), "Some" | "None");
+                let is_stdlib_result = def.name.node == "Result"
+                    && matches!(variant.name.node.as_str(), "Ok" | "Err");
+                if matches!(variant.name.node.as_str(), "Some" | "None" | "Ok" | "Err")
+                    && !is_stdlib_option
+                    && !is_stdlib_result
+                {
                     return Err(Diagnostic::error(
                         Category::TypeMismatch,
                         format!(
@@ -4392,11 +4492,6 @@ fn instantiate_impl_type(
             }
             ty.clone()
         }
-        Type::List(inner) => Type::List(Box::new(instantiate_impl_type(
-            inner,
-            type_params,
-            bindings,
-        ))),
         Type::FixedSizeList { element, size } => Type::FixedSizeList {
             element: Box::new(instantiate_impl_type(element, type_params, bindings)),
             size: size.clone(),
@@ -4410,18 +4505,9 @@ fn instantiate_impl_type(
             type_params,
             bindings,
         ))),
-        Type::Option(inner) => Type::Option(Box::new(instantiate_impl_type(
-            inner,
-            type_params,
-            bindings,
-        ))),
         Type::Map(k, v) => Type::Map(
             Box::new(instantiate_impl_type(k, type_params, bindings)),
             Box::new(instantiate_impl_type(v, type_params, bindings)),
-        ),
-        Type::Result(ok, err) => Type::Result(
-            Box::new(instantiate_impl_type(ok, type_params, bindings)),
-            Box::new(instantiate_impl_type(err, type_params, bindings)),
         ),
         Type::Existential {
             bounds,
@@ -4621,36 +4707,24 @@ fn resolve_annotation_with_type_params(
                 return resolve_decimal_annotation(args);
             }
             match (name.as_str(), args.as_slice()) {
-                ("List", [elem]) if !has_named_type_definition("List", records, sum_types) => {
-                    Some(Type::List(Box::new(resolve_annotation_with_type_params(
+                ("List", [elem]) => {
+                    let elem_ty = resolve_annotation_with_type_params(
                         elem,
                         type_param_scope,
                         records,
                         sum_types,
-                    )?)))
+                    )?;
+                    Some(Type::list(elem_ty))
                 }
                 ("Option", [inner]) => {
-                    Some(Type::Option(Box::new(resolve_annotation_with_type_params(
-                        inner,
-                        type_param_scope,
-                        records,
-                        sum_types,
-                    )?)))
+                    let inner_ty = resolve_annotation_with_type_params(inner, type_param_scope, records, sum_types)?;
+                    Some(Type::option(inner_ty))
                 }
-                ("Result", [ok, err]) => Some(Type::Result(
-                    Box::new(resolve_annotation_with_type_params(
-                        ok,
-                        type_param_scope,
-                        records,
-                        sum_types,
-                    )?),
-                    Box::new(resolve_annotation_with_type_params(
-                        err,
-                        type_param_scope,
-                        records,
-                        sum_types,
-                    )?),
-                )),
+                ("Result", [ok, err]) => {
+                    let ok_ty = resolve_annotation_with_type_params(ok, type_param_scope, records, sum_types)?;
+                    let err_ty = resolve_annotation_with_type_params(err, type_param_scope, records, sum_types)?;
+                    Some(Type::result(ok_ty, err_ty))
+                }
                 ("Map", [key, val]) => Some(Type::Map(
                     Box::new(resolve_annotation_with_type_params(
                         key,
@@ -4821,9 +4895,10 @@ fn resolve_annotation_with_type_params(
                 effects,
             }))
         }
-        TypeAnnotation::Optional(inner) => Some(Type::Option(Box::new(
-            resolve_annotation_with_type_params(inner, type_param_scope, records, sum_types)?,
-        ))),
+        TypeAnnotation::Optional(inner) => {
+            let inner_ty = resolve_annotation_with_type_params(inner, type_param_scope, records, sum_types)?;
+            Some(Type::option(inner_ty))
+        }
         TypeAnnotation::Existential {
             bounds,
             associated_types,
@@ -6372,7 +6447,6 @@ fn rename_type(
             Some(new_v) => Type::Var(*new_v),
             None => ty.clone(),
         },
-        Type::List(inner) => Type::List(Box::new(rename_type(inner, type_map, row_map, dim_map))),
         Type::FixedSizeList { element, size } => Type::FixedSizeList {
             element: Box::new(rename_type(element, type_map, row_map, dim_map)),
             size: rename_dim(size, dim_map),
@@ -6382,16 +6456,9 @@ fn rename_type(
             shape: shape.iter().map(|dim| rename_dim(dim, dim_map)).collect(),
         },
         Type::Set(inner) => Type::Set(Box::new(rename_type(inner, type_map, row_map, dim_map))),
-        Type::Option(inner) => {
-            Type::Option(Box::new(rename_type(inner, type_map, row_map, dim_map)))
-        }
         Type::Map(k, v) => Type::Map(
             Box::new(rename_type(k, type_map, row_map, dim_map)),
             Box::new(rename_type(v, type_map, row_map, dim_map)),
-        ),
-        Type::Result(ok, err) => Type::Result(
-            Box::new(rename_type(ok, type_map, row_map, dim_map)),
-            Box::new(rename_type(err, type_map, row_map, dim_map)),
         ),
         Type::Existential {
             bounds,
@@ -6628,7 +6695,7 @@ where
             let fields = row
                 .fields
                 .into_iter()
-                .map(|(label, ty)| (label, Type::Option(Box::new(ty))))
+                .map(|(label, ty)| (label, Type::option(ty)))
                 .collect();
             Some(Type::AnonRecord(RowType::closed(fields)))
         }
@@ -6644,9 +6711,10 @@ where
                 .fields
                 .into_iter()
                 .map(|(label, ty)| {
-                    let required = match ty {
-                        Type::Option(inner) => *inner,
-                        other => other,
+                    let required = if let Some(inner) = ty.as_option() {
+                        inner.clone()
+                    } else {
+                        ty
                     };
                     (label, required)
                 })
@@ -6786,58 +6854,6 @@ where
         type_args: resolved_args,
         variants,
     }))
-}
-
-fn has_named_type_definition(
-    name: &str,
-    records: &RecordRegistry,
-    sum_types: Option<&SumTypeRegistry>,
-) -> bool {
-    records.lookup_alias(name).is_some()
-        || records.lookup_opaque(name).is_some()
-        || records.lookup(name).is_some()
-        || sum_types.and_then(|st| st.lookup(name)).is_some()
-}
-
-/// Check whether `sum_types` contains a user-defined `List a` with `Nil` and
-/// `Cons(a, List a)` variants — the stdlib linked-list shape.  When true, list
-/// literal syntax `[1, 2, 3]` and list patterns `[h, ..t]` should produce
-/// `Type::Sum` rather than the builtin `Type::List`.
-fn has_stdlib_list_sum_type(sum_types: Option<&SumTypeRegistry>) -> bool {
-    let Some(st) = sum_types else { return false };
-    let Some(info) = st.lookup("List") else {
-        return false;
-    };
-    // Must have exactly one type parameter and two variants named Nil and Cons.
-    if info.params.len() != 1 {
-        return false;
-    }
-    let has_nil = info.variants.iter().any(|v| v.name == "Nil" && v.fields.is_empty());
-    let has_cons = info.variants.iter().any(|v| v.name == "Cons" && v.fields.len() == 2);
-    has_nil && has_cons
-}
-
-/// Build a `Type::Sum(List elem_ty)` from the stdlib List definition.
-fn make_stdlib_list_type(elem_ty: Type, sum_types: &SumTypeRegistry) -> Type {
-    let info = sum_types.lookup("List").expect("stdlib List must exist");
-    let type_args = vec![elem_ty.clone()];
-    let variants = info
-        .variants
-        .iter()
-        .map(|v| {
-            let fields = v
-                .fields
-                .iter()
-                .map(|field| substitute_params(&field.ty, &info.params, &type_args))
-                .collect();
-            (v.name.clone(), fields)
-        })
-        .collect();
-    Type::Sum(SumType {
-        name: "List".to_string(),
-        type_args,
-        variants,
-    })
 }
 
 fn named_type_param_arity(
@@ -7309,15 +7325,15 @@ pub fn resolve_annotation(
                 return resolve_decimal_annotation(args);
             }
             match (name.as_str(), args.as_slice()) {
-                ("List", [elem]) if !has_named_type_definition("List", records, sum_types) => Some(
-                    Type::List(Box::new(resolve_annotation(elem, records, sum_types)?)),
-                ),
-                ("Option", [inner]) => Some(Type::Option(Box::new(resolve_annotation(
-                    inner, records, sum_types,
-                )?))),
-                ("Result", [ok, err]) => Some(Type::Result(
-                    Box::new(resolve_annotation(ok, records, sum_types)?),
-                    Box::new(resolve_annotation(err, records, sum_types)?),
+                ("List", [elem]) => {
+                    Some(Type::list(resolve_annotation(elem, records, sum_types)?))
+                }
+                ("Option", [inner]) => {
+                    Some(Type::option(resolve_annotation(inner, records, sum_types)?))
+                }
+                ("Result", [ok, err]) => Some(Type::result(
+                    resolve_annotation(ok, records, sum_types)?,
+                    resolve_annotation(err, records, sum_types)?,
                 )),
                 ("Map", [key, val]) => Some(Type::Map(
                     Box::new(resolve_annotation(key, records, sum_types)?),
@@ -7409,9 +7425,10 @@ pub fn resolve_annotation(
                 effects,
             }))
         }
-        TypeAnnotation::Optional(inner) => Some(Type::Option(Box::new(resolve_annotation(
-            inner, records, sum_types,
-        )?))),
+        TypeAnnotation::Optional(inner) => {
+            let inner_ty = resolve_annotation(inner, records, sum_types)?;
+            Some(Type::option(inner_ty))
+        }
         TypeAnnotation::Existential {
             bounds,
             associated_types,
@@ -7487,21 +7504,19 @@ fn resolve_annotation_or_bare_df(
                 return resolve_decimal_annotation(args);
             }
             match (name.as_str(), args.as_slice()) {
-                ("List", [elem]) if !has_named_type_definition("List", records, sum_types) => {
-                    Some(Type::List(Box::new(resolve_annotation_or_bare_df(
+                ("List", [elem]) => {
+                    Some(Type::list(resolve_annotation_or_bare_df(
                         elem, records, sum_types, unifier,
-                    )?)))
+                    )?))
                 }
-                ("Option", [inner]) => Some(Type::Option(Box::new(resolve_annotation_or_bare_df(
-                    inner, records, sum_types, unifier,
-                )?))),
-                ("Result", [ok, err]) => Some(Type::Result(
-                    Box::new(resolve_annotation_or_bare_df(
-                        ok, records, sum_types, unifier,
-                    )?),
-                    Box::new(resolve_annotation_or_bare_df(
-                        err, records, sum_types, unifier,
-                    )?),
+                ("Option", [inner]) => {
+                    Some(Type::option(resolve_annotation_or_bare_df(
+                        inner, records, sum_types, unifier,
+                    )?))
+                }
+                ("Result", [ok, err]) => Some(Type::result(
+                    resolve_annotation_or_bare_df(ok, records, sum_types, unifier)?,
+                    resolve_annotation_or_bare_df(err, records, sum_types, unifier)?,
                 )),
                 ("Map", [key, val]) => Some(Type::Map(
                     Box::new(resolve_annotation_or_bare_df(
@@ -7643,9 +7658,10 @@ fn resolve_annotation_or_bare_df(
                 effects,
             }))
         }
-        TypeAnnotation::Optional(inner) => Some(Type::Option(Box::new(
-            resolve_annotation_or_bare_df(inner, records, sum_types, unifier)?,
-        ))),
+        TypeAnnotation::Optional(inner) => {
+            let inner_ty = resolve_annotation_or_bare_df(inner, records, sum_types, unifier)?;
+            Some(Type::option(inner_ty))
+        }
         TypeAnnotation::Existential {
             bounds,
             associated_types,
@@ -7873,7 +7889,7 @@ pub fn register_builtin_int_bitwise_methods(env: &mut TypeEnv) {
             "try_from",
             TypeScheme::mono(Type::Function(FunctionType::pure(
                 vec![Type::Int],
-                Type::Option(Box::new(target_ty)),
+                Type::option(target_ty),
             ))),
         );
     }
@@ -8631,14 +8647,11 @@ fn type_contains_unique(ty: &Type) -> bool {
                     .any(|(_, payloads)| payloads.iter().any(type_contains_unique))
         }
         Type::Tuple(items) => items.iter().any(type_contains_unique),
-        Type::List(item)
-        | Type::Option(item)
-        | Type::Stream(item)
+        Type::Stream(item)
         | Type::Task(item)
         | Type::Actor(item)
         | Type::Arc(item)
         | Type::Tagged { inner: item, .. } => type_contains_unique(item),
-        Type::Result(ok, err) => type_contains_unique(ok) || type_contains_unique(err),
         Type::Function(ft) => {
             ft.params.iter().any(type_contains_unique)
                 || type_contains_unique(ft.ret.as_ref())
@@ -10015,7 +10028,7 @@ fn narrowings_from_guard(
             constrain_type_eq(
                 unifier,
                 &value_ty,
-                &Type::Option(Box::new(inner.clone())),
+                &Type::option(inner.clone()),
                 &prov,
             );
             narrowings
@@ -10027,7 +10040,7 @@ fn narrowings_from_guard(
             constrain_type_eq(
                 unifier,
                 &value_ty,
-                &Type::Option(Box::new(inner.clone())),
+                &Type::option(inner.clone()),
                 &prov,
             );
             narrowings
@@ -10040,7 +10053,7 @@ fn narrowings_from_guard(
             constrain_type_eq(
                 unifier,
                 &value_ty,
-                &Type::Result(Box::new(ok_ty.clone()), Box::new(err_ty.clone())),
+                &Type::result(ok_ty.clone(), err_ty.clone()),
                 &prov,
             );
             narrowings
@@ -10056,7 +10069,7 @@ fn narrowings_from_guard(
             constrain_type_eq(
                 unifier,
                 &value_ty,
-                &Type::Result(Box::new(ok_ty.clone()), Box::new(err_ty.clone())),
+                &Type::result(ok_ty.clone(), err_ty.clone()),
                 &prov,
             );
             narrowings
@@ -10991,7 +11004,7 @@ fn infer_expr_bidir(
         // -- None --
         ExprKind::None => {
             let inner = unifier.fresh_type();
-            Type::Option(Box::new(inner))
+            Type::option(inner)
         }
 
         // -- Atom literal --
@@ -11684,11 +11697,11 @@ fn infer_expr_bidir(
                 BinOp::In | BinOp::NotIn => {
                     let resolved_right = unifier.substitution.apply(&right_ty);
                     match &resolved_right {
-                        Type::List(elem) => {
+                        Type::Sum(st) if st.name == "List" && st.type_args.len() == 1 => {
                             constrain_type_eq(
                                 unifier,
                                 &left_ty,
-                                elem,
+                                &st.type_args[0],
                                 &prov(Reason::BinaryOp(op_name)),
                             );
                         }
@@ -11727,7 +11740,7 @@ fn infer_expr_bidir(
                         _ => {
                             // Allow unresolved types — default to List(T)
                             let elem_ty = unifier.fresh_type();
-                            let list_ty = Type::List(Box::new(elem_ty.clone()));
+                            let list_ty = Type::list(elem_ty.clone());
                             constrain_type_eq(
                                 unifier,
                                 &right_ty,
@@ -11779,13 +11792,7 @@ fn infer_expr_bidir(
                 }
                 first_ty
             };
-            // When the stdlib defines `enum List a` with Nil/Cons, produce
-            // Type::Sum so list literals unify with stdlib List functions.
-            if has_stdlib_list_sum_type(Some(sum_types)) {
-                make_stdlib_list_type(elem_ty, sum_types)
-            } else {
-                Type::List(Box::new(elem_ty))
-            }
+            Type::list(elem_ty)
         }
 
         // -- Anonymous record --
@@ -12064,84 +12071,10 @@ fn infer_expr_bidir(
             Type::Unit
         }
 
-        // -- Constructor (Some, Ok, Err) --
+        // -- Constructor (Some, Ok, Err, user-defined) --
         ExprKind::Constructor { name, args } => {
+            #[allow(clippy::match_single_binding)]
             match name.node.as_str() {
-                "Some" => {
-                    if args.len() != 1 {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                format!("`Some` expects 1 argument, got {}", args.len()),
-                            )
-                            .at(span_to_loc(expr.span)),
-                        );
-                        return unifier.fresh_type();
-                    }
-                    if let Some(label) = &args[0].label {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                "`Some` does not accept labeled arguments",
-                            )
-                            .at(span_to_loc(label.span)),
-                        );
-                    }
-                    let inner =
-                        infer_expr_bidir(&args[0].value, env, unifier, records, traits, sum_types);
-                    Type::Option(Box::new(inner))
-                }
-                "Ok" => {
-                    if args.len() != 1 {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                format!("`Ok` expects 1 argument, got {}", args.len()),
-                            )
-                            .at(span_to_loc(expr.span)),
-                        );
-                        return unifier.fresh_type();
-                    }
-                    if let Some(label) = &args[0].label {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                "`Ok` does not accept labeled arguments",
-                            )
-                            .at(span_to_loc(label.span)),
-                        );
-                    }
-                    let ok_ty =
-                        infer_expr_bidir(&args[0].value, env, unifier, records, traits, sum_types);
-                    let err_ty = unifier.fresh_type();
-                    Type::Result(Box::new(ok_ty), Box::new(err_ty))
-                }
-                "Err" => {
-                    if args.len() != 1 {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                format!("`Err` expects 1 argument, got {}", args.len()),
-                            )
-                            .at(span_to_loc(expr.span)),
-                        );
-                        return unifier.fresh_type();
-                    }
-                    if let Some(label) = &args[0].label {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                "`Err` does not accept labeled arguments",
-                            )
-                            .at(span_to_loc(label.span)),
-                        );
-                    }
-                    let err_ty =
-                        infer_expr_bidir(&args[0].value, env, unifier, records, traits, sum_types);
-                    let ok_ty = unifier.fresh_type();
-                    Type::Result(Box::new(ok_ty), Box::new(err_ty))
-                }
-                "None" => Type::Option(Box::new(unifier.fresh_type())),
                 _ => {
                     if let Some(info) = records.lookup_opaque(&name.node) {
                         if args.len() != 1 {
@@ -13153,12 +13086,10 @@ fn infer_expr_bidir(
                 &prov(Reason::ActorOp),
             );
             if *safe {
-                Type::Result(
-                    Box::new(out),
-                    Box::new(
-                        kea_types::builtin_error_sum_type("ActorError")
-                            .expect("builtin ActorError sum type"),
-                    ),
+                Type::result(
+                    out,
+                    kea_types::builtin_error_sum_type("ActorError")
+                        .expect("builtin ActorError sum type"),
                 )
             } else {
                 out
@@ -13272,12 +13203,10 @@ fn infer_expr_bidir(
             }
             // Type variables stay permissive — protocol resolves later
             if *safe {
-                Type::Result(
-                    Box::new(Type::Unit),
-                    Box::new(
-                        kea_types::builtin_error_sum_type("ActorError")
-                            .expect("builtin ActorError sum type"),
-                    ),
+                Type::result(
+                    Type::Unit,
+                    kea_types::builtin_error_sum_type("ActorError")
+                        .expect("builtin ActorError sum type"),
                 )
             } else {
                 Type::Unit
@@ -13402,12 +13331,10 @@ fn infer_expr_bidir(
                 unifier.fresh_type()
             };
             if *safe {
-                Type::Result(
-                    Box::new(return_type),
-                    Box::new(
-                        kea_types::builtin_error_sum_type("ActorError")
-                            .expect("builtin ActorError sum type"),
-                    ),
+                Type::result(
+                    return_type,
+                    kea_types::builtin_error_sum_type("ActorError")
+                        .expect("builtin ActorError sum type"),
                 )
             } else {
                 return_type
@@ -13635,10 +13562,8 @@ fn try_from_target_from_callable_type(
     if ft.params.len() != 1 || !ft.params[0].is_integer() {
         return None;
     }
-    let Type::Option(inner) = ft.ret.as_ref() else {
-        return None;
-    };
-    match inner.as_ref() {
+    let inner = ft.ret.as_option()?;
+    match inner {
         Type::IntN(width, signedness) => Some((*width, *signedness)),
         _ => None,
     }
@@ -14213,7 +14138,8 @@ fn check_expr_bidir(
                 BinOp::Combine => ("Monoid", false),
                 _ => ("", true),
             };
-            let concat_builtin_ok = matches!(&resolved_expected, Type::String | Type::List(_))
+            let concat_builtin_ok = matches!(&resolved_expected, Type::String)
+                || resolved_expected.as_list().is_some()
                 || matches!(
                     &resolved_expected,
                     Type::Opaque { name, .. } if name == "Seq"
@@ -14381,11 +14307,12 @@ fn check_expr_bidir(
             }
             return expected.clone();
         }
-        (ExprKind::List(elems), Type::List(expected_elem_ty)) => {
+        (ExprKind::List(elems), Type::Sum(st)) if st.name == "List" && st.type_args.len() == 1 => {
+            let expected_elem_ty = st.type_args[0].clone();
             for (idx, elem) in elems.iter().enumerate() {
                 check_expr_bidir(
                     elem,
-                    expected_elem_ty,
+                    &expected_elem_ty,
                     Reason::FunctionArg { param_index: idx },
                     env,
                     unifier,
@@ -14508,7 +14435,11 @@ fn check_expr_bidir(
             );
             return expected.clone();
         }
-        (ExprKind::Constructor { name, args }, Type::Option(inner_expected)) => {
+        // Sum-based Option: Some/None against Type::Sum(Option)
+        (ExprKind::Constructor { name, args }, Type::Sum(st))
+            if st.name == "Option" && st.type_args.len() == 1 =>
+        {
+            let inner_expected = &st.type_args[0].clone();
             match name.node.as_str() {
                 "Some" => {
                     if args.len() != 1 {
@@ -14520,15 +14451,6 @@ fn check_expr_bidir(
                             .at(span_to_loc(expr.span)),
                         );
                         return expected.clone();
-                    }
-                    if args[0].label.is_some() {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                "`Some` does not accept labeled arguments",
-                            )
-                            .at(span_to_loc(args[0].value.span)),
-                        );
                     }
                     check_expr_bidir(
                         &args[0].value,
@@ -14543,21 +14465,17 @@ fn check_expr_bidir(
                     return expected.clone();
                 }
                 "None" => {
-                    if !args.is_empty() {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                format!("`None` expects 0 arguments, got {}", args.len()),
-                            )
-                            .at(span_to_loc(expr.span)),
-                        );
-                    }
                     return expected.clone();
                 }
                 _ => {}
             }
         }
-        (ExprKind::Constructor { name, args }, Type::Result(ok_expected, err_expected)) => {
+        // Sum-based Result: Ok/Err against Type::Sum(Result)
+        (ExprKind::Constructor { name, args }, Type::Sum(st))
+            if st.name == "Result" && st.type_args.len() == 2 =>
+        {
+            let ok_expected = st.type_args[0].clone();
+            let err_expected = st.type_args[1].clone();
             match name.node.as_str() {
                 "Ok" => {
                     if args.len() != 1 {
@@ -14570,18 +14488,9 @@ fn check_expr_bidir(
                         );
                         return expected.clone();
                     }
-                    if args[0].label.is_some() {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                "`Ok` does not accept labeled arguments",
-                            )
-                            .at(span_to_loc(args[0].value.span)),
-                        );
-                    }
                     check_expr_bidir(
                         &args[0].value,
-                        ok_expected,
+                        &ok_expected,
                         Reason::FunctionArg { param_index: 0 },
                         env,
                         unifier,
@@ -14602,18 +14511,9 @@ fn check_expr_bidir(
                         );
                         return expected.clone();
                     }
-                    if args[0].label.is_some() {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                "`Err` does not accept labeled arguments",
-                            )
-                            .at(span_to_loc(args[0].value.span)),
-                        );
-                    }
                     check_expr_bidir(
                         &args[0].value,
-                        err_expected,
+                        &err_expected,
                         Reason::FunctionArg { param_index: 0 },
                         env,
                         unifier,
@@ -14987,98 +14887,65 @@ fn constrain_case_pattern_shape(
             };
             constrain_type_eq(unifier, &lit_ty, expected_ty, &prov);
         }
-        PatternKind::Constructor { name, args, .. } => match name.as_str() {
-            "Some" => {
-                let inner_ty = unifier.fresh_type();
-                let option_ty = Type::Option(Box::new(inner_ty.clone()));
-                constrain_type_eq(unifier, &option_ty, expected_ty, &prov);
-                if let [inner_pat] = args.as_slice() {
-                    constrain_case_pattern_shape(&inner_pat.pattern, &inner_ty, unifier, sum_types);
-                }
-            }
-            "None" => {
-                let inner_ty = unifier.fresh_type();
-                let option_ty = Type::Option(Box::new(inner_ty));
-                constrain_type_eq(unifier, &option_ty, expected_ty, &prov);
-            }
-            "Ok" => {
-                let ok_ty = unifier.fresh_type();
-                let err_ty = unifier.fresh_type();
-                let result_ty = Type::Result(Box::new(ok_ty.clone()), Box::new(err_ty));
-                constrain_type_eq(unifier, &result_ty, expected_ty, &prov);
-                if let [ok_pat] = args.as_slice() {
-                    constrain_case_pattern_shape(&ok_pat.pattern, &ok_ty, unifier, sum_types);
-                }
-            }
-            "Err" => {
-                let ok_ty = unifier.fresh_type();
-                let err_ty = unifier.fresh_type();
-                let result_ty = Type::Result(Box::new(ok_ty), Box::new(err_ty.clone()));
-                constrain_type_eq(unifier, &result_ty, expected_ty, &prov);
-                if let [err_pat] = args.as_slice() {
-                    constrain_case_pattern_shape(&err_pat.pattern, &err_ty, unifier, sum_types);
-                }
-            }
-            _ => {
-                // Use scrutinee type for disambiguation.
-                let resolved_expected = unifier.substitution.apply(expected_ty);
-                let expected_type_name = match &resolved_expected {
-                    Type::Sum(st) => Some(st.name.as_str()),
-                    _ => None,
-                };
-                let Some(instantiated_variant) =
-                    sum_types.instantiate_variant_for_type(name, expected_type_name, unifier)
-                else {
-                    return;
-                };
-                // Shape-only constraint: do not apply variant where-constraints here.
-                constrain_type_eq(unifier, &instantiated_variant.sum_type, expected_ty, &prov);
-                let has_named_fields = instantiated_variant
+        PatternKind::Constructor { name, args, .. } => {
+            // Use scrutinee type for disambiguation.
+            let resolved_expected = unifier.substitution.apply(expected_ty);
+            let expected_type_name = match &resolved_expected {
+                Type::Sum(st) => Some(st.name.as_str()),
+                _ => None,
+            };
+            let Some(instantiated_variant) =
+                sum_types.instantiate_variant_for_type(name, expected_type_name, unifier)
+            else {
+                return;
+            };
+            // Shape-only constraint: do not apply variant where-constraints here.
+            constrain_type_eq(unifier, &instantiated_variant.sum_type, expected_ty, &prov);
+            let has_named_fields = instantiated_variant
+                .field_types
+                .iter()
+                .any(|field| field.name.is_some());
+            if has_named_fields {
+                let field_index: BTreeMap<&str, usize> = instantiated_variant
                     .field_types
                     .iter()
-                    .any(|field| field.name.is_some());
-                if has_named_fields {
-                    let field_index: BTreeMap<&str, usize> = instantiated_variant
-                        .field_types
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(idx, field)| field.name.as_deref().map(|name| (name, idx)))
-                        .collect();
-                    for arg in args {
-                        let resolved_name = if let Some(name) = &arg.name {
-                            Some(name.node.clone())
-                        } else if let PatternKind::Var(var_name) = &arg.pattern.node {
-                            Some(var_name.clone())
-                        } else {
-                            None
-                        };
-                        let Some(field_name) = resolved_name else {
-                            continue;
-                        };
-                        let Some(idx) = field_index.get(field_name.as_str()).copied() else {
-                            continue;
-                        };
-                        constrain_case_pattern_shape(
-                            &arg.pattern,
-                            &instantiated_variant.field_types[idx].ty,
-                            unifier,
-                            sum_types,
-                        );
-                    }
-                } else {
-                    for (arg_pat, field_ty) in
-                        args.iter().zip(instantiated_variant.field_types.iter())
-                    {
-                        constrain_case_pattern_shape(
-                            &arg_pat.pattern,
-                            &field_ty.ty,
-                            unifier,
-                            sum_types,
-                        );
-                    }
+                    .enumerate()
+                    .filter_map(|(idx, field)| field.name.as_deref().map(|name| (name, idx)))
+                    .collect();
+                for arg in args {
+                    let resolved_name = if let Some(name) = &arg.name {
+                        Some(name.node.clone())
+                    } else if let PatternKind::Var(var_name) = &arg.pattern.node {
+                        Some(var_name.clone())
+                    } else {
+                        None
+                    };
+                    let Some(field_name) = resolved_name else {
+                        continue;
+                    };
+                    let Some(idx) = field_index.get(field_name.as_str()).copied() else {
+                        continue;
+                    };
+                    constrain_case_pattern_shape(
+                        &arg.pattern,
+                        &instantiated_variant.field_types[idx].ty,
+                        unifier,
+                        sum_types,
+                    );
+                }
+            } else {
+                for (arg_pat, field_ty) in
+                    args.iter().zip(instantiated_variant.field_types.iter())
+                {
+                    constrain_case_pattern_shape(
+                        &arg_pat.pattern,
+                        &field_ty.ty,
+                        unifier,
+                        sum_types,
+                    );
                 }
             }
-        },
+        }
         PatternKind::Tuple(items) => {
             let elem_tys: Vec<Type> = items.iter().map(|_| unifier.fresh_type()).collect();
             constrain_type_eq(unifier, &Type::Tuple(elem_tys.clone()), expected_ty, &prov);
@@ -15097,23 +14964,13 @@ fn constrain_case_pattern_shape(
         }
         PatternKind::List { elements, rest } => {
             let elem_ty = unifier.fresh_type();
-            // When stdlib List is in scope, constrain against Type::Sum(List ...)
-            // so patterns unify with stdlib List values.
-            let list_ty = if has_stdlib_list_sum_type(Some(sum_types)) {
-                make_stdlib_list_type(elem_ty.clone(), sum_types)
-            } else {
-                Type::List(Box::new(elem_ty.clone()))
-            };
+            let list_ty = Type::list(elem_ty.clone());
             constrain_type_eq(unifier, &list_ty, expected_ty, &prov);
             for elem in elements {
                 constrain_case_pattern_shape(elem, &elem_ty, unifier, sum_types);
             }
             if let Some(rest_pat) = rest {
-                let rest_ty = if has_stdlib_list_sum_type(Some(sum_types)) {
-                    make_stdlib_list_type(elem_ty, sum_types)
-                } else {
-                    Type::List(Box::new(elem_ty))
-                };
+                let rest_ty = Type::list(elem_ty);
                 constrain_case_pattern_shape(rest_pat, &rest_ty, unifier, sum_types);
             }
         }
@@ -15273,146 +15130,8 @@ fn infer_pattern(
             qualifier,
             args,
             rest,
-        } => match name.as_str() {
-            "Some" => {
-                if *rest {
-                    unifier.push_error(
-                        Diagnostic::error(
-                            Category::Syntax,
-                            "`..` is not allowed in `Some` patterns",
-                        )
-                        .at(span_to_loc(pattern.span)),
-                    );
-                }
-                if args.len() != 1 {
-                    unifier.push_error(
-                        Diagnostic::error(
-                            Category::ArityMismatch,
-                            format!("`{name}` expects 1 argument in pattern, got {}", args.len()),
-                        )
-                        .at(span_to_loc(pattern.span)),
-                    );
-                }
-                let inner_ty = unifier.fresh_type();
-                let option_ty = Type::Option(Box::new(inner_ty.clone()));
-                constrain_type_eq(unifier, &option_ty, expected_ty, &prov);
-                if args.len() == 1 {
-                    if args[0].name.is_some() {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                "`Some` pattern does not accept named fields",
-                            )
-                            .at(span_to_loc(pattern.span)),
-                        );
-                    }
-                    infer_pattern(
-                        &args[0].pattern,
-                        &inner_ty,
-                        env,
-                        unifier,
-                        records,
-                        sum_types,
-                    );
-                }
-            }
-            "None" => {
-                if *rest {
-                    unifier.push_error(
-                        Diagnostic::error(
-                            Category::Syntax,
-                            "`..` is not allowed in `None` patterns",
-                        )
-                        .at(span_to_loc(pattern.span)),
-                    );
-                }
-                if !args.is_empty() {
-                    unifier.push_error(
-                        Diagnostic::error(
-                            Category::ArityMismatch,
-                            format!(
-                                "`{name}` expects 0 arguments in pattern, got {}",
-                                args.len()
-                            ),
-                        )
-                        .at(span_to_loc(pattern.span)),
-                    );
-                }
-                let inner_ty = unifier.fresh_type();
-                let option_ty = Type::Option(Box::new(inner_ty));
-                constrain_type_eq(unifier, &option_ty, expected_ty, &prov);
-            }
-            "Ok" => {
-                if *rest {
-                    unifier.push_error(
-                        Diagnostic::error(Category::Syntax, "`..` is not allowed in `Ok` patterns")
-                            .at(span_to_loc(pattern.span)),
-                    );
-                }
-                if args.len() != 1 {
-                    unifier.push_error(
-                        Diagnostic::error(
-                            Category::ArityMismatch,
-                            format!("`{name}` expects 1 argument in pattern, got {}", args.len()),
-                        )
-                        .at(span_to_loc(pattern.span)),
-                    );
-                }
-                let ok_ty = unifier.fresh_type();
-                let err_ty = unifier.fresh_type();
-                let result_ty = Type::Result(Box::new(ok_ty.clone()), Box::new(err_ty));
-                constrain_type_eq(unifier, &result_ty, expected_ty, &prov);
-                if args.len() == 1 {
-                    if args[0].name.is_some() {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                "`Ok` pattern does not accept named fields",
-                            )
-                            .at(span_to_loc(pattern.span)),
-                        );
-                    }
-                    infer_pattern(&args[0].pattern, &ok_ty, env, unifier, records, sum_types);
-                }
-            }
-            "Err" => {
-                if *rest {
-                    unifier.push_error(
-                        Diagnostic::error(
-                            Category::Syntax,
-                            "`..` is not allowed in `Err` patterns",
-                        )
-                        .at(span_to_loc(pattern.span)),
-                    );
-                }
-                if args.len() != 1 {
-                    unifier.push_error(
-                        Diagnostic::error(
-                            Category::ArityMismatch,
-                            format!("`{name}` expects 1 argument in pattern, got {}", args.len()),
-                        )
-                        .at(span_to_loc(pattern.span)),
-                    );
-                }
-                let ok_ty = unifier.fresh_type();
-                let err_ty = unifier.fresh_type();
-                let result_ty = Type::Result(Box::new(ok_ty), Box::new(err_ty.clone()));
-                constrain_type_eq(unifier, &result_ty, expected_ty, &prov);
-                if args.len() == 1 {
-                    if args[0].name.is_some() {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::ArityMismatch,
-                                "`Err` pattern does not accept named fields",
-                            )
-                            .at(span_to_loc(pattern.span)),
-                        );
-                    }
-                    infer_pattern(&args[0].pattern, &err_ty, env, unifier, records, sum_types);
-                }
-            }
-            _ => {
-                if let Some(info) = records.lookup_opaque(name) {
+        } => {
+            if let Some(info) = records.lookup_opaque(name) {
                     if *rest {
                         unifier.push_error(
                             Diagnostic::error(
@@ -15724,8 +15443,7 @@ fn infer_pattern(
                         .at(span_to_loc(pattern.span)),
                     );
                 }
-            }
-        },
+        }
 
         PatternKind::Tuple(pats) => {
             let elem_types: Vec<Type> = pats.iter().map(|_| unifier.fresh_type()).collect();
@@ -15856,21 +15574,13 @@ fn infer_pattern(
 
         PatternKind::List { elements, rest } => {
             let elem_ty = unifier.fresh_type();
-            let list_ty = if has_stdlib_list_sum_type(Some(sum_types)) {
-                make_stdlib_list_type(elem_ty.clone(), sum_types)
-            } else {
-                Type::List(Box::new(elem_ty.clone()))
-            };
+            let list_ty = Type::list(elem_ty.clone());
             constrain_type_eq(unifier, &list_ty, expected_ty, &prov);
             for elem_pat in elements {
                 infer_pattern(elem_pat, &elem_ty, env, unifier, records, sum_types);
             }
             if let Some(rest_pat) = rest {
-                let rest_ty = if has_stdlib_list_sum_type(Some(sum_types)) {
-                    make_stdlib_list_type(elem_ty, sum_types)
-                } else {
-                    Type::List(Box::new(elem_ty))
-                };
+                let rest_ty = Type::list(elem_ty);
                 infer_pattern(rest_pat, &rest_ty, env, unifier, records, sum_types);
             }
         }
@@ -15996,7 +15706,7 @@ fn resolve_annotation_with_self_and_assoc(
                 return resolve_decimal_annotation(args);
             }
             match (name.as_str(), args.as_slice()) {
-                ("Option", [inner]) => Some(Type::Option(Box::new(
+                ("Option", [inner]) => Some(Type::option(
                     resolve_annotation_with_self_and_assoc(
                         inner,
                         records,
@@ -16004,25 +15714,25 @@ fn resolve_annotation_with_self_and_assoc(
                         self_type,
                         assoc_types,
                     )?,
-                ))),
-                ("Result", [ok, err]) => Some(Type::Result(
-                    Box::new(resolve_annotation_with_self_and_assoc(
+                )),
+                ("Result", [ok, err]) => Some(Type::result(
+                    resolve_annotation_with_self_and_assoc(
                         ok,
                         records,
                         sum_types,
                         self_type,
                         assoc_types,
-                    )?),
-                    Box::new(resolve_annotation_with_self_and_assoc(
+                    )?,
+                    resolve_annotation_with_self_and_assoc(
                         err,
                         records,
                         sum_types,
                         self_type,
                         assoc_types,
-                    )?),
+                    )?,
                 )),
-                ("List", [inner]) if !has_named_type_definition("List", records, sum_types) => {
-                    Some(Type::List(Box::new(
+                ("List", [inner]) => {
+                    Some(Type::list(
                         resolve_annotation_with_self_and_assoc(
                             inner,
                             records,
@@ -16030,7 +15740,7 @@ fn resolve_annotation_with_self_and_assoc(
                             self_type,
                             assoc_types,
                         )?,
-                    )))
+                    ))
                 }
                 ("Map", [key, val]) => Some(Type::Map(
                     Box::new(resolve_annotation_with_self_and_assoc(
@@ -16200,7 +15910,7 @@ fn resolve_annotation_with_self_and_assoc(
                 self_type,
                 assoc_types,
             )?;
-            Some(Type::Option(Box::new(resolved)))
+            Some(Type::option(resolved))
         }
         TypeAnnotation::Existential {
             bounds,
@@ -16323,7 +16033,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                 return resolve_decimal_annotation(args);
             }
             match (name.as_str(), args.as_slice()) {
-                ("Option", [inner]) => Some(Type::Option(Box::new(
+                ("Option", [inner]) => Some(Type::option(
                     resolve_annotation_with_self_assoc_and_params(
                         inner,
                         records,
@@ -16333,9 +16043,9 @@ fn resolve_annotation_with_self_assoc_and_params(
                         type_params,
                         placeholder_id,
                     )?,
-                ))),
-                ("Result", [ok, err]) => Some(Type::Result(
-                    Box::new(resolve_annotation_with_self_assoc_and_params(
+                )),
+                ("Result", [ok, err]) => Some(Type::result(
+                    resolve_annotation_with_self_assoc_and_params(
                         ok,
                         records,
                         sum_types,
@@ -16343,8 +16053,8 @@ fn resolve_annotation_with_self_assoc_and_params(
                         assoc_types,
                         type_params,
                         placeholder_id,
-                    )?),
-                    Box::new(resolve_annotation_with_self_assoc_and_params(
+                    )?,
+                    resolve_annotation_with_self_assoc_and_params(
                         err,
                         records,
                         sum_types,
@@ -16352,10 +16062,10 @@ fn resolve_annotation_with_self_assoc_and_params(
                         assoc_types,
                         type_params,
                         placeholder_id,
-                    )?),
+                    )?,
                 )),
-                ("List", [inner]) if !has_named_type_definition("List", records, sum_types) => {
-                    Some(Type::List(Box::new(
+                ("List", [inner]) => {
+                    Some(Type::list(
                         resolve_annotation_with_self_assoc_and_params(
                             inner,
                             records,
@@ -16365,7 +16075,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                             type_params,
                             placeholder_id,
                         )?,
-                    )))
+                    ))
                 }
                 ("Map", [key, val]) => Some(Type::Map(
                     Box::new(resolve_annotation_with_self_assoc_and_params(
@@ -16631,7 +16341,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                 type_params,
                 placeholder_id,
             )?;
-            Some(Type::Option(Box::new(resolved)))
+            Some(Type::option(resolved))
         }
         TypeAnnotation::Existential {
             bounds,

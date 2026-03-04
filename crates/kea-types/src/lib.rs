@@ -141,7 +141,6 @@ pub enum Type {
     Dynamic,
 
     // -- Compound types --
-    List(Box<Type>),
     /// Arrow-compatible fixed-size list: `FixedSizeList(T, N)`.
     FixedSizeList {
         element: Box<Type>,
@@ -155,8 +154,6 @@ pub enum Type {
     Map(Box<Type>, Box<Type>),
     Set(Box<Type>),
     Tuple(Vec<Type>),
-    Option(Box<Type>),
-    Result(Box<Type>, Box<Type>),
     /// Existential capability type: `any Show`, `any (Show, Eq)`.
     Existential {
         bounds: Vec<String>,
@@ -552,7 +549,6 @@ impl fmt::Display for Type {
             Type::DateTime => write!(f, "DateTime"),
             Type::Dynamic => write!(f, "Dynamic"),
 
-            Type::List(inner) => write!(f, "List({inner})"),
             Type::FixedSizeList { element, size } => {
                 write!(f, "FixedSizeList({element}, {size})")
             }
@@ -580,8 +576,6 @@ impl fmt::Display for Type {
                 write!(f, ")")
             }
 
-            Type::Option(inner) => write!(f, "{inner}?"),
-            Type::Result(ok, err) => write!(f, "Result({ok}, {err})"),
             Type::Existential {
                 bounds,
                 associated_types,
@@ -866,13 +860,13 @@ fn collect_free_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVarId>) {
                 collect_free_type_vars(ty, vars);
             }
         }
-        Type::List(inner) | Type::Set(inner) | Type::Option(inner) => {
+        Type::Set(inner) => {
             collect_free_type_vars(inner, vars);
         }
         Type::FixedSizeList { element, .. } | Type::Tensor { element, .. } => {
             collect_free_type_vars(element, vars);
         }
-        Type::Map(k, v) | Type::Result(k, v) => {
+        Type::Map(k, v) => {
             collect_free_type_vars(k, vars);
             collect_free_type_vars(v, vars);
         }
@@ -991,13 +985,13 @@ fn collect_free_row_vars(ty: &Type, vars: &mut BTreeSet<RowVarId>) {
                 }
             }
         }
-        Type::List(inner) | Type::Set(inner) | Type::Option(inner) => {
+        Type::Set(inner) => {
             collect_free_row_vars(inner, vars);
         }
         Type::FixedSizeList { element, .. } | Type::Tensor { element, .. } => {
             collect_free_row_vars(element, vars);
         }
-        Type::Map(k, v) | Type::Result(k, v) => {
+        Type::Map(k, v) => {
             collect_free_row_vars(k, vars);
             collect_free_row_vars(v, vars);
         }
@@ -1107,7 +1101,7 @@ fn collect_free_dim_vars(ty: &Type, vars: &mut BTreeSet<DimVarId>) {
                 }
             }
         }
-        Type::List(inner) | Type::Set(inner) | Type::Option(inner) => {
+        Type::Set(inner) => {
             collect_free_dim_vars(inner, vars);
         }
         Type::FixedSizeList { element, size } => {
@@ -1124,7 +1118,7 @@ fn collect_free_dim_vars(ty: &Type, vars: &mut BTreeSet<DimVarId>) {
                 }
             }
         }
-        Type::Map(k, v) | Type::Result(k, v) => {
+        Type::Map(k, v) => {
             collect_free_dim_vars(k, vars);
             collect_free_dim_vars(v, vars);
         }
@@ -1432,15 +1426,12 @@ pub fn type_constructor_for_trait(ty: &Type) -> Option<(String, Vec<Type>)> {
         Type::Date => Some(("Date".into(), vec![])),
         Type::DateTime => Some(("DateTime".into(), vec![])),
         Type::Dynamic => Some(("Dynamic".into(), vec![])),
-        Type::List(elem) => Some(("List".into(), vec![(**elem).clone()])),
         Type::FixedSizeList { element, .. } => {
             Some(("FixedSizeList".into(), vec![(**element).clone()]))
         }
         Type::Tensor { element, .. } => Some(("Tensor".into(), vec![(**element).clone()])),
         Type::Set(elem) => Some(("Set".into(), vec![(**elem).clone()])),
-        Type::Option(inner) => Some(("Option".into(), vec![(**inner).clone()])),
         Type::Map(k, v) => Some(("Map".into(), vec![(**k).clone(), (**v).clone()])),
-        Type::Result(ok, err) => Some(("Result".into(), vec![(**ok).clone(), (**err).clone()])),
         Type::Tuple(elems) => Some(("Tuple".into(), elems.clone())),
         Type::Record(rt) => Some((rt.name.clone(), rt.params.clone())),
         Type::Sum(st) => Some((st.name.clone(), st.type_args.clone())),
@@ -1560,13 +1551,11 @@ pub fn rebuild_type(constructor: &str, args: &[Type]) -> Option<Type> {
         "Date" if args.is_empty() => Type::Date,
         "DateTime" if args.is_empty() => Type::DateTime,
         "Dynamic" if args.is_empty() => Type::Dynamic,
-        "List" if args.len() == 1 => Type::List(Box::new(args[0].clone())),
+        "List" if args.len() == 1 => Type::list(args[0].clone()),
         "Set" if args.len() == 1 => Type::Set(Box::new(args[0].clone())),
-        "Option" if args.len() == 1 => Type::Option(Box::new(args[0].clone())),
+        "Option" if args.len() == 1 => Type::option(args[0].clone()),
         "Map" if args.len() == 2 => Type::Map(Box::new(args[0].clone()), Box::new(args[1].clone())),
-        "Result" if args.len() == 2 => {
-            Type::Result(Box::new(args[0].clone()), Box::new(args[1].clone()))
-        }
+        "Result" if args.len() == 2 => Type::result(args[0].clone(), args[1].clone()),
         "Tuple" => Type::Tuple(args.to_vec()),
         "Stream" if args.len() == 1 => Type::Stream(Box::new(args[0].clone())),
         "Task" if args.len() == 1 => Type::Task(Box::new(args[0].clone())),
@@ -1614,12 +1603,9 @@ pub fn is_sendable(ty: &Type) -> bool {
         // Task is Sendable if its output type is.
         Type::Task(inner) => is_sendable(inner),
         // Compound types: Sendable if all components are Sendable.
-        Type::Option(inner) => is_sendable(inner),
-        Type::Result(ok, err) => is_sendable(ok) && is_sendable(err),
         Type::Existential { bounds, .. } => bounds.iter().any(|b| b == "Sendable"),
         Type::Tuple(elems) => elems.iter().all(is_sendable),
-        Type::List(inner)
-        | Type::Set(inner)
+        Type::Set(inner)
         | Type::FixedSizeList { element: inner, .. }
         | Type::Tensor { element: inner, .. } => is_sendable(inner),
         Type::Map(k, v) => is_sendable(k) && is_sendable(v),
@@ -1674,10 +1660,6 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
             ty: ty.clone(),
             reason: "closures are not Sendable".to_string(),
         }),
-        Type::Option(inner) => sendable_violation_inner(inner, path),
-        Type::Result(ok, err) => {
-            sendable_violation_inner(ok, path).or_else(|| sendable_violation_inner(err, path))
-        }
         Type::Existential { bounds, .. } => {
             if bounds.iter().any(|b| b == "Sendable") {
                 None
@@ -1706,8 +1688,7 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
             }
             None
         }
-        Type::List(inner)
-        | Type::Set(inner)
+        Type::Set(inner)
         | Type::FixedSizeList { element: inner, .. }
         | Type::Tensor { element: inner, .. } => sendable_violation_inner(inner, path),
         Type::Map(k, v) => {
@@ -2008,6 +1989,82 @@ impl Effects {
 }
 
 impl Type {
+    /// Create a `Type::Sum` representing `List<T>`.
+    pub fn list(inner: Type) -> Type {
+        Type::Sum(SumType {
+            name: "List".to_string(),
+            type_args: vec![inner.clone()],
+            variants: vec![
+                ("Nil".to_string(), vec![]),
+                (
+                    "Cons".to_string(),
+                    vec![
+                        inner.clone(),
+                        Type::Sum(SumType {
+                            name: "List".to_string(),
+                            type_args: vec![inner],
+                            variants: vec![], // placeholder for recursive ref
+                        }),
+                    ],
+                ),
+            ],
+        })
+    }
+
+    /// Create a `Type::Sum` representing `Option<T>`.
+    pub fn option(inner: Type) -> Type {
+        Type::Sum(SumType {
+            name: "Option".to_string(),
+            type_args: vec![inner.clone()],
+            variants: vec![
+                ("None".to_string(), vec![]),
+                ("Some".to_string(), vec![inner]),
+            ],
+        })
+    }
+
+    /// Create a `Type::Sum` representing `Result<T, E>`.
+    pub fn result(ok: Type, err: Type) -> Type {
+        Type::Sum(SumType {
+            name: "Result".to_string(),
+            type_args: vec![ok.clone(), err.clone()],
+            variants: vec![
+                ("Ok".to_string(), vec![ok]),
+                ("Err".to_string(), vec![err]),
+            ],
+        })
+    }
+
+    /// Extract the inner type from an `Option<T>` (`Type::Sum` with name "Option").
+    pub fn as_option(&self) -> Option<&Type> {
+        match self {
+            Type::Sum(st) if st.name == "Option" && st.type_args.len() == 1 => {
+                Some(&st.type_args[0])
+            }
+            _ => None,
+        }
+    }
+
+    /// Extract the ok and err types from a `Result<T, E>`.
+    pub fn as_result(&self) -> Option<(&Type, &Type)> {
+        match self {
+            Type::Sum(st) if st.name == "Result" && st.type_args.len() == 2 => {
+                Some((&st.type_args[0], &st.type_args[1]))
+            }
+            _ => None,
+        }
+    }
+
+    /// Extract the element type from a `List<T>`.
+    pub fn as_list(&self) -> Option<&Type> {
+        match self {
+            Type::Sum(st) if st.name == "List" && st.type_args.len() == 1 => {
+                Some(&st.type_args[0])
+            }
+            _ => None,
+        }
+    }
+
     /// Returns true for integer scalar types (`Int`, `Int8`..`Int64`, `UInt8`..`UInt64`).
     pub fn is_integer(&self) -> bool {
         matches!(self, Type::Int | Type::IntN(_, _))
@@ -2043,7 +2100,7 @@ impl Type {
         matches!(
             self,
             Type::Bool | Type::String | Type::Unit | Type::Never | Type::Date | Type::DateTime
-        ) || matches!(self, Type::Option(inner) if inner.is_arrow_scalar())
+        ) || self.as_option().is_some_and(|inner| inner.is_arrow_scalar())
             || self.is_numeric()
     }
 }
@@ -2139,7 +2196,6 @@ impl Substitution {
                 arity: *arity,
             },
             Type::Row(row) => Type::Row(self.apply_row(row)),
-            Type::List(inner) => Type::List(Box::new(self.apply(inner))),
             Type::FixedSizeList { element, size } => Type::FixedSizeList {
                 element: Box::new(self.apply(element)),
                 size: self.apply_dim(size),
@@ -2149,11 +2205,7 @@ impl Substitution {
                 shape: shape.iter().map(|dim| self.apply_dim(dim)).collect(),
             },
             Type::Set(inner) => Type::Set(Box::new(self.apply(inner))),
-            Type::Option(inner) => Type::Option(Box::new(self.apply(inner))),
             Type::Map(k, v) => Type::Map(Box::new(self.apply(k)), Box::new(self.apply(v))),
-            Type::Result(ok, err) => {
-                Type::Result(Box::new(self.apply(ok)), Box::new(self.apply(err)))
-            }
             Type::Existential {
                 bounds,
                 associated_types,
@@ -2368,8 +2420,8 @@ mod tests {
         let mut subst = Substitution::new();
         subst.bind_type(TypeVarId(0), Type::Int);
 
-        let ty = Type::List(Box::new(Type::Var(TypeVarId(0))));
-        assert_eq!(subst.apply(&ty), Type::List(Box::new(Type::Int)));
+        let ty = Type::list(Type::Var(TypeVarId(0)));
+        assert_eq!(subst.apply(&ty), Type::list(Type::Int));
     }
 
     #[test]
@@ -2524,14 +2576,14 @@ mod tests {
 
     #[test]
     fn display_compound() {
-        assert_eq!(Type::List(Box::new(Type::Int)).to_string(), "List(Int)");
-        assert_eq!(Type::Option(Box::new(Type::String)).to_string(), "String?");
+        assert_eq!(Type::list(Type::Int).to_string(), "List(Int)");
+        assert_eq!(Type::option(Type::String).to_string(), "Option(String)");
         assert_eq!(
             Type::Tuple(vec![Type::Int, Type::String]).to_string(),
             "(Int, String)"
         );
         assert_eq!(
-            Type::Result(Box::new(Type::Int), Box::new(Type::String)).to_string(),
+            Type::result(Type::Int, Type::String).to_string(),
             "Result(Int, String)"
         );
     }
@@ -2654,10 +2706,10 @@ mod tests {
 
     #[test]
     fn sanitize_type_display_collapses_nested_decimal_dim_vars() {
-        let ty = Type::List(Box::new(Type::Decimal {
+        let ty = Type::list(Type::Decimal {
             precision: Dim::Var(DimVarId(3)),
             scale: Dim::Var(DimVarId(4)),
-        }));
+        });
         let rendered = sanitize_type_display(&ty);
         assert_eq!(rendered, "List(Decimal)");
     }
@@ -2789,11 +2841,11 @@ mod tests {
     fn type_constructor_for_trait_extracts_params() {
         let ty = Type::Map(
             Box::new(Type::String),
-            Box::new(Type::List(Box::new(Type::Int))),
+            Box::new(Type::list(Type::Int)),
         );
         let (name, args) = type_constructor_for_trait(&ty).expect("constructor");
         assert_eq!(name, "Map");
-        assert_eq!(args, vec![Type::String, Type::List(Box::new(Type::Int)),]);
+        assert_eq!(args, vec![Type::String, Type::list(Type::Int)]);
     }
 
     #[test]
@@ -2827,10 +2879,10 @@ mod tests {
         let samples = vec![
             Type::Int,
             Type::String,
-            Type::List(Box::new(Type::Int)),
-            Type::Option(Box::new(Type::Float)),
+            Type::list(Type::Int),
+            Type::option(Type::Float),
             Type::Map(Box::new(Type::String), Box::new(Type::Int)),
-            Type::Result(Box::new(Type::Int), Box::new(Type::String)),
+            Type::result(Type::Int, Type::String),
             Type::Stream(Box::new(Type::Bool)),
             Type::Tuple(vec![Type::Int, Type::String]),
         ];
@@ -2893,13 +2945,13 @@ mod tests {
 
     #[test]
     fn sendable_compound_types() {
-        assert!(is_sendable(&Type::Option(Box::new(Type::Int))));
-        assert!(is_sendable(&Type::Result(
-            Box::new(Type::Int),
-            Box::new(builtin_error_sum_type("IOError").expect("builtin error type"))
+        assert!(is_sendable(&Type::option(Type::Int)));
+        assert!(is_sendable(&Type::result(
+            Type::Int,
+            builtin_error_sum_type("IOError").expect("builtin error type")
         )));
         assert!(is_sendable(&Type::Tuple(vec![Type::Int, Type::String])));
-        assert!(is_sendable(&Type::List(Box::new(Type::Bool))));
+        assert!(is_sendable(&Type::list(Type::Bool)));
         assert!(is_sendable(&Type::Set(Box::new(Type::Int))));
         assert!(is_sendable(&Type::Map(
             Box::new(Type::String),
@@ -2946,7 +2998,7 @@ mod tests {
             ret: Box::new(Type::Unit),
             effects: EffectRow::pure(),
         });
-        assert!(!is_sendable(&Type::List(Box::new(ft))));
+        assert!(!is_sendable(&Type::list(ft)));
     }
 
     #[test]

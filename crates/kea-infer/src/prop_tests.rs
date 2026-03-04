@@ -26,9 +26,7 @@ use crate::{Provenance, Reason, Unifier};
 fn contains_dynamic(ty: &Type) -> bool {
     match ty {
         Type::Dynamic => true,
-        Type::List(inner)
-        | Type::Option(inner)
-        | Type::Set(inner)
+        Type::Set(inner)
         | Type::Actor(inner)
         | Type::Arc(inner)
         | Type::Stream(inner)
@@ -36,14 +34,17 @@ fn contains_dynamic(ty: &Type) -> bool {
         | Type::FixedSizeList { element: inner, .. }
         | Type::Tensor { element: inner, .. } => contains_dynamic(inner),
         Type::Tagged { inner, .. } => contains_dynamic(inner),
-        Type::Result(a, b) | Type::Map(a, b) => contains_dynamic(a) || contains_dynamic(b),
+        Type::Map(a, b) => contains_dynamic(a) || contains_dynamic(b),
         Type::Tuple(elems) => elems.iter().any(contains_dynamic),
         Type::Function(ft) => ft.params.iter().any(contains_dynamic) || contains_dynamic(&ft.ret),
         Type::Record(rt) => rt.row.fields.iter().any(|(_, ty)| contains_dynamic(ty)),
-        Type::Sum(st) => st
-            .variants
-            .iter()
-            .any(|(_, fields)| fields.iter().any(contains_dynamic)),
+        Type::Sum(st) => {
+            st.type_args.iter().any(contains_dynamic)
+                || st
+                    .variants
+                    .iter()
+                    .any(|(_, fields)| fields.iter().any(contains_dynamic))
+        }
         _ => false,
     }
 }
@@ -112,8 +113,8 @@ fn arb_type(depth: u32) -> BoxedStrategy<Type> {
         let inner = arb_type(depth - 1);
         prop_oneof![
             4 => leaf,
-            1 => inner.clone().prop_map(|t| Type::List(Box::new(t))),
-            1 => inner.clone().prop_map(|t| Type::Option(Box::new(t))),
+            1 => inner.clone().prop_map(Type::list),
+            1 => inner.clone().prop_map(Type::option),
             1 => inner.clone().prop_map(|t| Type::Set(Box::new(t))),
             1 => inner.clone().prop_map(|t| Type::Actor(Box::new(t))),
             1 => (inner.clone(), arb_tags()).prop_map(|(inner, tags)| Type::Tagged {
@@ -121,7 +122,7 @@ fn arb_type(depth: u32) -> BoxedStrategy<Type> {
                 tags,
             }),
             1 => (inner.clone(), inner.clone())
-                .prop_map(|(a, b)| Type::Result(Box::new(a), Box::new(b))),
+                .prop_map(|(a, b)| Type::result(a, b)),
             1 => prop::collection::vec(inner.clone(), 2..=4)
                 .prop_map(Type::Tuple),
         ]
@@ -133,14 +134,14 @@ fn arb_type(depth: u32) -> BoxedStrategy<Type> {
 fn arb_ground_type_deep() -> BoxedStrategy<Type> {
     prop_oneof![
         4 => arb_ground_type(),
-        1 => arb_ground_type().prop_map(|t| Type::List(Box::new(t))),
-        1 => arb_ground_type().prop_map(|t| Type::Option(Box::new(t))),
+        1 => arb_ground_type().prop_map(Type::list),
+        1 => arb_ground_type().prop_map(Type::option),
         1 => (arb_ground_type(), arb_tags()).prop_map(|(inner, tags)| Type::Tagged {
             inner: Box::new(inner),
             tags,
         }),
         1 => (arb_ground_type(), arb_ground_type())
-            .prop_map(|(a, b)| Type::Result(Box::new(a), Box::new(b))),
+            .prop_map(|(a, b)| Type::result(a, b)),
     ]
     .boxed()
 }
@@ -275,7 +276,7 @@ proptest! {
         let f = u.fresh_type_var();
         let a = u.fresh_type_var();
         let app = Type::App(Box::new(Type::Var(f)), vec![Type::Var(a)]);
-        let concrete = Type::Option(Box::new(inner.clone()));
+        let concrete = Type::option(inner.clone());
 
         u.unify(&app, &concrete, &test_prov());
         prop_assert!(!u.has_errors());
@@ -299,7 +300,7 @@ proptest! {
         let f = u.fresh_type_var();
         let a = u.fresh_type_var();
         let app = Type::App(Box::new(Type::Var(f)), vec![Type::Var(a)]);
-        let concrete = Type::Result(Box::new(ok.clone()), Box::new(err.clone()));
+        let concrete = Type::result(ok.clone(), err.clone());
 
         u.unify(&app, &concrete, &test_prov());
         prop_assert!(!u.has_errors());
@@ -348,9 +349,9 @@ proptest! {
 
         // Build a chain: Var(0) → wrapper(Var(1)) → Var(1) → leaf_ty
         let intermediate = match wrapper_idx {
-            0 => Type::List(Box::new(Type::Var(TypeVarId(1)))),
-            1 => Type::Option(Box::new(Type::Var(TypeVarId(1)))),
-            2 => Type::Result(Box::new(Type::Var(TypeVarId(1))), Box::new(Type::Unit)),
+            0 => Type::list(Type::Var(TypeVarId(1))),
+            1 => Type::option(Type::Var(TypeVarId(1))),
+            2 => Type::result(Type::Var(TypeVarId(1)), Type::Unit),
             3 => Type::Actor(Box::new(Type::Var(TypeVarId(1)))),
             _ => unreachable!(),
         };
@@ -400,12 +401,9 @@ proptest! {
         let mut subst = Substitution::new();
 
         // Chains: 0 → List(1), 1 → leaf_a, 2 → Result(3, Unit), 3 → leaf_b
-        subst.bind_type(TypeVarId(0), Type::List(Box::new(Type::Var(TypeVarId(1)))));
+        subst.bind_type(TypeVarId(0), Type::list(Type::Var(TypeVarId(1))));
         subst.bind_type(TypeVarId(1), leaf_a);
-        subst.bind_type(TypeVarId(2), Type::Result(
-            Box::new(Type::Var(TypeVarId(3))),
-            Box::new(Type::Unit),
-        ));
+        subst.bind_type(TypeVarId(2), Type::result(Type::Var(TypeVarId(3)), Type::Unit));
         subst.bind_type(TypeVarId(3), leaf_b);
 
         let resolved = subst.apply(&ty);
@@ -648,10 +646,10 @@ proptest! {
         let var = TypeVarId(0);
         let inner = Type::Var(var);
         let wrapped = match wrapper_idx {
-            0 => Type::List(Box::new(inner)),
-            1 => Type::Option(Box::new(inner)),
+            0 => Type::list(inner),
+            1 => Type::option(inner),
             2 => Type::Set(Box::new(inner)),
-            3 => Type::Result(Box::new(inner), Box::new(Type::Unit)),
+            3 => Type::result(inner, Type::Unit),
             _ => unreachable!(),
         };
 
@@ -949,8 +947,15 @@ proptest! {
 fn contains_var(ty: &Type, var: TypeVarId) -> bool {
     match ty {
         Type::Var(v) => *v == var,
-        Type::List(inner) | Type::Set(inner) | Type::Option(inner) => contains_var(inner, var),
-        Type::Map(k, v) | Type::Result(k, v) => contains_var(k, var) || contains_var(v, var),
+        Type::Set(inner) => contains_var(inner, var),
+        Type::Map(k, v) => contains_var(k, var) || contains_var(v, var),
+        Type::Sum(st) => {
+            st.type_args.iter().any(|t| contains_var(t, var))
+                || st
+                    .variants
+                    .iter()
+                    .any(|(_, fields)| fields.iter().any(|t| contains_var(t, var)))
+        }
         Type::Tuple(elems) => elems.iter().any(|t| contains_var(t, var)),
         Type::Function(ft) => {
             ft.params.iter().any(|t| contains_var(t, var)) || contains_var(&ft.ret, var)
@@ -1078,14 +1083,14 @@ proptest! {
     /// Option(T) is Sendable iff T is Sendable.
     #[test]
     fn prop_option_sendable_iff_inner(inner in arb_ground_type()) {
-        let ty = Type::Option(Box::new(inner.clone()));
+        let ty = Type::option(inner.clone());
         prop_assert_eq!(is_sendable(&ty), is_sendable(&inner));
     }
 
     /// List(T) is Sendable iff T is Sendable.
     #[test]
     fn prop_list_sendable_iff_inner(inner in arb_ground_type()) {
-        let ty = Type::List(Box::new(inner.clone()));
+        let ty = Type::list(inner.clone());
         prop_assert_eq!(is_sendable(&ty), is_sendable(&inner));
     }
 
@@ -1109,7 +1114,7 @@ proptest! {
             ret: Box::new(ret),
             effects: EffectRow::pure(),
         });
-        let ty = Type::List(Box::new(fn_ty));
+        let ty = Type::list(fn_ty);
         prop_assert!(!is_sendable(&ty), "List(Function) should NOT be Sendable");
     }
 
@@ -1126,7 +1131,7 @@ proptest! {
             effects: EffectRow::pure(),
         });
         // Function in the error position
-        let ty = Type::Result(Box::new(ok_ty), Box::new(fn_ty));
+        let ty = Type::result(ok_ty, fn_ty);
         prop_assert!(!is_sendable(&ty), "Result(T, Function) should NOT be Sendable");
     }
 
@@ -1162,8 +1167,15 @@ proptest! {
 fn contains_function(ty: &Type) -> bool {
     match ty {
         Type::Function(_) => true,
-        Type::List(inner) | Type::Set(inner) | Type::Option(inner) => contains_function(inner),
-        Type::Map(k, v) | Type::Result(k, v) => contains_function(k) || contains_function(v),
+        Type::Set(inner) => contains_function(inner),
+        Type::Map(k, v) => contains_function(k) || contains_function(v),
+        Type::Sum(st) => {
+            st.type_args.iter().any(contains_function)
+                || st
+                    .variants
+                    .iter()
+                    .any(|(_, fields)| fields.iter().any(contains_function))
+        }
         Type::Tuple(elems) => elems.iter().any(contains_function),
         Type::Record(rt) => rt.row.fields.iter().any(|(_, t)| contains_function(t)),
         Type::AnonRecord(row) | Type::Row(row) => {
@@ -1209,14 +1221,14 @@ fn arb_nested_type(depth: u32) -> BoxedStrategy<Type> {
         let inner = arb_nested_type(depth - 1);
         prop_oneof![
             3 => leaf,
-            1 => inner.clone().prop_map(|t| Type::List(Box::new(t))),
-            1 => inner.clone().prop_map(|t| Type::Option(Box::new(t))),
+            1 => inner.clone().prop_map(Type::list),
+            1 => inner.clone().prop_map(Type::option),
             1 => (inner.clone(), arb_tags()).prop_map(|(inner, tags)| Type::Tagged {
                 inner: Box::new(inner),
                 tags,
             }),
             1 => (inner.clone(), inner.clone())
-                .prop_map(|(a, b)| Type::Result(Box::new(a), Box::new(b))),
+                .prop_map(|(a, b)| Type::result(a, b)),
             1 => prop::collection::vec(inner.clone(), 2..=4)
                 .prop_map(Type::Tuple),
             1 => (arb_label(), inner.clone())
@@ -1798,7 +1810,7 @@ proptest! {
             Type::Function(ft) => {
                 prop_assert_eq!(ft.params.len(), 1, "expected single-parameter lambda");
                 prop_assert!(
-                    matches!(ft.params.first(), Some(Type::Option(_))),
+                    ft.params.first().and_then(|t| t.as_option()).is_some(),
                     "scrutinee shape should resolve to Option(_), got {:?}",
                     ft.params
                 );
@@ -1940,7 +1952,7 @@ proptest! {
         let mut env = crate::typeck::TypeEnv::new();
         env.bind(
             "x".to_string(),
-            TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+            TypeScheme::mono(Type::option(Type::Int)),
         );
         let mut ctx = crate::InferenceContext::new();
         let records = RecordRegistry::new();
@@ -1986,7 +1998,7 @@ proptest! {
         let mut env = crate::typeck::TypeEnv::new();
         env.bind(
             "x".to_string(),
-            TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+            TypeScheme::mono(Type::option(Type::Int)),
         );
         let mut ctx = crate::InferenceContext::new();
         let records = RecordRegistry::new();
@@ -2032,7 +2044,7 @@ proptest! {
         let mut env = crate::typeck::TypeEnv::new();
         env.bind(
             "x".to_string(),
-            TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+            TypeScheme::mono(Type::option(Type::Int)),
         );
         let mut ctx = crate::InferenceContext::new();
         let records = RecordRegistry::new();
@@ -2132,12 +2144,12 @@ proptest! {
         let mut env = crate::typeck::TypeEnv::new();
         env.bind(
             "x".to_string(),
-            TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+            TypeScheme::mono(Type::option(Type::Int)),
         );
         env.bind(
             "is_some".to_string(),
             TypeScheme::mono(Type::Function(FunctionType {
-                params: vec![Type::Option(Box::new(Type::Int))],
+                params: vec![Type::option(Type::Int)],
                 ret: Box::new(Type::Bool),
                 effects: EffectRow::pure(),
             })),
@@ -2188,7 +2200,7 @@ proptest! {
         let mut env = crate::typeck::TypeEnv::new();
         env.bind(
             "x".to_string(),
-            TypeScheme::mono(Type::Option(Box::new(Type::Int))),
+            TypeScheme::mono(Type::option(Type::Int)),
         );
         let mut ctx = crate::InferenceContext::new();
         let records = RecordRegistry::new();
@@ -2428,7 +2440,7 @@ proptest! {
     fn prop_check_expr_some_constructor_precision_payload_range_diagnostics(value in any::<i64>()) {
         use kea_ast::{Expr, ExprKind, Lit, Spanned};
 
-        let expected = Type::Option(Box::new(Type::IntN(IntWidth::I8, Signedness::Signed)));
+        let expected = Type::option(Type::IntN(IntWidth::I8, Signedness::Signed));
         let expr: Expr = sp_ast(ExprKind::Constructor {
             name: Spanned::new("Some".to_string(), Span::new(FileId(0), 0, 0)),
             args: vec![ctor_arg(sp_ast(ExprKind::Lit(Lit::Int(value))))],
@@ -2472,7 +2484,7 @@ proptest! {
     fn prop_check_expr_list_precision_element_range_diagnostics(value in any::<i64>()) {
         use kea_ast::{Expr, ExprKind, Lit};
 
-        let expected = Type::List(Box::new(Type::IntN(IntWidth::I8, Signedness::Signed)));
+        let expected = Type::list(Type::IntN(IntWidth::I8, Signedness::Signed));
         let expr: Expr = sp_ast(ExprKind::List(vec![sp_ast(ExprKind::Lit(Lit::Int(value)))]));
         let mut env = crate::typeck::TypeEnv::new();
         let mut ctx = crate::InferenceContext::new();
@@ -2822,7 +2834,7 @@ proptest! {
             base_trait: "Container".to_string(),
             base_ty: Type::Int,
             assoc: "Wrapped".to_string(),
-            rhs: Type::Option(Box::new(Type::String)),
+            rhs: Type::option(Type::String),
         });
         prop_assert!(matches!(wrapped, SolveOutcome::Unique(_)));
     }
@@ -2892,7 +2904,7 @@ proptest! {
             base_trait: "Container".to_string(),
             base_ty: Type::Int,
             assoc: "Wrapped".to_string(),
-            rhs: Type::Option(Box::new(Type::String)),
+            rhs: Type::option(Type::String),
         });
         prop_assert!(matches!(wrapped, SolveOutcome::Unique(_)));
     }
@@ -2979,9 +2991,9 @@ proptest! {
         prop_assert_eq!(applied, Type::Date);
 
         // Date inside a container also survives substitution
-        let opt_date = Type::Option(Box::new(Type::Date));
+        let opt_date = Type::option(Type::Date);
         let applied_opt = subst.apply(&opt_date);
-        prop_assert_eq!(applied_opt, Type::Option(Box::new(Type::Date)));
+        prop_assert_eq!(applied_opt, Type::option(Type::Date));
 
         // Verify the value representation is lossless
         let _ = days; // used to generate variety; type itself is always Date
@@ -2996,9 +3008,9 @@ proptest! {
         let applied = subst.apply(&ty);
         prop_assert_eq!(applied, Type::DateTime);
 
-        let list_dt = Type::List(Box::new(Type::DateTime));
+        let list_dt = Type::list(Type::DateTime);
         let applied_list = subst.apply(&list_dt);
-        prop_assert_eq!(applied_list, Type::List(Box::new(Type::DateTime)));
+        prop_assert_eq!(applied_list, Type::list(Type::DateTime));
 
         let _ = micros;
     }
@@ -3062,10 +3074,10 @@ proptest! {
         let ty = if use_date { Type::Date } else { Type::DateTime };
         prop_assert!(kea_types::is_sendable(&ty), "{ty} should be Sendable");
 
-        let opt_ty = Type::Option(Box::new(ty.clone()));
+        let opt_ty = Type::option(ty.clone());
         prop_assert!(kea_types::is_sendable(&opt_ty), "Option({ty}) should be Sendable");
 
-        let list_ty = Type::List(Box::new(ty.clone()));
+        let list_ty = Type::list(ty.clone());
         prop_assert!(kea_types::is_sendable(&list_ty), "List({ty}) should be Sendable");
     }
 

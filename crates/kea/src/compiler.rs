@@ -1547,10 +1547,14 @@ fn type_params_used_in_sum(def: &TypeDef) -> Vec<String> {
 }
 
 fn impl_target_type(name: &str, params: &[String]) -> String {
-    if params.is_empty() {
-        name.to_string()
-    } else {
-        format!("{name}({})", params.join(", "))
+    match params.len() {
+        0 => name.to_string(),
+        1 => format!("{name} {}", params[0]),
+        // Two or more type params: use parenthesised form so that annotations
+        // like `Result(a, e)` parse unambiguously.  Space-separated `Result a e`
+        // would be misread as `Result(a(e))` by the recursive type-application
+        // parser (the first type-var greedily consumes the second as its own arg).
+        _ => format!("{name}({})", params.join(", ")),
     }
 }
 
@@ -1659,10 +1663,10 @@ fn build_eq_impl_source_for_sum(def: &TypeDef) -> String {
     ));
     source.push_str("    case x\n");
     for variant in &def.variants {
-        let qualified = format!("{}.{}", def.name.node, variant.name.node);
+        let ctor = &variant.name.node;
         if variant.fields.is_empty() {
             source.push_str(&format!(
-                "      {qualified} ->\n        case y\n          {qualified} -> true\n          _ -> false\n"
+                "      {ctor} ->\n        case y\n          {ctor} -> true\n          _ -> false\n"
             ));
             continue;
         }
@@ -1670,7 +1674,7 @@ fn build_eq_impl_source_for_sum(def: &TypeDef) -> String {
         let (right_pattern, right_vars) = constructor_pattern_fields(&variant.fields, "w");
         let body = eq_chain(&left_vars, &right_vars);
         source.push_str(&format!(
-            "      {qualified}({left_pattern}) ->\n        case y\n          {qualified}({right_pattern}) -> {body}\n          _ -> false\n"
+            "      {ctor}({left_pattern}) ->\n        case y\n          {ctor}({right_pattern}) -> {body}\n          _ -> false\n"
         ));
     }
     source
@@ -1709,17 +1713,14 @@ fn build_show_impl_source_for_sum(def: &TypeDef) -> String {
     source.push_str(&format!("  fn show(x: {}) -> String\n", target));
     source.push_str("    case x\n");
     for variant in &def.variants {
-        let qualified = format!("{}.{}", def.name.node, variant.name.node);
+        let ctor = &variant.name.node;
         if variant.fields.is_empty() {
-            source.push_str(&format!(
-                "      {qualified} -> \"{}\"\n",
-                variant.name.node
-            ));
+            source.push_str(&format!("      {ctor} -> \"{ctor}\"\n"));
             continue;
         }
         let (pattern, vars) = constructor_pattern_fields(&variant.fields, "v");
-        let body = show_concat_for_constructor(&variant.name.node, &vars);
-        source.push_str(&format!("      {qualified}({pattern}) -> {body}\n"));
+        let body = show_concat_for_constructor(ctor, &vars);
+        source.push_str(&format!("      {ctor}({pattern}) -> {body}\n"));
     }
     source
 }
@@ -1755,22 +1756,22 @@ fn build_ord_impl_source_for_sum(def: &TypeDef) -> String {
     ));
     source.push_str("    case x\n");
     for (variant_idx, variant) in def.variants.iter().enumerate() {
-        let qualified = format!("{}.{}", def.name.node, variant.name.node);
+        let ctor = &variant.name.node;
         if variant.fields.is_empty() {
-            source.push_str(&format!("      {qualified} ->\n"));
+            source.push_str(&format!("      {ctor} ->\n"));
         } else {
             let (left_pattern, left_vars) = constructor_pattern_fields(&variant.fields, "v");
-            source.push_str(&format!("      {qualified}({left_pattern}) ->\n"));
+            source.push_str(&format!("      {ctor}({left_pattern}) ->\n"));
             source.push_str("        case y\n");
             for (other_idx, other) in def.variants.iter().enumerate() {
-                let other_qualified = format!("{}.{}", def.name.node, other.name.node);
+                let other_ctor = &other.name.node;
                 if other_idx == variant_idx {
                     if other.fields.is_empty() {
-                        source.push_str(&format!("          {other_qualified} -> Order.Equal\n"));
+                        source.push_str(&format!("          {other_ctor} -> Order.Equal\n"));
                     } else {
                         let (right_pattern, right_vars) =
                             constructor_pattern_fields(&other.fields, "w");
-                        source.push_str(&format!("          {other_qualified}({right_pattern}) ->\n"));
+                        source.push_str(&format!("          {other_ctor}({right_pattern}) ->\n"));
                         let comparisons = left_vars
                             .iter()
                             .zip(right_vars.iter())
@@ -1787,23 +1788,33 @@ fn build_ord_impl_source_for_sum(def: &TypeDef) -> String {
                     } else {
                         "Order.Greater"
                     };
-                    source.push_str(&format!("          {other_qualified} -> {ordering}\n"));
+                    let wildcard_args = if other.fields.is_empty() {
+                        String::new()
+                    } else {
+                        format!("({})", vec!["_"; other.fields.len()].join(", "))
+                    };
+                    source.push_str(&format!("          {other_ctor}{wildcard_args} -> {ordering}\n"));
                 }
             }
             continue;
         }
         source.push_str("        case y\n");
         for (other_idx, other) in def.variants.iter().enumerate() {
-            let other_qualified = format!("{}.{}", def.name.node, other.name.node);
+            let other_ctor = &other.name.node;
             if other_idx == variant_idx {
-                source.push_str(&format!("          {other_qualified} -> Order.Equal\n"));
+                source.push_str(&format!("          {other_ctor} -> Order.Equal\n"));
             } else {
                 let ordering = if variant_idx < other_idx {
                     "Order.Less"
                 } else {
                     "Order.Greater"
                 };
-                source.push_str(&format!("          {other_qualified} -> {ordering}\n"));
+                let wildcard_args = if other.fields.is_empty() {
+                    String::new()
+                } else {
+                    format!("({})", vec!["_"; other.fields.len()].join(", "))
+                };
+                source.push_str(&format!("          {other_ctor}{wildcard_args} -> {ordering}\n"));
             }
         }
     }
@@ -1845,15 +1856,15 @@ fn build_hash_impl_source_for_sum(def: &TypeDef) -> String {
     source.push_str(&format!("  fn hash(x: {}) -> Int\n", target));
     source.push_str("    case x\n");
     for (variant_idx, variant) in def.variants.iter().enumerate() {
-        let qualified = format!("{}.{}", def.name.node, variant.name.node);
+        let ctor = &variant.name.node;
         let seed = variant_idx.to_string();
         if variant.fields.is_empty() {
-            source.push_str(&format!("      {qualified} -> {seed}\n"));
+            source.push_str(&format!("      {ctor} -> {seed}\n"));
             continue;
         }
         let (pattern, vars) = constructor_pattern_fields(&variant.fields, "v");
         let expr = hash_mix_expr(seed, &vars);
-        source.push_str(&format!("      {qualified}({pattern}) -> {expr}\n"));
+        source.push_str(&format!("      {ctor}({pattern}) -> {expr}\n"));
     }
     source
 }
