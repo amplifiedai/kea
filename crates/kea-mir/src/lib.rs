@@ -5861,13 +5861,7 @@ impl FunctionLoweringCtx {
                 if matches!(op, BinOp::Eq | BinOp::Neq) {
                     let left_eq_ty = self.resolve_equality_operand_type(left);
                     let right_eq_ty = self.resolve_equality_operand_type(right);
-                    if std::env::var("KEA_DEBUG_EQ").is_ok() {
-                        eprintln!("[eq debug] fn={} left_ty={left_eq_ty:?} right_ty={right_eq_ty:?} same={} not_prim={} conc={}", self.function_name, left_eq_ty == right_eq_ty, !is_primitive_equality_type(&left_eq_ty), is_concrete_nominal_equality_type(&left_eq_ty));
-                        eprintln!("[eq debug] left_hir_ty={:?}", left.ty);
-                        let callee = self.resolve_eq_trait_callee_for_type(&left_eq_ty);
-                        eprintln!("[eq debug] callee={callee:?}");
-                    }
-                    if left_eq_ty == right_eq_ty
+                    if same_nominal_equality_type(&left_eq_ty, &right_eq_ty)
                         && !is_primitive_equality_type(&left_eq_ty)
                         && is_concrete_nominal_equality_type(&left_eq_ty)
                         && let Some(value) = self.lower_eq_via_trait_call(*op, left, right)
@@ -6034,9 +6028,6 @@ impl FunctionLoweringCtx {
                     fields: lowered_fields,
                 });
                 self.sum_value_types.insert(dest.clone(), sum_type.clone());
-                if std::env::var("KEA_DEBUG_EQ").is_ok() {
-                    eprintln!("[sum-init] sum_type={sum_type} variant={variant} dest={dest:?}");
-                }
                 Some(dest)
             }
             HirExprKind::FieldAccess { expr: base, field } => {
@@ -7214,7 +7205,7 @@ impl FunctionLoweringCtx {
     ) -> Option<MirValueId> {
         let left_ty = self.resolve_equality_operand_type(left);
         let right_ty = self.resolve_equality_operand_type(right);
-        if left_ty != right_ty {
+        if !same_nominal_equality_type(&left_ty, &right_ty) {
             return None;
         }
         let callee_name = self.resolve_eq_trait_callee_for_type(&left_ty)?;
@@ -7222,10 +7213,14 @@ impl FunctionLoweringCtx {
         let left_value = self.lower_expr(left)?;
         let right_value = self.lower_expr(right)?;
         let eq_dest = self.new_value();
+        // Normalize both arg types to left_ty to avoid ABI issues when the two
+        // Option/Sum representations differ in their variant encoding (e.g. one
+        // has empty variants from a call result and the other has explicit variants
+        // from a constructor literal).
         self.emit_inst(MirInst::Call {
             callee: MirCallee::Local(callee_name),
             args: vec![left_value, right_value],
-            arg_types: vec![left_ty, right_ty],
+            arg_types: vec![left_ty.clone(), left_ty],
             result: Some(eq_dest.clone()),
             ret_type: Type::Bool,
             callee_fail_result_abi: false,
@@ -7252,11 +7247,6 @@ impl FunctionLoweringCtx {
                     .get(name)
                     .cloned()
                     .unwrap_or_else(|| expr.ty.clone());
-                if std::env::var("KEA_DEBUG_EQ").is_ok() {
-                    let vid = self.vars.get(name);
-                    let sum = vid.and_then(|v| self.sum_value_types.get(v));
-                    eprintln!("[eq-resolve] fn={} name={name} var_types={:?} vars={:?} sum={:?}", self.function_name, self.var_types.get(name), vid, sum);
-                }
                 if fallback != Type::Dynamic {
                     return fallback;
                 }
