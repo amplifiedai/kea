@@ -1,8 +1,26 @@
-doc
-  Text provides string helper operations.
+use Option
 
-  Use `Text.length` for byte length checks and predicate
-  helpers for empty/non-empty guards.
+-- Text provides string helper operations.
+--
+-- Strings in Kea are UTF-8 encoded and represented as null-terminated
+-- byte sequences. Index-based operations (`slice`, `byte_at`) work at
+-- the byte level. For codepoint operations combine `byte_at` with
+-- `Char.from_int`.
+--
+--   Text.starts_with("hello", "hel")   -- => true
+--   Text.slice("hello", 1, 4)          -- => "ell"
+--   Text.to_upper("hello")             -- => "HELLO"
+
+-- Raw intrinsics used internally; prefer the public wrappers below.
+@intrinsic("__kea_text_index_of")
+fn raw_index_of(s: String, needle: String) -> Int
+  -1
+
+@intrinsic("__kea_text_char_at")
+fn raw_byte_at(s: String, index: Int) -> Int
+  -1
+
+doc
   Return the number of bytes in a string.
 
     Text.length("")       -- => 0
@@ -26,3 +44,123 @@ doc
     Text.non_empty("kea")   -- => true
 fn non_empty(s: String) -> Bool
   not Text.is_empty(s)
+
+doc
+  Return true when the string begins with the given prefix.
+
+    Text.starts_with("hello", "hel")   -- => true
+    Text.starts_with("hello", "ell")   -- => false
+    Text.starts_with("hello", "")      -- => true
+@intrinsic("__kea_text_starts_with")
+fn starts_with(s: String, prefix: String) -> Bool
+  false
+
+doc
+  Return true when the string ends with the given suffix.
+
+    Text.ends_with("hello", "llo")   -- => true
+    Text.ends_with("hello", "hel")   -- => false
+@intrinsic("__kea_text_ends_with")
+fn ends_with(s: String, suffix: String) -> Bool
+  false
+
+doc
+  Return true when the string contains the given substring.
+
+    Text.contains("hello", "ell")   -- => true
+    Text.contains("hello", "xyz")   -- => false
+    Text.contains("hello", "")      -- => true
+@intrinsic("__kea_text_contains")
+fn contains(s: String, needle: String) -> Bool
+  false
+
+doc
+  Return the byte offset of the first occurrence of `needle` in `s`,
+  or `None` when not found.
+
+    Text.find("hello", "ell")   -- => Some(1)
+    Text.find("hello", "xyz")   -- => None
+fn find(s: String, needle: String) -> Option Int
+  let idx = raw_index_of(s, needle)
+  if idx < 0
+    None
+  else
+    Some(idx)
+
+doc
+  Return the byte value at the given index, or `None` for out-of-bounds.
+
+  Values are raw byte values (0–255). Use `Char.from_int` to convert to
+  a `Char` when you know the index falls on a codepoint boundary.
+
+    Text.byte_at("abc", 0)   -- => Some(97)
+    Text.byte_at("abc", 5)   -- => None
+fn byte_at(s: String, index: Int) -> Option Int
+  let b = raw_byte_at(s, index)
+  if b < 0
+    None
+  else
+    Some(b)
+
+doc
+  Return a substring from byte offset `from` (inclusive) to `to`
+  (exclusive). Offsets are clamped to the string length.
+
+    Text.slice("hello", 1, 4)   -- => "ell"
+    Text.slice("hello", 0, 5)   -- => "hello"
+    Text.slice("hello", 2, 2)   -- => ""
+@intrinsic("__kea_text_slice")
+fn slice(s: String, from: Int, to: Int) -> String
+  ""
+
+doc
+  Convert all ASCII letters in the string to uppercase.
+
+    Text.to_upper("Hello!")   -- => "HELLO!"
+    Text.to_upper("abc123")   -- => "ABC123"
+@intrinsic("__kea_text_to_upper")
+fn to_upper(s: String) -> String
+  s
+
+doc
+  Convert all ASCII letters in the string to lowercase.
+
+    Text.to_lower("Hello!")   -- => "hello!"
+    Text.to_lower("ABC123")   -- => "abc123"
+@intrinsic("__kea_text_to_lower")
+fn to_lower(s: String) -> String
+  s
+
+doc
+  Remove leading and trailing ASCII whitespace from the string.
+
+    Text.trim("  hello  ")   -- => "hello"
+    Text.trim("no spaces")   -- => "no spaces"
+@intrinsic("__kea_text_trim")
+fn trim(s: String) -> String
+  s
+
+doc
+  Replace every non-overlapping occurrence of `old` with `new`.
+
+    Text.replace("hello world", "world", "kea")   -- => "hello kea"
+    Text.replace("aaa", "a", "bb")                -- => "bbbbbb"
+@intrinsic("__kea_text_replace")
+fn replace(s: String, old: String, new: String) -> String
+  s
+
+doc
+  Repeat the string `count` times.
+
+    Text.repeat("ab", 3)   -- => "ababab"
+    Text.repeat("x", 0)    -- => ""
+@intrinsic("__kea_text_repeat")
+fn repeat(s: String, count: Int) -> String
+  s
+
+doc
+  Concatenate two strings.
+
+    Text.concat("hello", " world")   -- => "hello world"
+fn concat(a: String, b: String) -> String
+  a ++ b

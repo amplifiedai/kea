@@ -785,6 +785,108 @@ unsafe extern "C" fn kea_char_from_int_stub(code: i64) -> i64 {
     }
 }
 
+// Text intrinsics — operate on null-terminated UTF-8 C strings.
+// String-valued results are allocated via CString::into_raw() and must be
+// freed by the caller (the Kea runtime issues Release/free when refcount drops).
+
+static EMPTY_CSTR: &[u8] = b"\0";
+
+unsafe extern "C" fn kea_text_starts_with_stub(s: *const c_char, prefix: *const c_char) -> i8 {
+    let s = unsafe { CStr::from_ptr(s) }.to_str().unwrap_or("");
+    let prefix = unsafe { CStr::from_ptr(prefix) }.to_str().unwrap_or("");
+    s.starts_with(prefix) as i8
+}
+
+unsafe extern "C" fn kea_text_ends_with_stub(s: *const c_char, suffix: *const c_char) -> i8 {
+    let s = unsafe { CStr::from_ptr(s) }.to_str().unwrap_or("");
+    let suffix = unsafe { CStr::from_ptr(suffix) }.to_str().unwrap_or("");
+    s.ends_with(suffix) as i8
+}
+
+unsafe extern "C" fn kea_text_contains_stub(s: *const c_char, needle: *const c_char) -> i8 {
+    let s = unsafe { CStr::from_ptr(s) }.to_str().unwrap_or("");
+    let needle = unsafe { CStr::from_ptr(needle) }.to_str().unwrap_or("");
+    s.contains(needle) as i8
+}
+
+unsafe extern "C" fn kea_text_index_of_stub(s: *const c_char, needle: *const c_char) -> i64 {
+    let s = unsafe { CStr::from_ptr(s) }.to_str().unwrap_or("");
+    let needle = unsafe { CStr::from_ptr(needle) }.to_str().unwrap_or("");
+    match s.find(needle) {
+        Some(idx) => idx as i64,
+        None => -1,
+    }
+}
+
+unsafe extern "C" fn kea_text_char_at_stub(s: *const c_char, index: i64) -> i64 {
+    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    if index < 0 || index as usize >= bytes.len() {
+        return -1;
+    }
+    bytes[index as usize] as i64
+}
+
+unsafe extern "C" fn kea_text_slice_stub(s: *const c_char, from: i64, to: i64) -> *const c_char {
+    let s = unsafe { CStr::from_ptr(s) }.to_str().unwrap_or("");
+    let len = s.len();
+    let from = (from.max(0) as usize).min(len);
+    let to = (to.max(0) as usize).min(len);
+    if from >= to {
+        return EMPTY_CSTR.as_ptr() as *const c_char;
+    }
+    match CString::new(&s[from..to]) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => EMPTY_CSTR.as_ptr() as *const c_char,
+    }
+}
+
+unsafe extern "C" fn kea_text_to_upper_stub(s: *const c_char) -> *const c_char {
+    let s = unsafe { CStr::from_ptr(s) }.to_str().unwrap_or("");
+    match CString::new(s.to_uppercase()) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => EMPTY_CSTR.as_ptr() as *const c_char,
+    }
+}
+
+unsafe extern "C" fn kea_text_to_lower_stub(s: *const c_char) -> *const c_char {
+    let s = unsafe { CStr::from_ptr(s) }.to_str().unwrap_or("");
+    match CString::new(s.to_lowercase()) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => EMPTY_CSTR.as_ptr() as *const c_char,
+    }
+}
+
+unsafe extern "C" fn kea_text_trim_stub(s: *const c_char) -> *const c_char {
+    let s = unsafe { CStr::from_ptr(s) }.to_str().unwrap_or("");
+    match CString::new(s.trim()) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => EMPTY_CSTR.as_ptr() as *const c_char,
+    }
+}
+
+unsafe extern "C" fn kea_text_replace_stub(
+    s: *const c_char,
+    old: *const c_char,
+    new: *const c_char,
+) -> *const c_char {
+    let s = unsafe { CStr::from_ptr(s) }.to_str().unwrap_or("");
+    let old = unsafe { CStr::from_ptr(old) }.to_str().unwrap_or("");
+    let new_s = unsafe { CStr::from_ptr(new) }.to_str().unwrap_or("");
+    match CString::new(s.replace(old, new_s)) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => EMPTY_CSTR.as_ptr() as *const c_char,
+    }
+}
+
+unsafe extern "C" fn kea_text_repeat_stub(s: *const c_char, count: i64) -> *const c_char {
+    let s = unsafe { CStr::from_ptr(s) }.to_str().unwrap_or("");
+    let count = count.max(0) as usize;
+    match CString::new(s.repeat(count)) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => EMPTY_CSTR.as_ptr() as *const c_char,
+    }
+}
+
 fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_net_connect", kea_net_connect_stub as *const u8);
     builder.symbol("__kea_net_send", kea_net_send_stub as *const u8);
@@ -813,6 +915,38 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_ptr_free", kea_ptr_free_stub as *const u8);
     builder.symbol("__kea_char_to_int", kea_char_to_int_stub as *const u8);
     builder.symbol("__kea_char_from_int", kea_char_from_int_stub as *const u8);
+    builder.symbol(
+        "__kea_text_starts_with",
+        kea_text_starts_with_stub as *const u8,
+    );
+    builder.symbol(
+        "__kea_text_ends_with",
+        kea_text_ends_with_stub as *const u8,
+    );
+    builder.symbol(
+        "__kea_text_contains",
+        kea_text_contains_stub as *const u8,
+    );
+    builder.symbol(
+        "__kea_text_index_of",
+        kea_text_index_of_stub as *const u8,
+    );
+    builder.symbol(
+        "__kea_text_char_at",
+        kea_text_char_at_stub as *const u8,
+    );
+    builder.symbol("__kea_text_slice", kea_text_slice_stub as *const u8);
+    builder.symbol(
+        "__kea_text_to_upper",
+        kea_text_to_upper_stub as *const u8,
+    );
+    builder.symbol(
+        "__kea_text_to_lower",
+        kea_text_to_lower_stub as *const u8,
+    );
+    builder.symbol("__kea_text_trim", kea_text_trim_stub as *const u8);
+    builder.symbol("__kea_text_replace", kea_text_replace_stub as *const u8);
+    builder.symbol("__kea_text_repeat", kea_text_repeat_stub as *const u8);
 }
 
 fn compile_with_jit(

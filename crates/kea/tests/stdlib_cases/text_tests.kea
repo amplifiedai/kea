@@ -1,9 +1,82 @@
 use Text
+use Option
 use Test
 
 test "Text.length"
+  Test.assert(Text.length("") == 0)
   Test.assert(Text.length("kea") == 3)
+  Test.assert(Text.length("hello world") == 11)
 
-test "Text.predicates"
+test "Text.is_empty and non_empty"
   Test.assert(Text.is_empty(""))
-  Test.assert(Text.non_empty("kea"))
+  Test.assert(not Text.is_empty("a"))
+  Test.assert(Text.non_empty("a"))
+  Test.assert(not Text.non_empty(""))
+
+test "Text.starts_with"
+  Test.assert(Text.starts_with("hello", "hel"))
+  Test.assert(Text.starts_with("hello", "hello"))
+  Test.assert(Text.starts_with("hello", ""))
+  Test.assert(not Text.starts_with("hello", "ell"))
+  Test.assert(not Text.starts_with("hello", "world"))
+
+test "Text.ends_with"
+  Test.assert(Text.ends_with("hello", "llo"))
+  Test.assert(Text.ends_with("hello", "hello"))
+  Test.assert(Text.ends_with("hello", ""))
+  Test.assert(not Text.ends_with("hello", "hel"))
+
+test "Text.contains"
+  Test.assert(Text.contains("hello", "ell"))
+  Test.assert(Text.contains("hello", "hello"))
+  Test.assert(Text.contains("hello", ""))
+  Test.assert(not Text.contains("hello", "xyz"))
+
+test "Text.find"
+  Test.assert(Text.find("hello", "ell") == Some(1))
+  Test.assert(Text.find("hello", "h") == Some(0))
+  Test.assert(Text.find("hello", "o") == Some(4))
+  Test.assert(Text.find("hello", "xyz") == None)
+  Test.assert(Text.find("hello", "") == Some(0))
+
+test "Text.byte_at"
+  Test.assert(Text.byte_at("abc", 0) == Some(97))
+  Test.assert(Text.byte_at("abc", 1) == Some(98))
+  Test.assert(Text.byte_at("abc", 2) == Some(99))
+  Test.assert(Text.byte_at("abc", 3) == None)
+  Test.assert(Text.byte_at("abc", -1) == None)
+
+test "Text.slice"
+  Test.assert(Text.slice("hello", 1, 4) == "ell")
+  Test.assert(Text.slice("hello", 0, 5) == "hello")
+  Test.assert(Text.slice("hello", 0, 0) == "")
+  Test.assert(Text.slice("hello", 2, 2) == "")
+  Test.assert(Text.slice("hello", 0, 1) == "h")
+
+test "Text.to_upper and to_lower"
+  Test.assert(Text.to_upper("hello") == "HELLO")
+  Test.assert(Text.to_upper("Hello World!") == "HELLO WORLD!")
+  Test.assert(Text.to_upper("abc123") == "ABC123")
+  Test.assert(Text.to_lower("HELLO") == "hello")
+  Test.assert(Text.to_lower("Hello World!") == "hello world!")
+
+test "Text.trim"
+  Test.assert(Text.trim("  hello  ") == "hello")
+  Test.assert(Text.trim("hello") == "hello")
+  Test.assert(Text.trim("   ") == "")
+  Test.assert(Text.trim("") == "")
+
+test "Text.replace"
+  Test.assert(Text.replace("hello world", "world", "kea") == "hello kea")
+  Test.assert(Text.replace("aaa", "a", "bb") == "bbbbbb")
+  Test.assert(Text.replace("hello", "xyz", "abc") == "hello")
+
+test "Text.repeat"
+  Test.assert(Text.repeat("ab", 3) == "ababab")
+  Test.assert(Text.repeat("x", 0) == "")
+  Test.assert(Text.repeat("x", 1) == "x")
+
+test "Text.concat"
+  Test.assert(Text.concat("hello", " world") == "hello world")
+  Test.assert(Text.concat("", "hello") == "hello")
+  Test.assert(Text.concat("hello", "") == "hello")
