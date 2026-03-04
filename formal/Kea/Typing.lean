@@ -7409,6 +7409,64 @@ theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_stutter_co
     h_strict
 
 /--
+Strict-handle stutter-route capstone: clause discipline (at-most-once and
+non-capture) plus one-step existence/preservation for mismatch-extended
+native reduction.
+-/
+structure StrictHandleStutterDisciplineCapstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty) : Prop where
+  clauseAtMostOnce :
+    resumeSummary_atMostOnce (resumeSummary clauseBody)
+  clauseNotCaptured :
+    resumeSummary clauseBody ≠ .captured
+  existsAndPreserves :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem native_core_stutter_step
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty
+
+/--
+Build `StrictHandleStutterDisciplineCapstone` from a strict-handle witness.
+-/
+theorem strict_handle_stutter_discipline_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_strict :
+      HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    StrictHandleStutterDisciplineCapstone
+      clauseSem mismatchSem env body opHandle argName resumeName argTy opRetTy clauseBody ty := by
+  have h_typed :
+      HasTypeScopedTop env (.handle body opHandle argName resumeName argTy opRetTy clauseBody) ty :=
+    h_strict.1
+  refine {
+    clauseAtMostOnce := ?_
+    clauseNotCaptured := ?_
+    existsAndPreserves := ?_
+  }
+  · exact native_handler_clause_resumeSummary_linearity
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  · exact native_handler_clause_resume_not_captured
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  · exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_stutter_core_soundness_and_strict_handle
+      clauseSem mismatchSem h_strict
+
+/--
 One-hop projection: the extended native relation is sound from the closure
 package.
 -/

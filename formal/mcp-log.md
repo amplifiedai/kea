@@ -24550,3 +24550,37 @@ This bundles:
 
 **Impact**:
 - No Lean↔MCP divergence at this checkpoint.
+
+### 2026-03-04: strict-handle stutter discipline capstone
+
+**Context**: Added `StrictHandleStutterDisciplineCapstone` to package three strict-handle consequences on the stutter core route in one theorem object: clause at-most-once, clause non-capture, and mismatch-extended one-step existence+preservation.
+
+**MCP tools used**: `type_check` (direct `kea` MCP probes).
+
+**Predict (Lean side)**:
+1. Coherent single-resume and non-tail single-resume handlers are accepted.
+2. Lambda-captured resume is rejected.
+3. Double-resume clause is rejected.
+4. Out-of-handler resume is rejected.
+
+**Probe (Rust side via MCP)**:
+1. `probe_coherent_20260304db` -> `ok`.
+2. `probe_non_tail_single_20260304db` -> `ok`.
+3. `probe_lambda_capture_20260304db` -> `error`, `E0012`, `` `resume` cannot be captured in a lambda ``.
+4. `probe_double_resume_20260304db` -> `error`, `E0012`, `handler clause may resume at most once`.
+5. `probe_outside_resume_20260304db` -> `error`, `E0012`, `` `resume` is only valid inside a matching handler clause ``.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Added `StrictHandleStutterDisciplineCapstone` and constructor `strict_handle_stutter_discipline_capstone`.
+- Capstone now packages strict-handle local soundness and clause-discipline invariants together on one route.
+
+**Traceability**:
+- Lean file: `formal/Kea/Typing.lean`.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- No Lean↔MCP divergence at this checkpoint.
