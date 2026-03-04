@@ -3,7 +3,7 @@
 use kea_ast::*;
 use kea_diag::{Category, Diagnostic, SourceLocation};
 
-use crate::token::{Token, TokenKind};
+use crate::token::{Token, TokenKind, TriviaKind};
 
 /// Parse an expression from a token stream.
 pub fn parse_expr(tokens: Vec<Token>, file: FileId) -> Result<Expr, Vec<Diagnostic>> {
@@ -2102,8 +2102,8 @@ impl Parser {
                     start.merge(end),
                 ));
             }
-            if self.match_token(&TokenKind::LParen) {
-                // Applied: List(Int), Result(T, E)
+            if !self.peek_has_leading_space() && self.match_token(&TokenKind::LParen) {
+                // Paren-applied (no space before `(`): `f(a, b)`
                 let mut args = Vec::new();
                 self.skip_newlines();
                 if !self.check(&TokenKind::RParen) {
@@ -2123,6 +2123,8 @@ impl Parser {
                     start.merge(end_span),
                 ))
             } else if self.starts_space_type_application_arg() {
+                // Space-applied: `Option x`, `Option (x, y)` — one arg at a time.
+                // `(` with leading space is a single Tuple-type arg, not a comma list.
                 let mut args = Vec::new();
                 while self.starts_space_type_application_arg() {
                     args.push(self.type_application_arg_annotation()?);
@@ -2159,7 +2161,8 @@ impl Parser {
                     self.error_at_current("expected associated type name after 'Self.'");
                     None
                 }
-            } else if self.match_token(&TokenKind::LParen) {
+            } else if !self.peek_has_leading_space() && self.match_token(&TokenKind::LParen) {
+                // Paren-applied (no space before `(`): `Option(Int)`, `Result(T, E)`
                 let mut args = Vec::new();
                 self.skip_newlines();
                 if !self.check(&TokenKind::RParen) {
@@ -2179,6 +2182,8 @@ impl Parser {
                     start.merge(end_span),
                 ))
             } else if self.starts_space_type_application_arg() {
+                // Space-applied: `Option x`, `Option (x, y)` — one arg at a time.
+                // `(` with leading space is a single Tuple-type arg, not a comma list.
                 let mut args = Vec::new();
                 while self.starts_space_type_application_arg() {
                     args.push(self.type_application_arg_annotation()?);
@@ -4834,6 +4839,16 @@ impl Parser {
 
     fn peek_kind(&self) -> Option<&TokenKind> {
         self.tokens.get(self.pos).map(|t| &t.kind)
+    }
+
+    /// Returns true when the current token was preceded by whitespace (spaces/tabs)
+    /// on the same line. Used to distinguish `Type(args)` from `Type (tuple)`.
+    fn peek_has_leading_space(&self) -> bool {
+        self.tokens.get(self.pos).is_some_and(|t| {
+            t.leading_trivia
+                .iter()
+                .any(|tv| tv.kind == TriviaKind::Whitespace)
+        })
     }
 
     /// Peek at a token relative to the current position.
@@ -8104,6 +8119,31 @@ mod tests {
                         );
                     }
                     other => panic!("expected Applied(List, [Tuple]), got {other:?}"),
+                }
+            }
+            _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_space_applied_tuple_type() {
+        // `Option (x, y)` with a space should be space-applied: Applied("Option", [Tuple([x,y])]).
+        // This is distinct from `Option(x, y)` which would be 2 comma-separated args.
+        let m = parse_mod("fn zip(a: Option x, b: Option y) -> Option (x, y)\n  Some((1, 2))");
+        match &m.declarations[0].node {
+            DeclKind::Function(fd) => {
+                let ret = fd.return_annotation.as_ref().expect("return annotation");
+                match &ret.node {
+                    TypeAnnotation::Applied(name, args) => {
+                        assert_eq!(name, "Option");
+                        assert_eq!(args.len(), 1, "Option should have 1 arg (the Tuple)");
+                        assert!(
+                            matches!(&args[0], TypeAnnotation::Tuple(elems) if elems.len() == 2),
+                            "expected Tuple([x, y]) but got {:?}",
+                            args[0]
+                        );
+                    }
+                    other => panic!("expected Applied(Option, [Tuple]), got {other:?}"),
                 }
             }
             _ => panic!("expected Function"),
