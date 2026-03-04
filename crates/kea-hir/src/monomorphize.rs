@@ -6,7 +6,7 @@
 //! call sites.  The original polymorphic definitions are removed from the
 //! module.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use kea_types::{Substitution, Type, TypeVarId, free_type_vars};
 
@@ -56,21 +56,39 @@ impl<'a> MonoPass<'a> {
     fn new(module: &'a HirModule) -> Self {
         let mut poly_fns = BTreeMap::new();
         let mut unqualified_to_qualified: BTreeMap<String, String> = BTreeMap::new();
+        // Track unqualified names that have a concrete monomorphic definition so
+        // we can prevent the routing table from accidentally sending those calls
+        // to a polymorphic qualified variant (e.g. Result.unwrap_or) when a
+        // user-defined monomorphic function with the same bare name exists.
+        let mut mono_names: BTreeSet<String> = BTreeSet::new();
         for decl in &module.declarations {
-            if let HirDecl::Function(f) = decl
-                && !free_type_vars(&f.ty).is_empty()
-            {
-                poly_fns.insert(f.name.clone(), f);
-                // Map unqualified name to qualified if applicable.
-                if let Some((_module, short)) = f.name.rsplit_once('.') {
-                    // Only map if the unqualified name isn't already a poly fn
-                    // (avoid clobbering `fold` with `List.fold` if both exist).
-                    if !poly_fns.contains_key(short) {
-                        unqualified_to_qualified.insert(short.to_string(), f.name.clone());
+            if let HirDecl::Function(f) = decl {
+                if !free_type_vars(&f.ty).is_empty() {
+                    poly_fns.insert(f.name.clone(), f);
+                    // Map unqualified name to qualified if applicable.
+                    if let Some((_module, short)) = f.name.rsplit_once('.') {
+                        // Only map if the unqualified name isn't already a poly fn
+                        // (avoid clobbering `fold` with `List.fold` if both exist).
+                        if !poly_fns.contains_key(short) {
+                            unqualified_to_qualified.insert(short.to_string(), f.name.clone());
+                        }
+                    }
+                } else {
+                    // Monomorphic function: record its unqualified name so we can
+                    // remove it from the routing table after the scan.
+                    mono_names.insert(f.name.clone());
+                    if let Some((_, short)) = f.name.rsplit_once('.') {
+                        mono_names.insert(short.to_string());
                     }
                 }
             }
         }
+        // If a concrete monomorphic function exists for a short name, remove
+        // any qualified-poly mapping for that name.  Without this, a call to
+        // `unwrap_or` in user code (resolved to the monomorphic definition
+        // during merge) would be incorrectly re-routed to `Result.unwrap_or`
+        // and then monomorphised under the wrong sum-type layout.
+        unqualified_to_qualified.retain(|short, _| !mono_names.contains(short));
         Self {
             module,
             poly_fns,
@@ -554,12 +572,6 @@ fn extract_bindings(poly: &Type, concrete: &Type, out: &mut BTreeMap<TypeVarId, 
             }
             extract_bindings(&pf.ret, &cf.ret, out);
         }
-        (Type::List(p), Type::List(c)) => extract_bindings(p, c, out),
-        (Type::Option(p), Type::Option(c)) => extract_bindings(p, c, out),
-        (Type::Result(po, pe), Type::Result(co, ce)) => {
-            extract_bindings(po, co, out);
-            extract_bindings(pe, ce, out);
-        }
         (Type::Map(pk, pv), Type::Map(ck, cv)) => {
             extract_bindings(pk, ck, out);
             extract_bindings(pv, cv, out);
@@ -614,8 +626,6 @@ fn sanitize_type_for_name(ty: &Type) -> String {
         Type::Float => "Float".to_string(),
         Type::Unit => "Unit".to_string(),
         Type::Dynamic => "Dyn".to_string(),
-        Type::List(inner) => format!("List{}", sanitize_type_for_name(inner)),
-        Type::Option(inner) => format!("Opt{}", sanitize_type_for_name(inner)),
         Type::Function(ft) => {
             let params: Vec<_> = ft.params.iter().map(sanitize_type_for_name).collect();
             let ret = sanitize_type_for_name(&ft.ret);
@@ -677,8 +687,8 @@ mod tests {
     #[test]
     fn extract_bindings_simple() {
         let var_a = TypeVarId(100);
-        let poly = Type::List(Box::new(Type::Var(var_a)));
-        let concrete = Type::List(Box::new(Type::Int));
+        let poly = Type::list(Type::Var(var_a));
+        let concrete = Type::list(Type::Int);
         let mut bindings = BTreeMap::new();
         extract_bindings(&poly, &concrete, &mut bindings);
         assert_eq!(bindings.get(&var_a), Some(&Type::Int));
