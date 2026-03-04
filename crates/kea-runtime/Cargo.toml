@@ -1,0 +1,9 @@
+[package]
+name = "kea-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+crossbeam-deque = "0.8"
