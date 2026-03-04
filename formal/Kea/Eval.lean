@@ -2534,6 +2534,61 @@ theorem coreCalculusSoundnessDeclarativeMasterSuite_inferSlice_proved :
   coreCalculusSoundnessDeclarativeMasterSuite_inferSlice
     coreCalculusSoundnessDeclarativeMasterSuite_proved
 
+/--
+Cross-module capstone: pairs the proved core declarative soundness master suite
+with the current unified native-handler boundary status capstone.
+-/
+structure CoreAndHandlerBoundaryStatusCapstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop where
+  coreSoundness :
+    CoreCalculusSoundnessDeclarativeMasterSuite
+  handlerBoundaryStatus :
+    NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem
+
+/--
+Canonical cross-module capstone from proved core soundness and the direct
+handler boundary status constructor.
+-/
+theorem core_and_handler_boundary_status_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    CoreAndHandlerBoundaryStatusCapstone clauseSem mismatchSem := by
+  exact {
+    coreSoundness := coreCalculusSoundnessDeclarativeMasterSuite_proved
+    handlerBoundaryStatus :=
+      native_handler_soundness_boundary_status_capstone clauseSem mismatchSem
+  }
+
+/--
+Cross-module capstone route built from a packaged handler boundary-model gap
+slice witness.
+-/
+theorem core_and_handler_boundary_status_capstone_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem) :
+    CoreAndHandlerBoundaryStatusCapstone clauseSem mismatchSem := by
+  exact {
+    coreSoundness := coreCalculusSoundnessDeclarativeMasterSuite_proved
+    handlerBoundaryStatus :=
+      native_handler_soundness_boundary_status_capstone_of_boundary_model_gap_slice
+        clauseSem mismatchSem h_gap
+  }
+
+/--
+One-shot extraction of the handler `bodyStep = False` boundary snapshot from
+the cross-module capstone.
+-/
+theorem core_and_handler_boundary_status_capstone_bodyStepFalse_snapshot
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_status : CoreAndHandlerBoundaryStatusCapstone clauseSem mismatchSem) :
+    native_handler_soundness_boundary_status_bodyStepFalse_snapshot_prop
+      clauseSem mismatchSem := by
+  exact native_handler_soundness_boundary_status_bodyStepFalse_snapshot
+    clauseSem mismatchSem h_status.handlerBoundaryStatus
+
 theorem coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSlice
     (h_core : CoreCalculusSoundnessSlice)
     {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
