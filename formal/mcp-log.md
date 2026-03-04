@@ -24439,3 +24439,36 @@ This bundles:
 
 **Impact**:
 - No Lean↔MCP divergence at this checkpoint.
+
+### 2026-03-04: post-dual-surface patch revalidation + non-tail single-resume sentinel
+
+**Context**: Revalidated that both patched Lean surfaces (legacy `HasType`/`inferExpr` and scoped `HasTypeScoped`) remain aligned with compiler/MCP behavior, and added a fresh non-tail single-resume acceptance sentinel to avoid repetition-only probing.
+
+**MCP tools used**: `type_check` (direct `kea` MCP probes).
+
+**Predict (Lean side)**:
+1. Coherent single-resume handler remains typable.
+2. Double-resume handler clause remains rejected (at-most-once).
+3. Out-of-handler `resume` remains rejected.
+4. Forged-name out-of-handler `resume` remains rejected.
+5. Non-tail single-resume clause (`let x = resume v; ...`) remains accepted.
+
+**Probe (Rust side via MCP)**:
+1. `probe_coherent_20260304by` -> `ok`.
+2. `probe_double_resume_20260304by` -> `error`, `E0012`, `handler clause may resume at most once`.
+3. `probe_outside_resume_20260304by` -> `error`, `E0012`, `` `resume` is only valid inside a matching handler clause ``.
+4. `probe_forged_resume_20260304by` -> `error`, `E0012`, `` `resume` is only valid inside a matching handler clause ``.
+5. `probe_non_tail_single_20260304by` -> `ok`.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- No regression detected after dual-surface linearity hardening.
+- Fresh non-tail single-resume sentinel confirms acceptance behavior remains consistent with at-most-once policy.
+
+**Traceability**:
+- Lean build evidence:
+  - `cd formal && lake build`
+
+**Impact**:
+- No Lean↔MCP divergence at this checkpoint.
