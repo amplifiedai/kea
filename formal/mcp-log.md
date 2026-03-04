@@ -24756,3 +24756,38 @@ This bundles:
 
 **Impact**:
 - No Lean↔MCP divergence at this checkpoint.
+
+### 2026-03-04: local mismatch stutter route via extended-native lifting
+
+**Context**: Added assumption-free local mismatch-extended stutter routes by lifting preserving `NativeHandlerStepExt` witnesses into `NativeHandlerStepExtWithMismatch`:
+- `native_handler_step_ext_with_mismatch_exists_and_preserves_of_stutter_core_soundness_via_ext`
+- `native_handler_step_ext_with_mismatch_exists_and_preserves_of_stutter_core_soundness_via_ext_zero_or_one`
+
+**MCP tools used**: `type_check` (direct `kea` MCP probes).
+
+**Predict (Lean side)**:
+1. Zero-resume and non-tail single-resume handlers accepted.
+2. Lambda-captured resume rejected.
+3. Double-resume rejected.
+4. Out-of-handler resume rejected.
+
+**Probe (Rust side via MCP)**:
+1. `probe_zero_resume_20260304dj` -> `ok`.
+2. `probe_non_tail_single_20260304dj` -> `ok`.
+3. `probe_lambda_capture_20260304dj` -> `error`, `E0012`, `` `resume` cannot be captured in a lambda ``.
+4. `probe_double_resume_20260304dj` -> `error`, `E0012`, `handler clause may resume at most once`.
+5. `probe_outside_resume_20260304dj` -> `error`, `E0012`, `` `resume` is only valid inside a matching handler clause ``.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Added local mismatch-preserving existence routes under stutter without strict-top/strict-handle assumptions by lifting from extended-native preserving steps.
+
+**Traceability**:
+- Lean file: `formal/Kea/Typing.lean`.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- No Lean↔MCP divergence at this checkpoint.
