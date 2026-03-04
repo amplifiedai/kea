@@ -120,6 +120,14 @@ mutual
     | .cons _ e rest => resumeSummaryCombine (resumeSummary e) (resumeSummaryFields rest)
 end
 
+/--
+`resumeSummary_atMostOnce` holds exactly for summaries `.zero` and `.one`.
+-/
+theorem resumeSummary_atMostOnce_iff_zero_or_one
+    (s : ResumeSummary) :
+    resumeSummary_atMostOnce s ↔ s = .zero ∨ s = .one := by
+  cases s <;> simp [resumeSummary_atMostOnce]
+
 mutual
   /-- Algorithmic inference for core expressions. -/
   def inferExpr (env : TermEnv) : CoreExpr → Option Ty
@@ -1308,6 +1316,21 @@ theorem legacy_handler_clause_resumeSummary_linearity_prop_iff_true :
     exact legacy_handler_clause_resumeSummary_linearity
 
 /--
+Legacy declarative handle typing constrains clause summaries to `.zero` or
+`.one`.
+-/
+theorem legacy_handler_clause_summary_zero_or_one
+    {env : TermEnv} {body : CoreExpr} {op : Label}
+    {argName resumeName : String} {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr} {ty : Ty}
+    (h_typed :
+      HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty) :
+    resumeSummary clauseBody = .zero ∨ resumeSummary clauseBody = .one := by
+  exact (resumeSummary_atMostOnce_iff_zero_or_one (resumeSummary clauseBody)).1
+    (legacy_handler_clause_resumeSummary_linearity
+      env body op argName resumeName argTy opRetTy clauseBody ty h_typed)
+
+/--
 Boundary proposition: legacy declarative handle typing forbids clause summaries
 in the lambda-captured state.
 -/
@@ -1363,6 +1386,20 @@ theorem inferExpr_handle_some_implies_clause_resume_not_captured
       (argTy := argTy) (opRetTy := opRetTy)
       (clauseBody := clauseBody) (ty := ty) h_inf
   simp [h_captured, resumeSummary_atMostOnce] at h_linear
+
+/--
+Algorithmic legacy handle inference constrains clause summaries to `.zero` or
+`.one`.
+-/
+theorem inferExpr_handle_some_implies_clause_summary_zero_or_one
+    {env : TermEnv} {body : CoreExpr} {op : Label}
+    {argName resumeName : String} {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr} {ty : Ty}
+    (h_inf :
+      inferExpr env (.handle body op argName resumeName argTy opRetTy clauseBody) = some ty) :
+    resumeSummary clauseBody = .zero ∨ resumeSummary clauseBody = .one := by
+  exact (resumeSummary_atMostOnce_iff_zero_or_one (resumeSummary clauseBody)).1
+    (inferExpr_handle_some_implies_clause_resumeSummary_atMostOnce h_inf)
 
 /--
 Concrete top-level `handle` with a double-resume clause is not typable in the
@@ -1425,6 +1462,22 @@ theorem native_handler_clause_resumeSummary_linearity_prop_iff_true :
     trivial
   · intro _h_true
     exact native_handler_clause_resumeSummary_linearity
+
+/--
+Native top-level handle typing constrains clause summaries to `.zero` or
+`.one`.
+-/
+theorem native_handler_clause_summary_zero_or_one
+    {env : TermEnv} {body : CoreExpr} {op : Label}
+    {argName resumeName : String} {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr} {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body op argName resumeName argTy opRetTy clauseBody) ty) :
+    resumeSummary clauseBody = .zero ∨ resumeSummary clauseBody = .one := by
+  exact (resumeSummary_atMostOnce_iff_zero_or_one (resumeSummary clauseBody)).1
+    (native_handler_clause_resumeSummary_linearity
+      env body op argName resumeName argTy opRetTy clauseBody ty h_typed)
 
 /--
 Boundary proposition: native top-level handle typing forbids clause summaries
