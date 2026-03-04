@@ -7583,6 +7583,37 @@ theorem native_handler_step_ext_with_mismatch_stutter_strict_top_handle_soundnes
   exact ⟨h_cap.clauseAtMostOnce, h_cap.clauseNotCaptured, h_cap.existsAndPreserves⟩
 
 /--
+Direct strict-top stutter route exposing clause discipline in zero-or-one form
+plus preserving mismatch-extended one-step existence.
+-/
+theorem native_handler_step_ext_with_mismatch_stutter_strict_top_handle_soundness_zero_or_one
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_strict_top :
+      HasTypeScopedStrictTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    (resumeSummary clauseBody = .zero ∨ resumeSummary clauseBody = .one)
+      ∧
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem native_core_stutter_step
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  have h_sound :=
+    native_handler_step_ext_with_mismatch_stutter_strict_top_handle_soundness
+      clauseSem mismatchSem env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict_top
+  refine ⟨?_, h_sound.2.2⟩
+  exact (resumeSummary_atMostOnce_iff_zero_or_one (resumeSummary clauseBody)).1 h_sound.1
+
+/--
 One-hop projection: the extended native relation is sound from the closure
 package.
 -/
