@@ -8380,7 +8380,7 @@ fn compile_rejects_actor_send_borrow_parameter_argument() {
 #[test]
 fn compile_rejects_actor_send_borrow_parameter_message_wrapper() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nenum Msg\n  Push(Unique Int)\n\nfn bad(actor: Actor Msg, borrow value: Unique Int) -> Unit\n  send(actor, Push(value))\n\nfn main() -> Int\n  0\n",
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor ((Unique Int, Int)), borrow value: Unique Int) -> Unit\n  send(actor, (value, 0))\n\nfn main() -> Int\n  0\n",
         "kea-cli-borrow-actor-send-message-wrapper-rejected",
         "kea",
     );
@@ -8434,7 +8434,7 @@ fn compile_rejects_actor_call_borrow_parameter_argument() {
 #[test]
 fn compile_rejects_actor_call_borrow_parameter_message_wrapper() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nenum Msg\n  Ask(Unique Int)\n\nfn bad(actor: Actor Msg, borrow value: Unique Int) -> Unit\n  let _ = call(actor, Ask(value))\n\nfn main() -> Int\n  0\n",
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor ((Unique Int, Int)), borrow value: Unique Int) -> Unit\n  let _ = call(actor, (value, 0))\n\nfn main() -> Int\n  0\n",
         "kea-cli-borrow-actor-call-message-wrapper-rejected",
         "kea",
     );
