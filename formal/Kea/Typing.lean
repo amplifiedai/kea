@@ -1306,6 +1306,47 @@ theorem native_handler_clause_resumeSummary_linearity_prop_iff_true :
   · intro _h_true
     exact native_handler_clause_resumeSummary_linearity
 
+/--
+Unified closure package for clause-linearity enforcement across the legacy and
+scoped typing surfaces.
+-/
+structure HandlerClauseLinearityClosure : Prop where
+  legacyDeclarative :
+    legacy_handler_clause_resumeSummary_linearity_prop
+  legacyAlgorithmic :
+    ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
+      inferExpr env (.handle body op argName resumeName argTy opRetTy clauseBody) = some ty →
+      resumeSummary_atMostOnce (resumeSummary clauseBody)
+  scopedDeclarative :
+    native_handler_clause_resumeSummary_linearity_prop
+  legacyDoubleResumeInferRejects :
+    inferExpr []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int doubleResumeWitnessExpr) = none
+  legacyDoubleResumeDeclarativeRejects :
+    ¬ HasType []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int doubleResumeWitnessExpr)
+      .int
+  scopedDoubleResumeDeclarativeRejects :
+    ¬ HasTypeScopedTop []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int doubleResumeWitnessExpr)
+      .int
+
+/--
+Canonical linearity-closure witness across both legacy and scoped surfaces.
+-/
+theorem handler_clause_linearity_closure :
+    HandlerClauseLinearityClosure := by
+  refine {
+    legacyDeclarative := legacy_handler_clause_resumeSummary_linearity
+    legacyAlgorithmic := ?_
+    scopedDeclarative := native_handler_clause_resumeSummary_linearity
+    legacyDoubleResumeInferRejects := inferExpr_handle_with_doubleResume_clause_none
+    legacyDoubleResumeDeclarativeRejects := not_hasType_handle_with_doubleResume_clause
+    scopedDoubleResumeDeclarativeRejects := not_hasTypeScopedTop_handle_with_doubleResume_clause
+  }
+  intro env body op argName resumeName argTy opRetTy clauseBody ty h_inf
+  exact inferExpr_handle_some_implies_clause_resumeSummary_atMostOnce h_inf
+
 /- =========================================================================
    Native handler-step judgment on `Typing.CoreExpr`
    ========================================================================= -/

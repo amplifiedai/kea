@@ -24397,3 +24397,45 @@ These make legacy declarative/algo linearity consequences citable directly.
 
 **Impact**:
 - No Lean↔MCP divergence at this checkpoint.
+
+### 2026-03-04: unified clause-linearity closure capstone across legacy/scoped routes
+
+**Context**: Added a unified theorem package in `Kea/Typing.lean`:
+- `HandlerClauseLinearityClosure`
+- `handler_clause_linearity_closure`
+
+This bundles:
+- legacy declarative linearity (`HasType`),
+- legacy algorithmic linearity (`inferExpr`),
+- scoped/native declarative linearity (`HasTypeScoped`),
+- and both legacy/scoped double-resume rejection witnesses.
+
+**MCP tools used**: `reset_session`, `type_check` (direct `kea` MCP probes).
+
+**Predict (Lean side)**:
+- This is theorem-surface packaging over already-hardened rules.
+- Runtime behavior should remain stable: coherent handler `ok`, double-resume
+  `E0012`, out-of-handler `resume` `E0012`.
+
+**Probe (Rust side via MCP)**:
+1. `probe_coherent_20260304bx` -> `ok`.
+2. `probe_double_resume_20260304bx` -> `error`, `E0012`,
+   `handler clause may resume at most once`.
+3. `probe_outside_resume_20260304bx` -> `error`, `E0012`,
+   `` `resume` is only valid inside a matching handler clause ``.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Clause-linearity closure is now available as one named capstone witness across
+  both legacy and scoped typing surfaces.
+
+**Traceability**:
+- Lean edits: `formal/Kea/Typing.lean` (`HandlerClauseLinearityClosure`,
+  `handler_clause_linearity_closure`).
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- No Lean↔MCP divergence at this checkpoint.
