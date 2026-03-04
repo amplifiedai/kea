@@ -4089,6 +4089,172 @@ fn compile_and_execute_fip_unique_known_qualified_forwarder_call_exit_code() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_alias_chain_call_exit_code() {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-alias-chain");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  f(y)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_alias(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept module-alias wrappers that alias the unique value before forwarding",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_alias_chain_call_exit_code() {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-named-alias-chain");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  f(y)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{apply_alias, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept named-import wrappers that alias the unique value before forwarding",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_function_alias_chain_call_exit_code(
+) {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-fn-alias-chain");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = f\n  let y = x\n  g(y)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_alias(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept module-alias wrappers that alias the forwarder parameter before single forwarding",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_function_alias_chain_call_exit_code(
+) {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-named-fn-alias-chain");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = f\n  let y = x\n  g(y)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{apply_forwarder_alias, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept named-import wrappers that alias the forwarder parameter before single forwarding",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_result_alias_chain_call_exit_code(
+) {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-result-alias");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let z = y\n  let out0 = f(z)\n  let out1 = out0\n  out1\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_alias_result(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept module-alias wrappers that return through result aliases after a single forward call",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_result_alias_chain_call_exit_code(
+) {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-named-result-alias");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let z = y\n  let out0 = f(z)\n  let out1 = out0\n  out1\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{apply_alias_result, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result(forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept named-import wrappers that return through result aliases after a single forward call",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_result_if_alias_chain_call_exit_code(
 ) {
     let project_dir =
