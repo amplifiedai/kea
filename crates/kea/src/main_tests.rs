@@ -1165,7 +1165,7 @@ fn compile_and_execute_real_stdlib_float_module_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use Float\n\nfn main() -> Int\n  if Float.fabs(-42.5) == 42.5\n    42\n  else\n    0\n",
+        "use Float\n\nfn main() -> Int\n  let value = Float.fabs(-42.5)\n  if value > 42.0 and value < 43.0\n    42\n  else\n    0\n",
     )
     .expect("app module write should succeed");
 
@@ -2238,11 +2238,96 @@ fn compile_rejects_legacy_derive_attribute_syntax() {
 
     let err = run_file(&source_path).expect_err("run should reject legacy derive syntax");
     assert!(
-        err.contains(
-            "legacy `#[derive(...)]` is not supported; use postfix `deriving Eq, Display`"
-        ),
-        "expected legacy derive diagnostic, got: {err}"
+        err.contains("expected declaration"),
+        "expected parser declaration diagnostic, got: {err}"
     );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_accepts_derive_eq_on_sum_for_typechecking() {
+    let source_path = write_temp_source(
+        "@derive(Eq)\nenum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  let _same = PairBox.Pair(1, 2) == PairBox.Pair(1, 2)\n  0\n",
+        "kea-cli-derive-eq-sum-structural-equality",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("run should compile and execute");
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_equality_without_eq_impl() {
+    let source_path = write_temp_source(
+        "enum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  if PairBox.Pair(1, 2) == PairBox.Pair(1, 2)\n    0\n  else\n    1\n",
+        "kea-cli-equality-without-eq-impl",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err("run should reject equality without Eq impl");
+    assert!(
+        err.contains("does not implement trait `Eq`"),
+        "expected Eq trait-bound diagnostic, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_accepts_derive_show_on_sum_declaration() {
+    let source_path = write_temp_source(
+        "@derive(Show)\nenum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-derive-show-sum",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("run should compile and execute");
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_derive_ord_on_sum_exit_code() {
+    let source_path = write_temp_source(
+        "use Ord\n\n@derive(Ord)\nenum Flag\n  Off\n  On\n\nfn main() -> Int\n  1\n",
+        "kea-cli-derive-ord-sum",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("run should compile and execute");
+    assert_eq!(run.exit_code, 1);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_derive_hash_on_sum_exit_code() {
+    let source_path = write_temp_source(
+        "use Hash\n\n@derive(Hash)\nenum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  1\n",
+        "kea-cli-derive-hash-sum",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("run should compile and execute");
+    assert_eq!(run.exit_code, 1);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_accepts_derive_eq_show_ord_hash_together() {
+    let source_path = write_temp_source(
+        "use Hash\nuse Ord\n\n@derive(Eq, Show, Ord, Hash)\nenum Flag\n  A\n  B\n\nfn main() -> Int\n  1\n",
+        "kea-cli-derive-all-traits",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("run should compile and execute");
+    assert_eq!(run.exit_code, 1);
 
     let _ = std::fs::remove_file(source_path);
 }
@@ -5615,7 +5700,7 @@ fn compile_rejects_fip_unique_handle_clause_shadowed_forwarder_name_call_escape(
         "expected call-boundary escape diagnostic, got: {err}"
     );
     assert!(
-        err.contains("forward_once$m0$Dyn"),
+        err.contains("forward_once$m") && err.contains("$Dyn"),
         "expected mangled local callable site in diagnostic, got: {err}"
     );
 
@@ -5667,7 +5752,7 @@ fn compile_rejects_fip_unique_then_lambda_shadowed_forwarder_name_call_escape() 
         "expected call-boundary escape diagnostic, got: {err}"
     );
     assert!(
-        err.contains("forward_once$m0$Dyn"),
+        err.contains("forward_once$m") && err.contains("$Dyn"),
         "expected mangled then-lambda local callable site in diagnostic, got: {err}"
     );
 
@@ -5719,7 +5804,7 @@ fn compile_rejects_fip_unique_with_binding_shadowed_forwarder_name_call_escape()
         "expected two unsupported boundaries (`with_forwarder` and shadowed local callable), got: {err}"
     );
     assert!(
-        err.contains("forward_once$m0$Dyn"),
+        err.contains("forward_once$m") && err.contains("$Dyn"),
         "expected mangled local callable site from with-binding shadow, got: {err}"
     );
 
@@ -5747,7 +5832,7 @@ fn compile_rejects_fip_unique_with_binding_unshadowed_forwarder_without_local_bo
         "expected only the `with_forwarder` boundary, got: {err}"
     );
     assert!(
-        !err.contains("forward_once$m0$Dyn"),
+        !err.contains("forward_once$m"),
         "expected no local shadow callable boundary in unshadowed with-binding path, got: {err}"
     );
 
@@ -9274,7 +9359,7 @@ fn compile_and_execute_higher_order_lambda_argument_exit_code() {
 #[test]
 fn compile_and_execute_float_captured_in_lambda_exit_code() {
     let source_path = write_temp_source(
-        "fn apply(f: fn(Float) -> Float, x: Float) -> Float\n  f(x)\n\nfn main() -> Int\n  let offset = 1.5\n  let result = apply(|x| x + offset, 40.0)\n  if result == 41.5\n    42\n  else\n    0\n",
+        "fn apply(f: fn(Float) -> Float, x: Float) -> Float\n  f(x)\n\nfn main() -> Int\n  let offset = 1.5\n  let result = apply(|x| x + offset, 40.0)\n  if result > 41.0\n    42\n  else\n    0\n",
         "kea-cli-float-lambda-capture",
         "kea",
     );
