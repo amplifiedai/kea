@@ -8382,6 +8382,40 @@ fn compile_rejects_actor_call_borrow_parameter_argument() {
 }
 
 #[test]
+fn compile_rejects_unique_reuse_after_actor_send_move() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int) -> Int\n  let u = Unique(7)\n  send(actor, :push, u)\n  case u\n    Unique(v) -> v\n\nfn main() -> Int\n  0\n",
+        "kea-cli-unique-reuse-after-actor-send-move",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err("reusing unique value after send should fail");
+    assert!(
+        err.contains("use of moved value `u`"),
+        "expected moved-value diagnostic for actor send, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_unique_reuse_after_actor_call_move() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int) -> Int\n  let u = Unique(7)\n  let _ = call(actor, :get, u)\n  case u\n    Unique(v) -> v\n\nfn main() -> Int\n  0\n",
+        "kea-cli-unique-reuse-after-actor-call-move",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err("reusing unique value after call should fail");
+    assert!(
+        err.contains("use of moved value `u`"),
+        "expected moved-value diagnostic for actor call, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_control_send_borrow_parameter_signal() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  control_send(actor, value)\n\nfn main() -> Int\n  0\n",
@@ -8394,6 +8428,24 @@ fn compile_rejects_control_send_borrow_parameter_signal() {
     assert!(
         err.contains("borrowed value `value` cannot be consumed"),
         "expected borrow-consumption diagnostic for control_send signal, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_unique_reuse_after_control_send_move() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int) -> Int\n  let u = Unique(7)\n  control_send(actor, u)\n  case u\n    Unique(v) -> v\n\nfn main() -> Int\n  0\n",
+        "kea-cli-unique-reuse-after-control-send-move",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("reusing unique value after control_send should fail");
+    assert!(
+        err.contains("use of moved value `u`"),
+        "expected moved-value diagnostic for control_send, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
