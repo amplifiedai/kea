@@ -10,6 +10,21 @@ fn even(x: Int) -> Bool
 fn add(acc: Int, x: Int) -> Int
   acc + x
 
+fn unwrap_int(opt: Option Int, fallback: Int) -> Int
+  case opt
+    Some(x) -> x
+    None -> fallback
+
+fn is_some_int(opt: Option Int) -> Bool
+  case opt
+    Some(_) -> true
+    None -> false
+
+fn is_none_int(opt: Option Int) -> Bool
+  case opt
+    Some(_) -> false
+    None -> true
+
 test "List.basics"
   let xs = Cons(1, Cons(2, Cons(3, Cons(4, Nil))))
   Test.assert(List.is_empty(Nil))
@@ -21,3 +36,70 @@ test "List.map_filter_fold"
   let zs = List.filter(ys, even)
   Test.assert(List.length(zs) == 2)
   Test.assert(List.fold(zs, 0, add) == 6)
+
+test "List.head"
+  Test.assert(unwrap_int(List.head([1, 2, 3]), 0) == 1)
+  Test.assert(unwrap_int(List.head([42]), 0) == 42)
+  let empty: List Int = []
+  Test.assert(is_none_int(List.head(empty)))
+
+test "List.tail"
+  Test.assert(List.length(List.tail([1, 2, 3])) == 2)
+  let empty: List Int = []
+  Test.assert(List.is_empty(List.tail(empty)))
+
+test "List.last"
+  Test.assert(unwrap_int(List.last([1, 2, 3]), 0) == 3)
+  Test.assert(unwrap_int(List.last([42]), 0) == 42)
+  let empty: List Int = []
+  Test.assert(is_none_int(List.last(empty)))
+
+test "List.nth"
+  let xs = [10, 20, 30]
+  Test.assert(unwrap_int(List.nth(xs, 0), 0) == 10)
+  Test.assert(unwrap_int(List.nth(xs, 1), 0) == 20)
+  Test.assert(unwrap_int(List.nth(xs, 2), 0) == 30)
+  Test.assert(is_none_int(List.nth(xs, 3)))
+  Test.assert(is_none_int(List.nth(xs, -1)))
+
+test "List.reverse"
+  Test.assert(List.length(List.reverse([1, 2, 3])) == 3)
+  Test.assert(unwrap_int(List.head(List.reverse([1, 2, 3])), 0) == 3)
+  let empty: List Int = []
+  Test.assert(List.is_empty(List.reverse(empty)))
+
+test "List.append"
+  let xs = List.append([1, 2], [3, 4])
+  Test.assert(List.length(xs) == 4)
+  Test.assert(unwrap_int(List.head(xs), 0) == 1)
+
+test "List.sum"
+  Test.assert(List.sum([1, 2, 3, 4]) == 10)
+  Test.assert(List.sum([]) == 0)
+
+test "List.any_all"
+  Test.assert(List.any([1, 2, 3], |x| x > 2))
+  Test.assert(not List.any([1, 2, 3], |x| x > 10))
+  Test.assert(List.all([2, 4, 6], even))
+  Test.assert(not List.all([2, 3, 6], even))
+
+test "List.find"
+  Test.assert(unwrap_int(List.find([1, 2, 3], |x| x > 1), 0) == 2)
+  Test.assert(is_none_int(List.find([1, 2, 3], |x| x > 10)))
+
+test "List.take_drop"
+  Test.assert(List.length(List.take([1, 2, 3, 4], 2)) == 2)
+  Test.assert(unwrap_int(List.head(List.take([1, 2, 3], 2)), 0) == 1)
+  Test.assert(List.length(List.drop([1, 2, 3, 4], 2)) == 2)
+  let empty: List Int = []
+  Test.assert(List.is_empty(List.take(empty, 3)))
+  Test.assert(List.is_empty(List.drop(empty, 3)))
+
+test "List.flat_map"
+  let xs = List.flat_map([1, 2], |x| [x, x * 10])
+  Test.assert(List.length(xs) == 4)
+  Test.assert(unwrap_int(List.head(xs), 0) == 1)
+
+test "List.zip"
+  let zipped = List.zip([1, 2], [10, 20])
+  Test.assert(List.length(zipped) == 2)

@@ -1,17 +1,58 @@
 doc
-  List provides operations over immutable linked lists.
+  Immutable singly-linked lists with functional transformations.
 
-  Use `Cons(head, tail)` to build lists and `Nil` for empty.
-  Most transformations are expressed with `map`, `filter`, and `fold`.
+  Lists are the fundamental recursive data structure in Kea. They are
+  built from two constructors:
+
+  - `Nil` — the empty list
+  - `Cons(head, tail)` — a value followed by another list
+
+  You can also use literal syntax: `[1, 2, 3]` desugars to
+  `Cons(1, Cons(2, Cons(3, Nil)))`. Pattern matching works with both
+  forms:
+
+    case xs
+      [h, ..t] -> h       -- destructure head and tail
+      [] -> fallback       -- match empty list
+
+    case xs
+      Cons(h, t) -> h     -- equivalent explicit form
+      Nil -> fallback
+
+  Lists are immutable. Operations like `map`, `filter`, and `reverse`
+  return new lists — the original is never modified.
+
+  For large collections where random access or amortized append matters,
+  prefer `Vector` (when available). Lists excel at recursive processing,
+  stack-like access patterns, and any algorithm that naturally
+  decomposes into head and tail.
+
+  ## Common patterns
+
+  Transform every element:
+
+    [1, 2, 3].List.map(|x| x * 2)     -- => [2, 4, 6]
+
+  Keep elements matching a condition:
+
+    [1, 2, 3, 4].List.filter(|x| x > 2)   -- => [3, 4]
+
+  Reduce to a single value:
+
+    [1, 2, 3].List.fold(0, |acc, x| acc + x)   -- => 6
+
 enum List a
   Nil
   Cons(a, List a)
+
+-- Queries ----------------------------------------------------------------
 
 doc
   Return true when a list has no elements.
 
     List.is_empty(Nil)             -- => true
     List.is_empty(Cons(1, Nil))    -- => false
+    List.is_empty([])              -- => true
 fn is_empty(xs: List a) -> Bool
   case xs
     Nil -> true
@@ -20,26 +61,77 @@ fn is_empty(xs: List a) -> Bool
 doc
   Count the number of elements in a list.
 
-    List.length(Nil)                        -- => 0
-    List.length(Cons(1, Cons(2, Nil)))      -- => 2
+    List.length(Nil)                -- => 0
+    List.length([1, 2, 3])         -- => 3
 fn length(xs: List a) -> Int
   case xs
     Nil -> 0
     Cons(_, rest) -> 1 + length(rest)
 
-doc
-  Transform each element in a list with a function.
+-- Access -----------------------------------------------------------------
 
-    List.map(Cons(1, Nil), |x| x + 1)    -- => Cons(2, Nil)
+doc
+  Return the first element, or None if the list is empty.
+
+    List.head([1, 2, 3])   -- => Some(1)
+    List.head([])           -- => None
+fn head(xs: List a) -> Option a
+  case xs
+    Cons(x, _) -> Some(x)
+    Nil -> None
+
+doc
+  Return everything after the first element.
+
+  Returns Nil for an empty list.
+
+    List.tail([1, 2, 3])   -- => [2, 3]
+    List.tail([1])          -- => []
+    List.tail([])           -- => []
+fn tail(xs: List a) -> List a
+  case xs
+    Cons(_, rest) -> rest
+    Nil -> Nil
+
+doc
+  Return the last element, or None if the list is empty.
+
+    List.last([1, 2, 3])   -- => Some(3)
+    List.last([])           -- => None
+fn last(xs: List a) -> Option a
+  case xs
+    Cons(x, Nil) -> Some(x)
+    Cons(_, rest) -> last(rest)
+    Nil -> None
+
+doc
+  Return the element at a zero-based index, or None if out of bounds.
+
+    List.nth([10, 20, 30], 1)   -- => Some(20)
+    List.nth([10, 20, 30], 5)   -- => None
+fn nth(xs: List a, index: Int) -> Option a
+  case xs
+    Cons(x, _) when index == 0 -> Some(x)
+    Cons(_, rest) when index > 0 -> nth(rest, index - 1)
+    _ -> None
+
+-- Transformations --------------------------------------------------------
+
+doc
+  Apply a function to every element, producing a new list.
+
+    List.map([1, 2, 3], |x| x * 2)   -- => [2, 4, 6]
+    List.map([], |x| x + 1)          -- => []
 fn map(xs: List a, f: fn(a) -> b) -> List b
   case xs
     Nil -> Nil
     Cons(x, rest) -> Cons(f(x), map(rest, f))
 
 doc
-  Keep only list elements that satisfy a predicate.
+  Keep only the elements that satisfy a predicate.
 
-    List.filter(Cons(1, Cons(2, Nil)), |x| x > 1)   -- => Cons(2, Nil)
+    List.filter([1, 2, 3, 4], |x| x > 2)   -- => [3, 4]
+    List.filter([1, 2, 3], |x| x > 10)     -- => []
 fn filter(xs: List a, pred: fn(a) -> Bool) -> List a
   case xs
     Nil -> Nil
@@ -50,10 +142,148 @@ fn filter(xs: List a, pred: fn(a) -> Bool) -> List a
         filter(rest, pred)
 
 doc
-  Reduce a list from left to right.
+  Apply a function that returns a list to each element, then
+  concatenate all the results.
 
-    List.fold(Cons(1, Cons(2, Nil)), 0, |acc, x| acc + x)   -- => 3
+    List.flat_map([1, 2], |x| [x, x * 10])
+    -- => [1, 10, 2, 20]
+fn flat_map(xs: List a, f: fn(a) -> List b) -> List b
+  case xs
+    Nil -> Nil
+    Cons(x, rest) -> append(f(x), flat_map(rest, f))
+
+doc
+  Reverse the order of elements.
+
+    List.reversed([1, 2, 3])   -- => [3, 2, 1]
+    List.reversed([])          -- => []
+fn reverse(xs: List a) -> List a
+  reverse_acc(xs, Nil)
+
+fn reverse_acc(xs: List a, acc: List a) -> List a
+  case xs
+    Nil -> acc
+    Cons(x, rest) -> reverse_acc(rest, Cons(x, acc))
+
+-- Combining --------------------------------------------------------------
+
+doc
+  Concatenate two lists. All elements of the first list appear
+  before all elements of the second.
+
+    List.append([1, 2], [3, 4])   -- => [1, 2, 3, 4]
+    List.append([], [1])          -- => [1]
+fn append(xs: List a, ys: List a) -> List a
+  case xs
+    Nil -> ys
+    Cons(x, rest) -> Cons(x, append(rest, ys))
+
+doc
+  Pair up elements from two lists. Stops at the shorter list.
+
+    List.zip([1, 2], [10, 20])   -- => [(1, 10), (2, 20)]
+fn zip(xs: List a, ys: List b) -> List ((a, b))
+  case xs
+    Cons(x, xrest) ->
+      case ys
+        Cons(y, yrest) -> Cons((x, y), zip(xrest, yrest))
+        Nil -> Nil
+    Nil -> Nil
+
+-- Reducing ---------------------------------------------------------------
+
+doc
+  Reduce a list from left to right with an accumulator.
+
+    List.fold([1, 2, 3], 0, |acc, x| acc + x)   -- => 6
+    List.fold([], 100, |acc, x| acc + x)         -- => 100
 fn fold(xs: List a, init: b, f: fn(b, a) -> b) -> b
   case xs
     Nil -> init
     Cons(x, rest) -> fold(rest, f(init, x), f)
+
+doc
+  Sum all integers in a list.
+
+    List.sum([1, 2, 3, 4])   -- => 10
+    List.sum([])             -- => 0
+fn sum(xs: List Int) -> Int
+  fold(xs, 0, |acc, x| acc + x)
+
+-- Searching --------------------------------------------------------------
+
+doc
+  Return true if any element satisfies the predicate.
+
+    List.any([1, 2, 3], |x| x > 2)    -- => true
+    List.any([1, 2, 3], |x| x > 10)   -- => false
+    List.any([], |_| true)             -- => false
+fn any(xs: List a, pred: fn(a) -> Bool) -> Bool
+  case xs
+    Nil -> false
+    Cons(x, rest) ->
+      if pred(x)
+        true
+      else
+        any(rest, pred)
+
+doc
+  Return true if all elements satisfy the predicate.
+
+  Returns true for an empty list (vacuous truth).
+
+    List.all([2, 4, 6], |x| x % 2 == 0)   -- => true
+    List.all([2, 3, 6], |x| x % 2 == 0)   -- => false
+    List.all([], |_| false)                -- => true
+fn all(xs: List a, pred: fn(a) -> Bool) -> Bool
+  case xs
+    Nil -> true
+    Cons(x, rest) ->
+      if pred(x)
+        all(rest, pred)
+      else
+        false
+
+doc
+  Return the first element that satisfies the predicate, or None.
+
+    List.find([1, 2, 3], |x| x > 1)    -- => Some(2)
+    List.find([1, 2, 3], |x| x > 10)   -- => None
+fn find(xs: List a, pred: fn(a) -> Bool) -> Option a
+  case xs
+    Nil -> None
+    Cons(x, rest) ->
+      if pred(x)
+        Some(x)
+      else
+        find(rest, pred)
+
+-- Slicing ----------------------------------------------------------------
+
+doc
+  Return the first n elements.
+
+    List.take([1, 2, 3, 4], 2)   -- => [1, 2]
+    List.take([1, 2], 5)         -- => [1, 2]
+    List.take([], 3)             -- => []
+fn take(xs: List a, n: Int) -> List a
+  if n <= 0
+    Nil
+  else
+    case xs
+      Nil -> Nil
+      Cons(x, rest) -> Cons(x, take(rest, n - 1))
+
+doc
+  Skip the first n elements.
+
+    List.drop([1, 2, 3, 4], 2)   -- => [3, 4]
+    List.drop([1, 2], 5)         -- => []
+    List.drop([], 3)             -- => []
+fn drop(xs: List a, n: Int) -> List a
+  if n <= 0
+    xs
+  else
+    case xs
+      Nil -> Nil
+      Cons(_, rest) -> drop(rest, n - 1)

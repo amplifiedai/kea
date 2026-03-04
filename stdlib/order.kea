@@ -24,7 +24,7 @@ doc
 
     Order.reversed_less_is_greater()   -- => true
 fn reversed_less_is_greater() -> Bool
-  case reverse(Less)
+  case Order.reverse(Less)
     Greater -> true
     _ -> false
 
