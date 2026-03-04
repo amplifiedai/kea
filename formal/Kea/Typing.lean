@@ -1308,6 +1308,27 @@ theorem legacy_handler_clause_resumeSummary_linearity_prop_iff_true :
     exact legacy_handler_clause_resumeSummary_linearity
 
 /--
+Boundary proposition: legacy declarative handle typing forbids clause summaries
+in the lambda-captured state.
+-/
+def legacy_handler_clause_resume_not_captured_prop : Prop :=
+  ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
+    HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
+    resumeSummary clauseBody ≠ .captured
+
+/--
+Legacy declarative handle typing satisfies
+`legacy_handler_clause_resume_not_captured_prop`.
+-/
+theorem legacy_handler_clause_resume_not_captured :
+    legacy_handler_clause_resume_not_captured_prop := by
+  intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed h_captured
+  have h_linear :=
+    legacy_handler_clause_resumeSummary_linearity
+      env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+  simp [h_captured, resumeSummary_atMostOnce] at h_linear
+
+/--
 Algorithmic legacy handle inference agrees: any inferred handle type implies
 clause-body saturated at-most-once.
 -/
@@ -1322,6 +1343,26 @@ theorem inferExpr_handle_some_implies_clause_resumeSummary_atMostOnce
     env body op argName resumeName argTy opRetTy clauseBody ty
     ((inferExpr_iff_hasType env
       (.handle body op argName resumeName argTy opRetTy clauseBody) ty).1 h_inf)
+
+/--
+Algorithmic legacy handle inference also forbids lambda-captured clause
+summaries.
+-/
+theorem inferExpr_handle_some_implies_clause_resume_not_captured
+    {env : TermEnv} {body : CoreExpr} {op : Label}
+    {argName resumeName : String} {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr} {ty : Ty}
+    (h_inf :
+      inferExpr env (.handle body op argName resumeName argTy opRetTy clauseBody) = some ty) :
+    resumeSummary clauseBody ≠ .captured := by
+  intro h_captured
+  have h_linear :=
+    inferExpr_handle_some_implies_clause_resumeSummary_atMostOnce
+      (env := env) (body := body) (op := op)
+      (argName := argName) (resumeName := resumeName)
+      (argTy := argTy) (opRetTy := opRetTy)
+      (clauseBody := clauseBody) (ty := ty) h_inf
+  simp [h_captured, resumeSummary_atMostOnce] at h_linear
 
 /--
 Concrete top-level `handle` with a double-resume clause is not typable in the
@@ -1386,6 +1427,28 @@ theorem native_handler_clause_resumeSummary_linearity_prop_iff_true :
     exact native_handler_clause_resumeSummary_linearity
 
 /--
+Boundary proposition: native top-level handle typing forbids clause summaries
+in the lambda-captured state.
+-/
+def native_handler_clause_resume_not_captured_prop : Prop :=
+  ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env
+      (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
+    resumeSummary clauseBody ≠ .captured
+
+/--
+Native top-level handle typing satisfies
+`native_handler_clause_resume_not_captured_prop`.
+-/
+theorem native_handler_clause_resume_not_captured :
+    native_handler_clause_resume_not_captured_prop := by
+  intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed h_captured
+  have h_linear :=
+    native_handler_clause_resumeSummary_linearity
+      env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+  simp [h_captured, resumeSummary_atMostOnce] at h_linear
+
+/--
 Unified closure package for clause-linearity enforcement across the legacy and
 scoped typing surfaces.
 -/
@@ -1398,6 +1461,14 @@ structure HandlerClauseLinearityClosure : Prop where
       resumeSummary_atMostOnce (resumeSummary clauseBody)
   scopedDeclarative :
     native_handler_clause_resumeSummary_linearity_prop
+  legacyDeclarativeNotCaptured :
+    legacy_handler_clause_resume_not_captured_prop
+  legacyAlgorithmicNotCaptured :
+    ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
+      inferExpr env (.handle body op argName resumeName argTy opRetTy clauseBody) = some ty →
+      resumeSummary clauseBody ≠ .captured
+  scopedDeclarativeNotCaptured :
+    native_handler_clause_resume_not_captured_prop
   legacyDoubleResumeInferRejects :
     inferExpr []
       (.handle (.intLit 0) "Op" "x" "k" .int .int doubleResumeWitnessExpr) = none
@@ -1430,6 +1501,9 @@ theorem handler_clause_linearity_closure :
     legacyDeclarative := legacy_handler_clause_resumeSummary_linearity
     legacyAlgorithmic := ?_
     scopedDeclarative := native_handler_clause_resumeSummary_linearity
+    legacyDeclarativeNotCaptured := legacy_handler_clause_resume_not_captured
+    legacyAlgorithmicNotCaptured := ?_
+    scopedDeclarativeNotCaptured := native_handler_clause_resume_not_captured
     legacyDoubleResumeInferRejects := inferExpr_handle_with_doubleResume_clause_none
     legacyDoubleResumeDeclarativeRejects := not_hasType_handle_with_doubleResume_clause
     scopedDoubleResumeDeclarativeRejects := not_hasTypeScopedTop_handle_with_doubleResume_clause
@@ -1437,8 +1511,10 @@ theorem handler_clause_linearity_closure :
     legacyLambdaCaptureDeclarativeRejects := not_hasType_handle_with_lambdaCapturedResume_clause
     scopedLambdaCaptureDeclarativeRejects := not_hasTypeScopedTop_handle_with_lambdaCapturedResume_clause
   }
-  intro env body op argName resumeName argTy opRetTy clauseBody ty h_inf
-  exact inferExpr_handle_some_implies_clause_resumeSummary_atMostOnce h_inf
+  · intro env body op argName resumeName argTy opRetTy clauseBody ty h_inf
+    exact inferExpr_handle_some_implies_clause_resumeSummary_atMostOnce h_inf
+  · intro env body op argName resumeName argTy opRetTy clauseBody ty h_inf
+    exact inferExpr_handle_some_implies_clause_resume_not_captured h_inf
 
 /- =========================================================================
    Native handler-step judgment on `Typing.CoreExpr`

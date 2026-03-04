@@ -24511,3 +24511,42 @@ This bundles:
 
 **Impact**:
 - No Lean↔MCP divergence at this checkpoint.
+
+### 2026-03-04: no-capture theorem surfaces + closure capstone strengthening
+
+**Context**: Added explicit non-capture theorem surfaces on legacy/scoped/infer routes and strengthened `HandlerClauseLinearityClosure` to carry both at-most-once and not-captured obligations plus capture-rejection witnesses.
+
+**MCP tools used**: `type_check` (direct `kea` MCP probes).
+
+**Predict (Lean side)**:
+1. Coherent single-resume handler accepted.
+2. Double-resume clause rejected.
+3. Lambda-captured resume rejected (used and unused lambda cases).
+4. Out-of-handler and forged-name out-of-handler `resume` rejected.
+5. Non-tail single-resume accepted.
+
+**Probe (Rust side via MCP)**:
+1. `probe_coherent_20260304da` -> `ok`.
+2. `probe_double_resume_20260304da` -> `error`, `E0012`, `handler clause may resume at most once`.
+3. `probe_lambda_capture_used_20260304da` -> `error`, `E0012`, `` `resume` cannot be captured in a lambda ``.
+4. `probe_lambda_capture_unused_20260304da` -> `error`, `E0012`, `` `resume` cannot be captured in a lambda ``.
+5. `probe_outside_resume_20260304da` -> `error`, `E0012`, `` `resume` is only valid inside a matching handler clause ``.
+6. `probe_forged_resume_20260304da` -> `error`, `E0012`, `` `resume` is only valid inside a matching handler clause ``.
+7. `probe_non_tail_single_20260304da` -> `ok`.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Added `legacy_handler_clause_resume_not_captured_prop` and proof.
+- Added `native_handler_clause_resume_not_captured_prop` and proof.
+- Added `inferExpr_handle_some_implies_clause_resume_not_captured`.
+- Strengthened `HandlerClauseLinearityClosure` with explicit non-capture fields and lambda-capture rejection witnesses.
+
+**Traceability**:
+- Lean file: `formal/Kea/Typing.lean`.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- No Lean↔MCP divergence at this checkpoint.
