@@ -7467,6 +7467,69 @@ theorem strict_handle_stutter_discipline_capstone
       clauseSem mismatchSem h_strict
 
 /--
+Build `StrictHandleStutterDisciplineCapstone` directly from strict top-level
+handle typing.
+-/
+theorem strict_handle_stutter_discipline_capstone_of_strict_top_handle
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_strict_top :
+      HasTypeScopedStrictTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    StrictHandleStutterDisciplineCapstone
+      clauseSem mismatchSem env body opHandle argName resumeName argTy opRetTy clauseBody ty := by
+  exact strict_handle_stutter_discipline_capstone
+    clauseSem mismatchSem
+    (hasTypeScopedStrictTop_handle_implies_handleStrict h_strict_top)
+
+/--
+Direct strict-top handle soundness route on the stutter core relation:
+typed strict-top handles satisfy clause discipline and admit one
+mismatch-extended preserving step.
+-/
+def native_handler_step_ext_with_mismatch_stutter_strict_top_handle_soundness_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedStrictTop env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty →
+    resumeSummary_atMostOnce (resumeSummary clauseBody)
+      ∧
+    resumeSummary clauseBody ≠ .captured
+      ∧
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem native_core_stutter_step
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty
+
+/--
+`native_handler_step_ext_with_mismatch_stutter_strict_top_handle_soundness_prop`
+holds.
+-/
+theorem native_handler_step_ext_with_mismatch_stutter_strict_top_handle_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_stutter_strict_top_handle_soundness_prop
+      clauseSem mismatchSem := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict_top
+  have h_cap :
+      StrictHandleStutterDisciplineCapstone
+        clauseSem mismatchSem env body opHandle argName resumeName argTy opRetTy clauseBody ty :=
+    strict_handle_stutter_discipline_capstone_of_strict_top_handle
+      clauseSem mismatchSem h_strict_top
+  exact ⟨h_cap.clauseAtMostOnce, h_cap.clauseNotCaptured, h_cap.existsAndPreserves⟩
+
+/--
 One-hop projection: the extended native relation is sound from the closure
 package.
 -/
