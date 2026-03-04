@@ -24472,3 +24472,42 @@ This bundles:
 
 **Impact**:
 - No Lean↔MCP divergence at this checkpoint.
+
+### 2026-03-04: divergence closure — lambda-captured `resume` now rejected on both Lean surfaces
+
+**Context**: Closed Lean↔MCP mismatch where handler-clause `resume` captured in lambda (`let k = |x| resume x; k(1)`) was accepted in Lean but rejected by compiler/MCP (`E0012`).
+
+**MCP tools used**: `type_check` (direct `kea` MCP probes).
+
+**Predict (Lean side)**:
+1. Coherent single-resume handler stays accepted.
+2. Double-resume clause stays rejected.
+3. Lambda-captured resume clause is rejected.
+4. Out-of-handler and forged-name out-of-handler `resume` stay rejected.
+5. Non-tail single-resume clause stays accepted.
+
+**Probe (Rust side via MCP)**:
+1. `probe_coherent_20260304cz` -> `ok`.
+2. `probe_double_resume_20260304cz` -> `error`, `E0012`, `handler clause may resume at most once`.
+3. `probe_lambda_capture_20260304cz` -> `error`, `E0012`, `` `resume` cannot be captured in a lambda ``.
+4. `probe_outside_resume_20260304cz` -> `error`, `E0012`, `` `resume` is only valid inside a matching handler clause ``.
+5. `probe_forged_resume_20260304cz` -> `error`, `E0012`, `` `resume` is only valid inside a matching handler clause ``.
+6. `probe_non_tail_single_20260304cz` -> `ok`.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- `ResumeSummary` now includes `.captured`.
+- `resumeSummary_atMostOnce` now rejects `.captured`.
+- `resumeSummary` marks lambda-contained resume sites as `.captured`.
+- Legacy inference rejects both `.many` and `.captured` handler clause summaries.
+- Added explicit rejection theorems for lambda-captured handler clauses across legacy/scoped surfaces.
+
+**Traceability**:
+- Lean file: `formal/Kea/Typing.lean`.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- No Lean↔MCP divergence at this checkpoint.

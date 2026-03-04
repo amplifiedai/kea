@@ -66,6 +66,7 @@ inductive ResumeSummary : Type where
   | zero
   | one
   | many
+  | captured
 deriving DecidableEq, Repr
 
 /--
@@ -75,11 +76,14 @@ def resumeSummary_atMostOnce : ResumeSummary → Prop
   | .zero => True
   | .one => True
   | .many => False
+  | .captured => False
 
 /--
 Saturating addition for resume summaries.
 -/
 def resumeSummaryCombine : ResumeSummary → ResumeSummary → ResumeSummary
+  | .captured, _ => .captured
+  | _, .captured => .captured
   | .many, _ => .many
   | _, .many => .many
   | .zero, s => s
@@ -95,7 +99,10 @@ mutual
     | .boolLit _ => .zero
     | .stringLit _ => .zero
     | .var _ => .zero
-    | .lam _ _ body => resumeSummary body
+    | .lam _ _ body =>
+      match resumeSummary body with
+      | .zero => .zero
+      | _ => .captured
     | .app fn arg => resumeSummaryCombine (resumeSummary fn) (resumeSummary arg)
     | .letE _ value body => resumeSummaryCombine (resumeSummary value) (resumeSummary body)
     | .record fields => resumeSummaryFields fields
@@ -153,6 +160,7 @@ mutual
       | some bodyTy =>
         match resumeSummary clauseBody with
         | .many => none
+        | .captured => none
         | _ =>
           let clauseEnv :=
             (resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
@@ -552,6 +560,8 @@ mutual
         cases h_sum : resumeSummary clauseBody with
         | many =>
           simp [h_body, h_sum] at h
+        | captured =>
+          simp [h_body, h_sum] at h
         | zero =>
           have h_linear : resumeSummary_atMostOnce (resumeSummary clauseBody) := by
             simp [h_sum, resumeSummary_atMostOnce]
@@ -712,9 +722,15 @@ mutual
         intro h_many
         have : resumeSummary_atMostOnce (resumeSummary clauseBody) := h_linear
         simp [h_many, resumeSummary_atMostOnce] at this
+      have h_not_captured : resumeSummary clauseBody ≠ .captured := by
+        intro h_captured
+        have : resumeSummary_atMostOnce (resumeSummary clauseBody) := h_linear
+        simp [h_captured, resumeSummary_atMostOnce] at this
       cases h_sum : resumeSummary clauseBody with
       | many =>
         exact False.elim (h_not_many h_sum)
+      | captured =>
+        exact False.elim (h_not_captured h_sum)
       | zero =>
         simp [inferExpr,
           h_sum,
@@ -1167,6 +1183,28 @@ theorem hasTypeScoped_doubleResumeWitnessExpr_under_env
       (HasTypeScoped.int (some (.int, .int)) (("x", .int) :: env) 2)
 
 /--
+Clause-body witness that captures `resume` inside a lambda.
+-/
+def lambdaCapturedResumeWitnessExpr : CoreExpr :=
+  .letE "k"
+    (.lam "x" .int (.resume (.var "x")))
+    (.app (.var "k") (.intLit 1))
+
+/--
+The lambda-capture witness has summary `.captured`.
+-/
+theorem lambdaCapturedResumeWitnessExpr_summary_captured :
+    resumeSummary lambdaCapturedResumeWitnessExpr = .captured := by
+  simp [lambdaCapturedResumeWitnessExpr, resumeSummary, resumeSummaryCombine]
+
+/--
+The lambda-capture witness violates the clause at-most-once predicate.
+-/
+theorem lambdaCapturedResumeWitnessExpr_not_atMostOnce :
+    ¬ resumeSummary_atMostOnce (resumeSummary lambdaCapturedResumeWitnessExpr) := by
+  simp [lambdaCapturedResumeWitnessExpr_summary_captured, resumeSummary_atMostOnce]
+
+/--
 Scoped native typing alone does not enforce syntactic resume at-most-once.
 -/
 theorem hasTypeScoped_does_not_imply_resumeSummary_atMostOnce :
@@ -1193,6 +1231,15 @@ theorem inferExpr_handle_with_doubleResume_clause_none :
   simp [inferExpr, doubleResumeWitnessExpr, resumeSummary, resumeSummaryCombine]
 
 /--
+Algorithmic legacy typing rejects a top-level `handle` whose clause body
+captures `resume` in a lambda.
+-/
+theorem inferExpr_handle_with_lambdaCapturedResume_clause_none :
+    inferExpr []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int lambdaCapturedResumeWitnessExpr) = none := by
+  simp [inferExpr, lambdaCapturedResumeWitnessExpr, resumeSummary, resumeSummaryCombine]
+
+/--
 Legacy declarative typing also rejects that top-level double-resume handle,
 because `inferExpr` and `HasType` coincide.
 -/
@@ -1209,6 +1256,24 @@ theorem not_hasType_handle_with_doubleResume_clause :
       .int
       h_typed
   simp [inferExpr, doubleResumeWitnessExpr, resumeSummary, resumeSummaryCombine] at h_inf
+
+/--
+Legacy declarative typing rejects top-level handler clauses that capture
+`resume` in lambdas.
+-/
+theorem not_hasType_handle_with_lambdaCapturedResume_clause :
+    ¬ HasType []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int lambdaCapturedResumeWitnessExpr)
+      .int := by
+  intro h_typed
+  have h_inf :
+      inferExpr []
+        (.handle (.intLit 0) "Op" "x" "k" .int .int lambdaCapturedResumeWitnessExpr) = some .int :=
+    inferExpr_complete []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int lambdaCapturedResumeWitnessExpr)
+      .int
+      h_typed
+  simp [inferExpr, lambdaCapturedResumeWitnessExpr, resumeSummary, resumeSummaryCombine] at h_inf
 
 /--
 Boundary proposition: legacy declarative handle typing enforces clause-body
@@ -1273,6 +1338,20 @@ theorem not_hasTypeScopedTop_handle_with_doubleResume_clause :
       exact hasTypeScoped_doubleResumeWitnessExpr_not_atMostOnce h_linear
 
 /--
+Top-level scoped native typing rejects handler clauses that capture `resume`
+in lambdas.
+-/
+theorem not_hasTypeScopedTop_handle_with_lambdaCapturedResume_clause :
+    ¬ HasTypeScopedTop []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int lambdaCapturedResumeWitnessExpr)
+      .int := by
+  intro h_typed
+  dsimp [HasTypeScopedTop] at h_typed
+  cases h_typed with
+  | handle _ _ _ _ _ _ _ _ _ _ _h_body h_linear _h_clause =>
+      exact lambdaCapturedResumeWitnessExpr_not_atMostOnce h_linear
+
+/--
 Boundary proposition: native top-level handle typing enforces clause-body
 saturated resume at-most-once.
 -/
@@ -1330,6 +1409,17 @@ structure HandlerClauseLinearityClosure : Prop where
     ¬ HasTypeScopedTop []
       (.handle (.intLit 0) "Op" "x" "k" .int .int doubleResumeWitnessExpr)
       .int
+  legacyLambdaCaptureInferRejects :
+    inferExpr []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int lambdaCapturedResumeWitnessExpr) = none
+  legacyLambdaCaptureDeclarativeRejects :
+    ¬ HasType []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int lambdaCapturedResumeWitnessExpr)
+      .int
+  scopedLambdaCaptureDeclarativeRejects :
+    ¬ HasTypeScopedTop []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int lambdaCapturedResumeWitnessExpr)
+      .int
 
 /--
 Canonical linearity-closure witness across both legacy and scoped surfaces.
@@ -1343,6 +1433,9 @@ theorem handler_clause_linearity_closure :
     legacyDoubleResumeInferRejects := inferExpr_handle_with_doubleResume_clause_none
     legacyDoubleResumeDeclarativeRejects := not_hasType_handle_with_doubleResume_clause
     scopedDoubleResumeDeclarativeRejects := not_hasTypeScopedTop_handle_with_doubleResume_clause
+    legacyLambdaCaptureInferRejects := inferExpr_handle_with_lambdaCapturedResume_clause_none
+    legacyLambdaCaptureDeclarativeRejects := not_hasType_handle_with_lambdaCapturedResume_clause
+    scopedLambdaCaptureDeclarativeRejects := not_hasTypeScopedTop_handle_with_lambdaCapturedResume_clause
   }
   intro env body op argName resumeName argTy opRetTy clauseBody ty h_inf
   exact inferExpr_handle_some_implies_clause_resumeSummary_atMostOnce h_inf
