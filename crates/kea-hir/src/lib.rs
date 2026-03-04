@@ -698,9 +698,12 @@ fn check_unique_moves_ast_expr(
                 check_unique_moves_ast_expr(value, state, diagnostics, borrow_param_map);
             }
         }
+        ExprKind::ControlSend { actor, signal } => {
+            check_unique_moves_ast_expr(actor, state, diagnostics, borrow_param_map);
+            check_unique_moves_ast_expr(signal, state, diagnostics, borrow_param_map);
+        }
         ExprKind::FieldAccess { expr, .. }
         | ExprKind::YieldFrom { source: expr }
-        | ExprKind::ControlSend { actor: expr, .. }
         | ExprKind::Spawn { value: expr, .. }
         | ExprKind::StreamBlock { body: expr, .. } => {
             check_unique_moves_ast_expr(expr, state, diagnostics, borrow_param_map);

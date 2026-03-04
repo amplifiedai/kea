@@ -8346,6 +8346,60 @@ fn compile_rejects_spawning_borrow_parameter_through_alias() {
 }
 
 #[test]
+fn compile_rejects_actor_send_borrow_parameter_argument() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  send(actor, :push, value)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-actor-send-arg-rejected",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("sending a borrowed unique parameter should fail");
+    assert!(
+        err.contains("borrowed value `value` cannot be consumed"),
+        "expected borrow-consumption diagnostic for actor send arg, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_actor_call_borrow_parameter_argument() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  let _ = call(actor, :get, value)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-actor-call-arg-rejected",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("calling with a borrowed unique parameter should fail");
+    assert!(
+        err.contains("borrowed value `value` cannot be consumed"),
+        "expected borrow-consumption diagnostic for actor call arg, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_control_send_borrow_parameter_signal() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  control_send(actor, value)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-control-send-signal-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("control_send with borrowed unique signal should fail");
+    assert!(
+        err.contains("borrowed value `value` cannot be consumed"),
+        "expected borrow-consumption diagnostic for control_send signal, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_passing_borrow_parameter_into_effect_operation() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect Echo A\n  fn echo(value: A) -> A\n\nfn bad(borrow value: UniqueInt) -[Echo UniqueInt]> Int\n  let out = Echo.echo(value)\n  case out\n    Unique(v) -> v\n\nfn main() -> Int\n  0\n",
