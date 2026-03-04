@@ -5814,6 +5814,102 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_combo_mixed_with
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_higher_order_forwarder_combo_case_with_callful_condition() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_case_with_callful_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case bool_id(flag)\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case bool_id(flag)\n    true ->\n      out0\n    false ->\n      out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case_with_callful_condition(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-combo-case-callful-condition",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject case-based wrappers when selector shaping uses callful conditions",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_apply`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("Unique parameter `x` escapes through 1 call argument(s)"),
+        "expected escape diagnostic for `x`, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_combo_case_with_callful_condition(
+) {
+    let project_dir = temp_workspace_project_dir(
+        "kea-cli-fip-unique-higher-order-alias-combo-case-callful-condition",
+    );
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_case_with_callful_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case bool_id(flag)\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case bool_id(flag)\n    true ->\n      out0\n    false ->\n      out0\n  out1\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_case_with_callful_condition(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject module-alias case-based wrappers when selector shaping uses callful conditions",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_apply`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("Unique parameter `x` escapes through 1 call argument(s)"),
+        "expected escape diagnostic for `x`, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_higher_order_named_import_wrapper_combo_case_with_callful_condition(
+) {
+    let project_dir = temp_workspace_project_dir(
+        "kea-cli-fip-unique-higher-order-named-combo-case-callful-condition",
+    );
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_case_with_callful_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case bool_id(flag)\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case bool_id(flag)\n    true ->\n      out0\n    false ->\n      out0\n  out1\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{apply_combo_case_with_callful_condition, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case_with_callful_condition(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject named-import case-based wrappers when selector shaping uses callful conditions",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_apply`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("Unique parameter `x` escapes through 1 call argument(s)"),
+        "expected escape diagnostic for `x`, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_result_alias_with_callful_nonalias_let() {
     let source_path = write_temp_source(
         "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_result_with_callful_nonalias_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = bool_id(flag)\n  let out1 = out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_with_callful_nonalias_let(forward_once, x, true)\n\nfn main() -> Int\n  0\n",
