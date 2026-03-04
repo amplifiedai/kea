@@ -8378,6 +8378,24 @@ fn compile_rejects_actor_send_borrow_parameter_argument() {
 }
 
 #[test]
+fn compile_rejects_actor_send_borrow_parameter_tuple_wrapper_argument() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  send(actor, :push, (value, 0))\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-actor-send-arg-tuple-wrapper-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("sending borrowed unique inside tuple wrapper should fail");
+    assert!(
+        err.contains("borrowed value `value` cannot be consumed"),
+        "expected borrow-consumption diagnostic for send tuple wrapper, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_actor_send_borrow_parameter_message_wrapper() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor ((Unique Int, Int)), borrow value: Unique Int) -> Unit\n  send(actor, (value, 0))\n\nfn main() -> Int\n  0\n",
@@ -8426,6 +8444,24 @@ fn compile_rejects_actor_call_borrow_parameter_argument() {
     assert!(
         err.contains("borrowed value `value` cannot be consumed"),
         "expected borrow-consumption diagnostic for actor call arg, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_actor_call_borrow_parameter_tuple_wrapper_argument() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  let _ = call(actor, :get, (value, 0))\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-actor-call-arg-tuple-wrapper-rejected",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("calling with borrowed unique inside tuple wrapper should fail");
+    assert!(
+        err.contains("borrowed value `value` cannot be consumed"),
+        "expected borrow-consumption diagnostic for call tuple wrapper, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
