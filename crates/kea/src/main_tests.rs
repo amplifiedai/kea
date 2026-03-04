@@ -8364,6 +8364,24 @@ fn compile_rejects_actor_send_borrow_parameter_argument() {
 }
 
 #[test]
+fn compile_rejects_actor_send_borrow_parameter_argument_through_alias() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  let forwarded = value\n  send(actor, :push, forwarded)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-actor-send-arg-alias-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("sending an aliased borrowed unique parameter should fail");
+    assert!(
+        err.contains("borrowed value") && err.contains("cannot be consumed"),
+        "expected borrow-consumption diagnostic for actor send arg alias, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_actor_call_borrow_parameter_argument() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  let _ = call(actor, :get, value)\n\nfn main() -> Int\n  0\n",
@@ -8376,6 +8394,24 @@ fn compile_rejects_actor_call_borrow_parameter_argument() {
     assert!(
         err.contains("borrowed value `value` cannot be consumed"),
         "expected borrow-consumption diagnostic for actor call arg, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_actor_call_borrow_parameter_argument_through_alias() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  let forwarded = value\n  let _ = call(actor, :get, forwarded)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-actor-call-arg-alias-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("calling with an aliased borrowed unique parameter should fail");
+    assert!(
+        err.contains("borrowed value") && err.contains("cannot be consumed"),
+        "expected borrow-consumption diagnostic for actor call arg alias, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
@@ -8428,6 +8464,24 @@ fn compile_rejects_control_send_borrow_parameter_signal() {
     assert!(
         err.contains("borrowed value `value` cannot be consumed"),
         "expected borrow-consumption diagnostic for control_send signal, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_control_send_borrow_parameter_signal_through_alias() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  let forwarded = value\n  control_send(actor, forwarded)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-control-send-signal-alias-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("control_send with aliased borrowed unique signal should fail");
+    assert!(
+        err.contains("borrowed value") && err.contains("cannot be consumed"),
+        "expected borrow-consumption diagnostic for control_send alias signal, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
