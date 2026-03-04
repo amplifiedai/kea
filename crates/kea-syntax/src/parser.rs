@@ -1514,16 +1514,31 @@ impl Parser {
 
     fn parse_effect_row_item(&mut self, msg: &str) -> Option<EffectRowItem> {
         let name = self.parse_effect_row_name(msg)?;
+        let payload = self.parse_effect_row_payload();
+        Some(EffectRowItem { name, payload })
+    }
+
+    fn parse_effect_row_payload(&mut self) -> Option<TypeAnnotation> {
         self.skip_newlines();
-        let payload = match self.peek_kind() {
+        match self.peek_kind() {
             Some(TokenKind::Ident(payload)) | Some(TokenKind::UpperIdent(payload)) => {
                 let payload = payload.clone();
                 self.advance();
+                Some(TypeAnnotation::Named(payload))
+            }
+            Some(TokenKind::LParen) => {
+                self.advance();
+                self.skip_newlines();
+                let payload = self.type_annotation()?.node;
+                self.skip_newlines();
+                self.expect(
+                    &TokenKind::RParen,
+                    "expected ')' after effect payload type annotation",
+                )?;
                 Some(payload)
             }
             _ => None,
-        };
-        Some(EffectRowItem { name, payload })
+        }
     }
 
     fn maybe_promote_comma_tail_effect_var(
@@ -1600,15 +1615,10 @@ impl Parser {
         let mut effects = Vec::new();
         self.skip_newlines();
         let mut legacy_candidate = true;
-        let first_payload = match self.peek_kind() {
-            Some(TokenKind::Ident(payload)) | Some(TokenKind::UpperIdent(payload)) => {
-                legacy_candidate = false;
-                let payload = payload.clone();
-                self.advance();
-                Some(payload)
-            }
-            _ => None,
-        };
+        let first_payload = self.parse_effect_row_payload();
+        if first_payload.is_some() {
+            legacy_candidate = false;
+        }
         effects.push(EffectRowItem {
             name: first_name.clone(),
             payload: first_payload,
@@ -6545,7 +6555,34 @@ mod tests {
                     assert_eq!(row.effects[0].name, "IO");
                     assert_eq!(row.effects[0].payload, None);
                     assert_eq!(row.effects[1].name, "Fail");
-                    assert_eq!(row.effects[1].payload.as_deref(), Some("DbError"));
+                    assert!(matches!(
+                        row.effects[1].payload.as_ref(),
+                        Some(TypeAnnotation::Named(name)) if name == "DbError"
+                    ));
+                    assert_eq!(row.rest.as_deref(), Some("e"));
+                }
+                other => panic!("expected effect row alias target, got {other:?}"),
+            },
+            _ => panic!("expected AliasDecl"),
+        }
+    }
+
+    #[test]
+    fn parse_effect_row_alias_decl_with_parenthesized_payload_type() {
+        let module = parse_mod("alias EchoEffects = [Echo (Unique Int) | e]");
+        assert_eq!(module.declarations.len(), 1);
+        match &module.declarations[0].node {
+            DeclKind::AliasDecl(def) => match &def.target.node {
+                TypeAnnotation::EffectRow(row) => {
+                    assert_eq!(row.effects.len(), 1);
+                    assert_eq!(row.effects[0].name, "Echo");
+                    assert!(matches!(
+                        row.effects[0].payload.as_ref(),
+                        Some(TypeAnnotation::Applied(name, args))
+                            if name == "Unique"
+                                && args.len() == 1
+                                && matches!(args[0], TypeAnnotation::Named(ref n) if n == "Int")
+                    ));
                     assert_eq!(row.rest.as_deref(), Some("e"));
                 }
                 other => panic!("expected effect row alias target, got {other:?}"),
@@ -6853,8 +6890,33 @@ mod tests {
                     assert_eq!(row.effects[0].name, "IO");
                     assert_eq!(row.effects[0].payload, None);
                     assert_eq!(row.effects[1].name, "Fail");
-                    assert_eq!(row.effects[1].payload.as_deref(), Some("DbError"));
+                    assert!(matches!(
+                        row.effects[1].payload.as_ref(),
+                        Some(TypeAnnotation::Named(name)) if name == "DbError"
+                    ));
                     assert_eq!(row.rest.as_deref(), Some("e"));
+                }
+                other => panic!("expected row effect annotation, got {other:?}"),
+            },
+            _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_with_parenthesized_effect_payload_type() {
+        let module = parse_mod("fn echo_once(x: Unique Int) -[Echo (Unique Int)]> Int\n  0");
+        match &module.declarations[0].node {
+            DeclKind::Function(f) => match f.effect_annotation.as_ref().map(|e| &e.node) {
+                Some(EffectAnnotation::Row(row)) => {
+                    assert_eq!(row.effects.len(), 1);
+                    assert_eq!(row.effects[0].name, "Echo");
+                    assert!(matches!(
+                        row.effects[0].payload.as_ref(),
+                        Some(TypeAnnotation::Applied(name, args))
+                            if name == "Unique"
+                                && args.len() == 1
+                                && matches!(args[0], TypeAnnotation::Named(ref n) if n == "Int")
+                    ));
                 }
                 other => panic!("expected row effect annotation, got {other:?}"),
             },
@@ -7815,7 +7877,10 @@ mod tests {
                                 assert_eq!(row.effects.len(), 2);
                                 assert_eq!(row.effects[0].name, "IO");
                                 assert_eq!(row.effects[1].name, "Fail");
-                                assert_eq!(row.effects[1].payload.as_deref(), Some("E"));
+                                assert!(matches!(
+                                    row.effects[1].payload.as_ref(),
+                                    Some(TypeAnnotation::Named(name)) if name == "E"
+                                ));
                                 assert_eq!(row.rest.as_deref(), Some("e"));
                             }
                             other => panic!("expected row effect annotation, got {other:?}"),

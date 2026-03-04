@@ -1774,7 +1774,7 @@ fn lower_effect_row_annotation(row: &EffectRowAnnotation) -> EffectRow {
         .iter()
         .map(|item| {
             let payload = item.payload.as_ref().map_or(Type::Unit, |ty| {
-                lower_type_annotation(&TypeAnnotation::Named(ty.clone()))
+                lower_type_annotation(ty)
             });
             (kea_types::Label::new(item.name.clone()), payload)
         })

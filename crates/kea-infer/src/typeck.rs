@@ -7011,7 +7011,7 @@ fn collect_annotation_named_types(ann: &TypeAnnotation, out: &mut BTreeSet<Strin
             for item in &row.effects {
                 out.insert(item.name.clone());
                 if let Some(payload) = &item.payload {
-                    out.insert(payload.clone());
+                    collect_annotation_named_types(payload, out);
                 }
             }
             if let Some(rest) = &row.rest {
@@ -7546,13 +7546,13 @@ fn resolve_annotation_or_bare_df(
             // or fresh type vars for unknown names.
             if let kea_ast::EffectAnnotation::Row(row) = &effect.node {
                 for item in &row.effects {
-                    if let Some(payload_name) = &item.payload {
-                        let param_ty = resolve_effect_payload_type(payload_name, Some(records))
+                    if let Some(payload_ann) = &item.payload {
+                        let param_ty = resolve_effect_payload_type(payload_ann, Some(records))
                             .or_else(|| {
-                                unifier
-                                    .annotation_type_param_scope
-                                    .get(payload_name)
-                                    .cloned()
+                                if let TypeAnnotation::Named(name) = payload_ann {
+                                    return unifier.annotation_type_param_scope.get(name).cloned();
+                                }
+                                None
                             })
                             .unwrap_or_else(|| {
                                 Type::Var(unifier.fresh_type_var_with_kind(Kind::Star))
@@ -8120,7 +8120,7 @@ fn effect_row_annotation_label(row: &kea_ast::EffectRowAnnotation) -> String {
         .effects
         .iter()
         .map(|item| match &item.payload {
-            Some(payload) => format!("{} {}", item.name, payload),
+            Some(payload) => format!("{} {}", item.name, format_type_annotation(payload)),
             None => item.name.clone(),
         })
         .collect::<Vec<_>>()
@@ -8135,17 +8135,113 @@ fn effect_row_annotation_label(row: &kea_ast::EffectRowAnnotation) -> String {
     format!("[{body}]")
 }
 
+fn format_type_annotation(ann: &TypeAnnotation) -> String {
+    fn needs_parens(ann: &TypeAnnotation) -> bool {
+        !matches!(
+            ann,
+            TypeAnnotation::Named(_)
+                | TypeAnnotation::DimLiteral(_)
+                | TypeAnnotation::Projection { .. }
+        )
+    }
+
+    match ann {
+        TypeAnnotation::Named(name) => name.clone(),
+        TypeAnnotation::Applied(name, args) => {
+            if args.is_empty() {
+                return name.clone();
+            }
+            let rendered = args
+                .iter()
+                .map(|arg| {
+                    let rendered = format_type_annotation(arg);
+                    if needs_parens(arg) {
+                        format!("({rendered})")
+                    } else {
+                        rendered
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("{name} {rendered}")
+        }
+        TypeAnnotation::DimLiteral(v) => v.to_string(),
+        TypeAnnotation::Projection { base, name } => format!("{base}.{name}"),
+        TypeAnnotation::Tuple(elems) => format!(
+            "({})",
+            elems
+                .iter()
+                .map(format_type_annotation)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        TypeAnnotation::Optional(inner) => format!("{}?", format_type_annotation(inner)),
+        TypeAnnotation::Row { fields, rest } => {
+            let mut parts = fields
+                .iter()
+                .map(|(name, ty)| format!("{name}: {}", format_type_annotation(ty)))
+                .collect::<Vec<_>>();
+            if let Some(rest) = rest {
+                parts.push(format!("| {rest}"));
+            }
+            format!("{{ {} }}", parts.join(", "))
+        }
+        TypeAnnotation::EffectRow(row) => effect_row_annotation_label(row),
+        TypeAnnotation::Forall { type_vars, ty } => format!(
+            "forall {}. {}",
+            type_vars.join(", "),
+            format_type_annotation(ty)
+        ),
+        TypeAnnotation::Function(params, ret) => format!(
+            "fn({}) -> {}",
+            params
+                .iter()
+                .map(format_type_annotation)
+                .collect::<Vec<_>>()
+                .join(", "),
+            format_type_annotation(ret)
+        ),
+        TypeAnnotation::FunctionWithEffect(params, eff, ret) => format!(
+            "fn({}) -{}> {}",
+            params
+                .iter()
+                .map(format_type_annotation)
+                .collect::<Vec<_>>()
+                .join(", "),
+            effect_annotation_label(&eff.node),
+            format_type_annotation(ret)
+        ),
+        TypeAnnotation::Existential {
+            bounds,
+            associated_types,
+        } => {
+            let assoc = associated_types
+                .iter()
+                .map(|(name, ty)| format!("{name} = {}", format_type_annotation(ty)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            if assoc.is_empty() {
+                format!("exists {}", bounds.join(", "))
+            } else {
+                format!("exists {} {{ {} }}", bounds.join(", "), assoc)
+            }
+        }
+    }
+}
+
 fn effect_item_name_to_compat_row(name: &str) -> EffectRow {
     EffectRow::closed(vec![(Label::new(name), Type::Unit)])
 }
 
-fn resolve_effect_payload_type(payload: &str, records: Option<&RecordRegistry>) -> Option<Type> {
-    let payload_ann = TypeAnnotation::Named(payload.to_string());
+fn resolve_effect_payload_type(
+    payload_ann: &TypeAnnotation,
+    records: Option<&RecordRegistry>,
+) -> Option<Type> {
     if let Some(records) = records {
-        return resolve_annotation(&payload_ann, records, None);
+        return resolve_annotation(payload_ann, records, None);
     }
     let empty_records = RecordRegistry::new();
-    resolve_annotation(&payload_ann, &empty_records, None)
+    resolve_annotation(payload_ann, &empty_records, None)
 }
 
 fn row_var_from_name(
@@ -8209,7 +8305,7 @@ fn effect_row_item_to_compat_row(
     // precision via Rémy row unification in the ambient effect row.
     if item.name == "Fail" {
         let payload = match &item.payload {
-            Some(name) => resolve_effect_payload_type(name, records)?,
+            Some(payload_ann) => resolve_effect_payload_type(payload_ann, records)?,
             None => Type::Unit,
         };
         return Some(EffectRow::closed(vec![(Label::new("Fail"), payload)]));
@@ -8252,7 +8348,7 @@ fn patch_effect_row_type_params(
     }
     if let kea_ast::EffectAnnotation::Row(row) = effect_ann {
         for item in &row.effects {
-            if let Some(payload_name) = &item.payload
+            if let Some(TypeAnnotation::Named(payload_name)) = &item.payload
                 && let Some(param_ty) = type_param_scope.get(payload_name)
             {
                 let label = Label::new(&item.name);
@@ -8628,7 +8724,11 @@ fn type_annotation_has_effect_var(ann: &TypeAnnotation, target: &str) -> bool {
                 kea_ast::EffectAnnotation::Row(row) => {
                     row.rest.as_deref() == Some(target)
                         || row.effects.iter().any(|item| {
-                            item.name == target || item.payload.as_deref() == Some(target)
+                            item.name == target
+                                || item
+                                    .payload
+                                    .as_ref()
+                                    .is_some_and(|payload| type_annotation_has_effect_var(payload, target))
                         })
                 }
                 _ => false,
@@ -8657,7 +8757,13 @@ fn type_annotation_has_effect_var(ann: &TypeAnnotation, target: &str) -> bool {
                 || row
                     .effects
                     .iter()
-                    .any(|item| item.name == target || item.payload.as_deref() == Some(target))
+                    .any(|item| {
+                        item.name == target
+                            || item
+                                .payload
+                                .as_ref()
+                                .is_some_and(|payload| type_annotation_has_effect_var(payload, target))
+                    })
         }
         TypeAnnotation::Optional(inner) => type_annotation_has_effect_var(inner, target),
         TypeAnnotation::Existential {
@@ -8722,8 +8828,9 @@ pub fn resolve_declared_effect_row(
             let mut fields = Vec::new();
             for item in &row.effects {
                 let payload = match &item.payload {
-                    Some(name) => {
-                        resolve_effect_payload_type(name, Some(records)).unwrap_or(Type::Unit)
+                    Some(payload_ann) => {
+                        resolve_effect_payload_type(payload_ann, Some(records))
+                            .unwrap_or(Type::Unit)
                     }
                     None => Type::Unit,
                 };
@@ -8748,13 +8855,8 @@ fn resolve_effect_annotation_row(
             let mut fields = Vec::new();
             for item in &row.effects {
                 let payload = match &item.payload {
-                    Some(name) => {
-                        let payload_ann = TypeAnnotation::Named(name.to_string());
-                        resolve_annotation(&payload_ann, records, Some(sum_types))
-                            .unwrap_or_else(|| {
-                                Type::Var(unifier.fresh_type_var())
-                            })
-                    }
+                    Some(payload_ann) => resolve_annotation(payload_ann, records, Some(sum_types))
+                        .unwrap_or_else(|| Type::Var(unifier.fresh_type_var())),
                     None => Type::Unit,
                 };
                 fields.push((Label::new(&item.name), payload));

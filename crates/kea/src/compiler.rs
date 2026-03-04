@@ -2842,9 +2842,8 @@ fn resolve_effect_annotation_simple(
             }
             let mut effects = Vec::new();
             for item in &row.effects {
-                let payload = if let Some(ref payload_name) = item.payload {
-                    let ann = TypeAnnotation::Named(payload_name.clone());
-                    resolve_annotation(&ann, records, Some(sum_types)).unwrap_or(Type::Unit)
+                let payload = if let Some(ref payload_ann) = item.payload {
+                    resolve_annotation(payload_ann, records, Some(sum_types)).unwrap_or(Type::Unit)
                 } else {
                     Type::Unit
                 };

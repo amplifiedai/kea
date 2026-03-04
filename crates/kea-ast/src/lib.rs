@@ -513,7 +513,7 @@ impl Param {
 }
 
 /// A syntactic type annotation (not a semantic type — that's in `kea-types`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeAnnotation {
     Named(String),
     Applied(String, Vec<TypeAnnotation>),
@@ -573,11 +573,12 @@ pub struct EffectRowAnnotation {
 ///
 /// Examples:
 /// - `IO` -> `{ name: "IO", payload: None }`
-/// - `Fail DbError` -> `{ name: "Fail", payload: Some("DbError") }`
+/// - `Fail DbError` -> `{ name: "Fail", payload: Some(Named("DbError")) }`
+/// - `Echo (Unique Int)` -> `{ name: "Echo", payload: Some(Applied("Unique", [Named("Int")])) }`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectRowItem {
     pub name: String,
-    pub payload: Option<String>,
+    pub payload: Option<TypeAnnotation>,
 }
 
 /// A syntactic kind annotation used in trait type-constructor parameters.

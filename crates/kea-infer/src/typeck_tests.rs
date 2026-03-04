@@ -6638,7 +6638,7 @@ fn catch_over_higher_order_fail_parameter_is_accepted() {
             sp(EffectAnnotation::Row(EffectRowAnnotation {
                 effects: vec![kea_ast::EffectRowItem {
                     name: "Fail".to_string(),
-                    payload: Some("String".to_string()),
+                    payload: Some(TypeAnnotation::Named("String".to_string())),
                 }],
                 rest: None,
             })),
@@ -13575,4 +13575,3 @@ fn infer_char_literal() {
     assert!(!u.has_errors());
     assert_eq!(ty, Type::Char);
 }
-

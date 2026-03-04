@@ -2747,6 +2747,20 @@ fn compile_rejects_duplicate_fail_effect_entries_with_incompatible_payloads() {
 }
 
 #[test]
+fn compile_accepts_parenthesized_effect_payload_type_annotation() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\neffect Echo A\n  fn echo(value: A) -> Unit\n\nfn emit(x: Unique Int) -[Echo (Unique Int)]> Unit\n  Echo.echo(x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-parenthesized-effect-payload-type",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("program should compile");
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_handle_without_operation_clauses() {
     let source_path = write_temp_source(
         "fn main() -> Int\n  handle 1\n    then value -> value\n",
@@ -8364,6 +8378,24 @@ fn compile_rejects_actor_send_borrow_parameter_argument() {
 }
 
 #[test]
+fn compile_rejects_actor_send_borrow_parameter_message_wrapper() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nenum Msg\n  Push(Unique Int)\n\nfn bad(actor: Actor Msg, borrow value: Unique Int) -> Unit\n  send(actor, Push(value))\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-actor-send-message-wrapper-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("sending borrowed unique inside message wrapper should fail");
+    assert!(
+        err.contains("borrowed value `value` cannot be consumed"),
+        "expected borrow-consumption diagnostic for send message wrapper, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_actor_send_borrow_parameter_argument_through_alias() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  let forwarded = value\n  send(actor, :push, forwarded)\n\nfn main() -> Int\n  0\n",
@@ -8394,6 +8426,24 @@ fn compile_rejects_actor_call_borrow_parameter_argument() {
     assert!(
         err.contains("borrowed value `value` cannot be consumed"),
         "expected borrow-consumption diagnostic for actor call arg, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_actor_call_borrow_parameter_message_wrapper() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nenum Msg\n  Ask(Unique Int)\n\nfn bad(actor: Actor Msg, borrow value: Unique Int) -> Unit\n  let _ = call(actor, Ask(value))\n\nfn main() -> Int\n  0\n",
+        "kea-cli-borrow-actor-call-message-wrapper-rejected",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("calling with borrowed unique inside message wrapper should fail");
+    assert!(
+        err.contains("borrowed value `value` cannot be consumed"),
+        "expected borrow-consumption diagnostic for call message wrapper, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
