@@ -8444,6 +8444,24 @@ fn compile_rejects_returning_borrow_parameter() {
 }
 
 #[test]
+fn compile_rejects_returning_borrow_parameter_through_alias() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn leak_alias(borrow value: Unique Int) -> Unique Int\n  let forwarded = value\n  forwarded\n",
+        "kea-cli-borrow-return-alias-escape-rejected",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("returning aliased borrowed parameter should fail");
+    assert!(
+        err.contains("borrowed value") && err.contains("cannot be consumed"),
+        "expected borrow escape diagnostic through alias, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_rejects_capturing_borrow_parameter() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\nfn leak_capture(borrow value: Unique Int) -> fn() -> Int\n  ||\n    case value\n      Unique(v) -> v\n",
@@ -8455,6 +8473,24 @@ fn compile_rejects_capturing_borrow_parameter() {
     assert!(
         err.contains("borrowed value `value` cannot be consumed"),
         "expected borrow capture diagnostic, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_capturing_borrow_parameter_through_alias() {
+    let source_path = write_temp_source(
+        "enum Unique a\n  Unique(a)\n\nfn leak_capture_alias(borrow value: Unique Int) -> fn() -> Int\n  let forwarded = value\n  ||\n    case forwarded\n      Unique(v) -> v\n",
+        "kea-cli-borrow-capture-alias-escape-rejected",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("capturing aliased borrowed parameter should fail");
+    assert!(
+        err.contains("borrowed value") && err.contains("cannot be consumed"),
+        "expected borrow capture diagnostic through alias, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
