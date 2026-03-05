@@ -1,0 +1,83 @@
+doc
+  FNV-1a hash — 64-bit variant.
+
+  FNV-1a (Fowler–Noll–Vo) is a simple, fast, non-cryptographic hash. The
+  64-bit variant uses:
+    offset basis: 0xcbf29ce484222325 (= -3750763034362895579 as Int/i64)
+    prime:        0x100000001b3       (= 1099511628211)
+
+  For each byte b in the input:
+    hash = (hash XOR b) * prime   (wrapping 64-bit multiply)
+
+  Results are interpreted as signed Int (i64) — the bit pattern is identical
+  to the standard unsigned FNV-1a output.
+
+use List
+use Test
+
+doc
+  FNV-1a offset basis as a signed Int (two's complement of 0xcbf29ce484222325).
+fn fnv_offset() -> Int
+  -3750763034362895579
+
+doc
+  FNV-1a prime (fits in i64, value is 1099511628211).
+fn fnv_prime() -> Int
+  1099511628211
+
+doc
+  Hash a list of bytes (integer values 0–255) using FNV-1a 64-bit.
+
+    hash([])  -- => -3750763034362895579  (offset basis)
+fn hash(bytes: List Int) -> Int
+  hash_step(bytes, fnv_offset())
+
+fn hash_step(bytes: List Int, acc: Int) -> Int
+  case bytes
+    Nil -> acc
+    Cons(b, rest) ->
+      let mixed = acc.bit_xor(b)
+      hash_step(rest, mixed.wrapping_mul(fnv_prime()))
+
+doc
+  Hash a string's ASCII bytes using FNV-1a 64-bit.
+fn hash_text(s: List Int) -> Int
+  hash(s)
+
+fn bytes_of(chars: List Int) -> List Int
+  chars
+
+test "fnv1a empty"
+  -- Empty input returns the offset basis unchanged.
+  Test.assert(hash([]) == -3750763034362895579)
+
+test "fnv1a single byte differs from empty"
+  -- A single byte input must produce a different hash than the empty input.
+  -- (Tests that at least one step of the FNV-1a round-trip executes.)
+  let empty_hash = hash([])
+  let a_hash = hash([97])
+  Test.assert(a_hash != empty_hash)
+
+test "fnv1a deterministic"
+  -- Same input always produces same output
+  let r1 = hash([1, 2, 3])
+  let r2 = hash([1, 2, 3])
+  Test.assert(r1 == r2)
+
+test "fnv1a different inputs differ"
+  -- Different inputs should produce different hashes
+  let r1 = hash([1, 2, 3])
+  let r2 = hash([3, 2, 1])
+  Test.assert(r1 != r2)
+
+test "fnv1a order matters"
+  -- FNV-1a is not commutative: order of bytes affects result
+  let abc = hash([65, 66, 67])
+  let cba = hash([67, 66, 65])
+  Test.assert(abc != cba)
+
+test "fnv1a incremental matches batch"
+  -- hash([a, b]) == hash_step([b], hash([a]))
+  let batch = hash([10, 20, 30])
+  let step1 = hash_step(Cons(20, Cons(30, Nil)), hash([10]))
+  Test.assert(batch == step1)

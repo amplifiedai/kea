@@ -413,6 +413,64 @@ fn run_stdlib_case_corpus_with_kea_test_runner() {
 }
 
 #[test]
+fn run_algorithm_gallery_with_kea_test_runner() {
+    let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms");
+    let supported = [
+        "fnv1a.kea",
+        "merge_sort.kea",
+    ];
+    let mut case_files = std::fs::read_dir(&cases_dir)
+        .expect("algorithm gallery dir should exist")
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| supported.contains(&name))
+        })
+        .collect::<Vec<_>>();
+    case_files.sort();
+    assert!(
+        case_files.len() == supported.len(),
+        "expected {} algorithm gallery files in {}, found {}",
+        supported.len(),
+        cases_dir.display(),
+        case_files.len()
+    );
+
+    let mut failures = Vec::new();
+    for case_file in &case_files {
+        match run_test_file(case_file) {
+            Ok(run) => {
+                if run.cases.is_empty() {
+                    failures.push(format!(
+                        "{}: no test declarations executed",
+                        case_file.display()
+                    ));
+                    continue;
+                }
+                for case in run.cases {
+                    if !case.passed {
+                        failures.push(format!(
+                            "{}: {} ({})",
+                            case_file.display(),
+                            case.name,
+                            case.error.unwrap_or_else(|| "unknown failure".to_string())
+                        ));
+                    }
+                }
+            }
+            Err(err) => failures.push(format!("{}: {err}", case_file.display())),
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "algorithm gallery failures:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
 fn compile_and_execute_main_exit_code() {
     let source_path = write_temp_source("fn main() -> Int\n  9\n", "kea-cli-exec", "kea");
 

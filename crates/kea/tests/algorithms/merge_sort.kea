@@ -1,0 +1,132 @@
+doc
+  Merge sort on List Int.
+
+  Stable, O(n log n) comparisons, O(n log n) space (functional — each merge
+  allocates a new list). No mutation. Recursion is not tail-recursive at the
+  top level (split+merge cannot be TCO'd), but list sizes shrink by half each
+  level so the stack depth is O(log n).
+
+use List
+use Test
+
+doc
+  Split a list into two halves using the fast/slow pointer technique.
+  The left half may have one fewer element than the right when the list
+  is odd-length.
+
+    split([1, 2, 3, 4]) -- => ([1, 2], [3, 4])
+    split([1, 2, 3])    -- => ([1], [2, 3])
+    split([])           -- => ([], [])
+fn split(xs: List Int) -> (List Int, List Int)
+  split_step(xs, xs, Nil)
+
+fn split_step(slow: List Int, fast: List Int, left_acc: List Int) -> (List Int, List Int)
+  case fast
+    Nil ->
+      (List.reverse(left_acc), slow)
+    Cons(_, Nil) ->
+      (List.reverse(left_acc), slow)
+    Cons(_, Cons(_, fast_tail)) ->
+      case slow
+        Nil -> (List.reverse(left_acc), Nil)
+        Cons(s, slow_tail) -> split_step(slow_tail, fast_tail, Cons(s, left_acc))
+
+doc
+  Merge two sorted lists into a single sorted list.
+
+    merge([1, 3], [2, 4]) -- => [1, 2, 3, 4]
+fn merge(xs: List Int, ys: List Int) -> List Int
+  merge_acc(xs, ys, Nil)
+
+fn merge_acc(xs: List Int, ys: List Int, acc: List Int) -> List Int
+  case xs
+    Nil -> List.append(List.reverse(acc), ys)
+    Cons(x, xs_tail) ->
+      case ys
+        Nil -> List.append(List.reverse(acc), xs)
+        Cons(y, ys_tail) ->
+          if x <= y
+            merge_acc(xs_tail, ys, Cons(x, acc))
+          else
+            merge_acc(xs, ys_tail, Cons(y, acc))
+
+doc
+  Sort a list of integers using merge sort.
+
+    merge_sort([3, 1, 4, 1, 5]) -- => [1, 1, 3, 4, 5]
+    merge_sort([])              -- => []
+fn merge_sort(xs: List Int) -> List Int
+  case xs
+    Nil -> Nil
+    Cons(_, Nil) -> xs
+    _ ->
+      let halves = split(xs)
+      let left_half = halves.0
+      let right_half = halves.1
+      let left = merge_sort(left_half)
+      let right = merge_sort(right_half)
+      merge(left, right)
+
+fn list_eq(xs: List Int, ys: List Int) -> Bool
+  case xs
+    Nil ->
+      case ys
+        Nil -> true
+        Cons(_, _) -> false
+    Cons(x, xs_tail) ->
+      case ys
+        Nil -> false
+        Cons(y, ys_tail) ->
+          if x == y
+            list_eq(xs_tail, ys_tail)
+          else
+            false
+
+fn is_sorted(xs: List Int) -> Bool
+  case xs
+    Nil -> true
+    Cons(_, Nil) -> true
+    Cons(x, rest) ->
+      case rest
+        Nil -> true
+        Cons(y, _) ->
+          if x <= y
+            is_sorted(rest)
+          else
+            false
+
+test "merge_sort empty"
+  let result = merge_sort([])
+  Test.assert(List.is_empty(result))
+
+test "merge_sort singleton"
+  let result = merge_sort([42])
+  Test.assert(List.length(result) == 1)
+  Test.assert(list_eq(result, [42]))
+
+test "merge_sort already sorted"
+  let xs = [1, 2, 3, 4, 5]
+  let result = merge_sort(xs)
+  Test.assert(list_eq(result, xs))
+
+test "merge_sort reverse sorted"
+  let result = merge_sort([5, 4, 3, 2, 1])
+  Test.assert(list_eq(result, [1, 2, 3, 4, 5]))
+
+test "merge_sort duplicates"
+  let result = merge_sort([3, 1, 4, 1, 5, 9, 2, 6, 5, 3])
+  Test.assert(is_sorted(result))
+  Test.assert(List.length(result) == 10)
+
+test "merge_sort even length"
+  let result = merge_sort([4, 2, 6, 1])
+  Test.assert(list_eq(result, [1, 2, 4, 6]))
+
+test "merge_sort odd length"
+  let result = merge_sort([5, 1, 3])
+  Test.assert(list_eq(result, [1, 3, 5]))
+
+test "merge is stable order preserved"
+  let result = merge([1, 3, 5], [2, 4, 6])
+  Test.assert(is_sorted(result))
+  Test.assert(List.length(result) == 6)
