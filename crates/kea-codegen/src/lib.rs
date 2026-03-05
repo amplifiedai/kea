@@ -4888,6 +4888,51 @@ fn lower_instruction<M: Module>(
                                 Some(builder.ins().iconst(clif_type(ret_type)?, 0))
                             }
                         }
+                        "__kea_int_to_float" => {
+                            if lowered_args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_int_to_float expects one integer argument"
+                                        .to_string(),
+                                });
+                            }
+                            let int_val = coerce_value_to_clif_type(
+                                builder,
+                                lowered_args[0],
+                                types::I64,
+                            );
+                            Some(builder.ins().fcvt_from_sint(types::F64, int_val))
+                        }
+                        "__kea_float_to_int" => {
+                            if lowered_args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_float_to_int expects one float argument"
+                                        .to_string(),
+                                });
+                            }
+                            let float_val = coerce_value_to_clif_type(
+                                builder,
+                                lowered_args[0],
+                                types::F64,
+                            );
+                            Some(builder.ins().fcvt_to_sint_sat(types::I64, float_val))
+                        }
+                        "__kea_float_sqrt" => {
+                            if lowered_args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_float_sqrt expects one float argument"
+                                        .to_string(),
+                                });
+                            }
+                            let float_val = coerce_value_to_clif_type(
+                                builder,
+                                lowered_args[0],
+                                types::F64,
+                            );
+                            Some(builder.ins().sqrt(float_val))
+                        }
                         _ => {
                             let callee_id = *ctx.external_func_ids.get(name).ok_or_else(|| {
                                 CodegenError::UnknownFunction {

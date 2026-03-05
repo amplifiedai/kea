@@ -89,3 +89,12 @@ doc
     Int.shift_right_unsigned(8, 1)   -- => 4
 fn shift_right_unsigned(x: Int, amount: Int) -> Int
   x.shift_right_unsigned(amount)
+
+doc
+  Convert an integer to a Float.
+
+    Int.to_float(5)   -- => 5.0
+    Int.to_float(-3)  -- => -3.0
+@intrinsic("__kea_int_to_float")
+fn to_float(x: Int) -> Float
+  0.0

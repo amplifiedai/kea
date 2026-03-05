@@ -1,6 +1,35 @@
 use Float
+use Int
 use Test
 
 test "Float.fabs"
   let x = Float.fabs(-3.5)
   Test.assert(x > 3.4 and x < 3.6)
+
+test "Float.from_int"
+  let f = Float.from_int(42)
+  Test.assert(f > 41.9 and f < 42.1)
+  let neg = Float.from_int(-7)
+  Test.assert(neg < -6.9 and neg > -7.1)
+  let zero = Float.from_int(0)
+  Test.assert(zero > -0.1 and zero < 0.1)
+
+test "Float.to_int"
+  Test.assert(Float.to_int(3.9) == 3)
+  Test.assert(Float.to_int(-2.1) == -2)
+  Test.assert(Float.to_int(0.0) == 0)
+  Test.assert(Float.to_int(100.0) == 100)
+
+test "Float.sqrt"
+  let s4 = Float.sqrt(4.0)
+  Test.assert(s4 > 1.99 and s4 < 2.01)
+  let s9 = Float.sqrt(9.0)
+  Test.assert(s9 > 2.99 and s9 < 3.01)
+  let s0 = Float.sqrt(0.0)
+  Test.assert(s0 > -0.01 and s0 < 0.01)
+
+test "Int.to_float"
+  let f = Int.to_float(5)
+  Test.assert(f > 4.9 and f < 5.1)
+  let neg = Int.to_float(-3)
+  Test.assert(neg < -2.9 and neg > -3.1)
