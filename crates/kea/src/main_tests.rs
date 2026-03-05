@@ -12175,6 +12175,26 @@ fn compile_and_execute_dot_method_dispatch_on_field_access_receiver_exit_code() 
 }
 
 #[test]
+fn compile_and_execute_receiver_placeholder_in_qualified_call_exit_code() {
+    // fold(init, list, f) with receiver placement: list.fold(init, _, f)
+    let source = concat!(
+        "fn fold(init: Int, list: Int, f: fn(Int, Int) -> Int) -> Int\n",
+        "  f(init, list)\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  let x = 21\n",
+        "  x.fold(21, _, |a, b| a + b)\n",
+    );
+    let source_path =
+        write_temp_source(source, "kea-cli-receiver-placeholder-qualified", "kea");
+
+    let run = run_file(&source_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_and_execute_row_polymorphic_record_field_access_exit_code() {
     let source_path = write_temp_source(
         "struct User\n  age: Int\n  score: Int\n\nfn get_age(u: { age: Int | r }) -> Int\n  u.age\n\nfn main() -> Int\n  let user = User { age: 41, score: 1 }\n  get_age(user)\n",

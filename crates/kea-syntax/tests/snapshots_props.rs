@@ -61,7 +61,7 @@ fn lexer_layout_snapshot_corpus() {
 
 #[test]
 fn parser_snapshot_corpus() {
-    let cases: [ParseCase; 27] = [
+    let cases: [ParseCase; 30] = [
         ParseCase {
             name: "module_fn_decl",
             mode: ParseMode::Module,
@@ -181,6 +181,21 @@ fn parser_snapshot_corpus() {
             name: "module_parse_error_missing_fn_body",
             mode: ParseMode::Module,
             source: "fn broken(x) -> Int",
+        },
+        ParseCase {
+            name: "expr_receiver_placeholder_qualified",
+            mode: ParseMode::Expr,
+            source: "text.String.replace(\"old\", _, \"new\")",
+        },
+        ParseCase {
+            name: "expr_receiver_placeholder_unqualified",
+            mode: ParseMode::Expr,
+            source: "xs.fold(0, _, f)",
+        },
+        ParseCase {
+            name: "expr_receiver_placeholder_multiple_is_error",
+            mode: ParseMode::Expr,
+            source: "text.replace(_, \"new\", _)",
         },
         ParseCase {
             name: "module_doc_with_blank_line_is_module_doc",

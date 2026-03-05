@@ -4541,12 +4541,20 @@ impl Parser {
                 && let Some((method_receiver, qualifier)) =
                     self.extract_qualified_method_receiver(receiver)
             {
-                let mut desugared_args = Vec::with_capacity(args.len() + 1);
-                desugared_args.push(Argument {
-                    label: None,
-                    value: method_receiver,
-                });
-                desugared_args.append(&mut args);
+                let placeholder_idx = self.find_receiver_placeholder(&args);
+                let desugared_args = if let Some(idx) = placeholder_idx {
+                    let mut a = args;
+                    a[idx].value = method_receiver;
+                    a
+                } else {
+                    let mut a = Vec::with_capacity(args.len() + 1);
+                    a.push(Argument {
+                        label: None,
+                        value: method_receiver,
+                    });
+                    a.append(&mut args);
+                    a
+                };
                 let qualified_func = Spanned::new(
                     ExprKind::FieldAccess {
                         expr: Box::new(Spanned::new(ExprKind::Var(qualifier), receiver.span)),
@@ -4569,12 +4577,21 @@ impl Parser {
             } = &lhs.node
                 && self.should_desugar_method_call_receiver(&receiver.node)
             {
-                let mut desugared_args = Vec::with_capacity(args.len() + 1);
-                desugared_args.push(Argument {
-                    label: None,
-                    value: (**receiver).clone(),
-                });
-                desugared_args.append(&mut args);
+                let receiver_expr = (**receiver).clone();
+                let placeholder_idx = self.find_receiver_placeholder(&args);
+                let desugared_args = if let Some(idx) = placeholder_idx {
+                    let mut a = args;
+                    a[idx].value = receiver_expr;
+                    a
+                } else {
+                    let mut a = Vec::with_capacity(args.len() + 1);
+                    a.push(Argument {
+                        label: None,
+                        value: receiver_expr,
+                    });
+                    a.append(&mut args);
+                    a
+                };
                 let func = Spanned::new(ExprKind::Var(field.node.clone()), field.span);
                 return Some(Spanned::new(
                     ExprKind::Call {
@@ -4641,6 +4658,35 @@ impl Parser {
             .chars()
             .next()
             .is_some_and(|ch| ch.is_ascii_uppercase())
+    }
+
+    /// Find the index of the single unlabeled `_` receiver placeholder in a
+    /// call's argument list.  Returns `None` if no placeholder is present.
+    /// Emits an error and returns `None` if more than one placeholder is found.
+    fn find_receiver_placeholder(&mut self, args: &[Argument]) -> Option<usize> {
+        let positions: Vec<usize> = args
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| {
+                a.label.is_none()
+                    && matches!(&a.value.node, ExprKind::Var(name) if name == "_")
+            })
+            .map(|(i, _)| i)
+            .collect();
+        match positions.len() {
+            0 => None,
+            1 => Some(positions[0]),
+            _ => {
+                self.errors.push(
+                    Diagnostic::error(
+                        kea_diag::Category::Syntax,
+                        "multiple `_` receiver placeholders in one call",
+                    )
+                    .with_help("exactly one `_` is allowed per method call to mark the receiver position"),
+                );
+                None
+            }
+        }
     }
 
     fn should_desugar_method_call_receiver(&self, receiver: &ExprKind) -> bool {
@@ -5505,6 +5551,65 @@ mod tests {
                     }
                     other => panic!("expected FieldAccess callee, got {other:?}"),
                 }
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_receiver_placeholder_in_unqualified_call() {
+        // xs.fold(0, _, f)  →  fold(0, xs, f)
+        let expr = parse("xs.fold(0, _, f)");
+        match &expr.node {
+            ExprKind::Call { func, args } => {
+                assert_eq!(func.node, ExprKind::Var("fold".into()));
+                assert_eq!(args.len(), 3);
+                assert_eq!(args[0].value.node, ExprKind::Lit(Lit::Int(0)));
+                assert_eq!(args[1].value.node, ExprKind::Var("xs".into())); // receiver at _
+                assert_eq!(args[2].value.node, ExprKind::Var("f".into()));
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_receiver_placeholder_in_qualified_call() {
+        // text.String.replace("old", _, "new")  →  String.replace("old", text, "new")
+        let expr = parse("text.String.replace(\"old\", _, \"new\")");
+        match &expr.node {
+            ExprKind::Call { func, args } => {
+                assert_eq!(args.len(), 3);
+                assert_eq!(
+                    args[0].value.node,
+                    ExprKind::Lit(Lit::String("old".into()))
+                );
+                assert_eq!(args[1].value.node, ExprKind::Var("text".into())); // receiver at _
+                assert_eq!(
+                    args[2].value.node,
+                    ExprKind::Lit(Lit::String("new".into()))
+                );
+                match &func.node {
+                    ExprKind::FieldAccess { expr, field } => {
+                        assert_eq!(field.node, "replace");
+                        assert_eq!(expr.node, ExprKind::Var("String".into()));
+                    }
+                    other => panic!("expected FieldAccess callee, got {other:?}"),
+                }
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_receiver_placeholder_first_arg() {
+        // xs.f(_, extra)  →  f(xs, extra)  — _ first, same as no placeholder
+        let expr = parse("xs.f(_, extra)");
+        match &expr.node {
+            ExprKind::Call { func, args } => {
+                assert_eq!(func.node, ExprKind::Var("f".into()));
+                assert_eq!(args.len(), 2);
+                assert_eq!(args[0].value.node, ExprKind::Var("xs".into()));
+                assert_eq!(args[1].value.node, ExprKind::Var("extra".into()));
             }
             other => panic!("expected Call, got {other:?}"),
         }

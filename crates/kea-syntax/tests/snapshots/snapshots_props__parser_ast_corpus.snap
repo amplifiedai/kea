@@ -1167,6 +1167,102 @@ source:
 status: err
 - Error E0006 @19..19: expected function body block
 
+## expr_receiver_placeholder_qualified
+source:
+|text.String.replace("old",·_,·"new")
+status: ok
+Call {
+    func: Spanned {
+        node: FieldAccess {
+            expr: Spanned {
+                node: Var(
+                    "String",
+                ),
+            },
+            field: Spanned {
+                node: "replace",
+            },
+        },
+    },
+    args: [
+        Argument {
+            label: None,
+            value: Spanned {
+                node: Lit(
+                    String(
+                        "old",
+                    ),
+                ),
+            },
+        },
+        Argument {
+            label: None,
+            value: Spanned {
+                node: Var(
+                    "text",
+                ),
+            },
+        },
+        Argument {
+            label: None,
+            value: Spanned {
+                node: Lit(
+                    String(
+                        "new",
+                    ),
+                ),
+            },
+        },
+    ],
+}
+
+## expr_receiver_placeholder_unqualified
+source:
+|xs.fold(0,·_,·f)
+status: ok
+Call {
+    func: Spanned {
+        node: Var(
+            "fold",
+        ),
+    },
+    args: [
+        Argument {
+            label: None,
+            value: Spanned {
+                node: Lit(
+                    Int(
+                        0,
+                    ),
+                ),
+            },
+        },
+        Argument {
+            label: None,
+            value: Spanned {
+                node: Var(
+                    "xs",
+                ),
+            },
+        },
+        Argument {
+            label: None,
+            value: Spanned {
+                node: Var(
+                    "f",
+                ),
+            },
+        },
+    ],
+}
+
+## expr_receiver_placeholder_multiple_is_error
+source:
+|text.replace(_,·"new",·_)
+status: err
+- Error E0006 @-: multiple `_` receiver placeholders in one call
+  help: exactly one `_` is allowed per method call to mark the receiver position
+
 ## module_doc_with_blank_line_is_module_doc
 source:
 |doc
