@@ -2,7 +2,7 @@
 
 A statically-typed functional programming language with algebraic effects, handlers, and row polymorphism.
 
-**Status:** Early development. The bootstrap compiler is being built in Rust, currently focused on code generation for the pure subset.
+**Status:** Early development. The bootstrap compiler is built in Rust. Current focus: language stabilisation, standard library, and async runtime.
 
 ## Features
 
