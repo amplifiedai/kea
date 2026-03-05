@@ -1166,3 +1166,136 @@ source:
 |fn·broken(x)·->·Int
 status: err
 - Error E0006 @19..19: expected function body block
+
+## module_doc_with_blank_line_is_module_doc
+source:
+|doc
+|··This·is·the·module·doc.
+|
+|fn·foo()·->·Int
+|··0
+status: ok
+module_doc: "This is the module doc."
+Function(
+    FnDecl {
+        public: false,
+        name: Spanned {
+            node: "foo",
+        },
+        doc: None,
+        annotations: [],
+        params: [],
+        return_annotation: Some(
+            Spanned {
+                node: Named(
+                    "Int",
+                ),
+            },
+        ),
+        effect_annotation: Some(
+            Spanned {
+                node: Pure,
+            },
+        ),
+        body: Spanned {
+            node: Lit(
+                Int(
+                    0,
+                ),
+            ),
+        },
+        where_clause: [],
+    },
+)
+
+## module_nodoc_annotation
+source:
+|@nodoc
+|fn·foo()·->·Int
+|··0
+status: ok
+annotations: [nodoc]
+Function(
+    FnDecl {
+        public: false,
+        name: Spanned {
+            node: "foo",
+        },
+        doc: None,
+        annotations: [],
+        params: [],
+        return_annotation: Some(
+            Spanned {
+                node: Named(
+                    "Int",
+                ),
+            },
+        ),
+        effect_annotation: Some(
+            Spanned {
+                node: Pure,
+            },
+        ),
+        body: Spanned {
+            node: Lit(
+                Int(
+                    0,
+                ),
+            ),
+        },
+        where_clause: [],
+    },
+)
+
+## module_doc_before_use_is_module_doc
+source:
+|doc
+|··Module-level·docs.
+|
+|use·Eq
+|fn·foo()·->·Int
+|··0
+status: ok
+module_doc: "Module-level docs."
+Import(
+    ImportDecl {
+        module: Spanned {
+            node: "Eq",
+        },
+        items: Module,
+        alias: None,
+    },
+)
+
+---
+Function(
+    FnDecl {
+        public: false,
+        name: Spanned {
+            node: "foo",
+        },
+        doc: None,
+        annotations: [],
+        params: [],
+        return_annotation: Some(
+            Spanned {
+                node: Named(
+                    "Int",
+                ),
+            },
+        ),
+        effect_annotation: Some(
+            Spanned {
+                node: Pure,
+            },
+        ),
+        body: Spanned {
+            node: Lit(
+                Int(
+                    0,
+                ),
+            ),
+        },
+        where_clause: [],
+    },
+)

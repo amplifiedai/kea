@@ -1,8 +1,3 @@
-use Eq
-use Show
-use Ord
-use Order
-
 doc
   Result is Fail's data representation.
 
@@ -12,6 +7,11 @@ doc
     let results = items.map(|item| catch validate(item))
     let config = Result.unwrap_or(catch load_config(), defaults)
     let value = some_result?
+
+use Eq
+use Show
+use Ord
+use Order
 
 @derive(Eq, Show, Ord)
 enum Result a e

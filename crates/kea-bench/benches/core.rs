@@ -608,7 +608,6 @@ fn build_linear_heap_alias_chain_hir_module(levels: usize) -> HirModule {
         )],
         const_fields: vec![],
         field_annotations: vec![],
-        derives: vec![],
     }));
 
     HirModule {

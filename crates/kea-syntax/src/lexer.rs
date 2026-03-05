@@ -918,13 +918,27 @@ impl<'src> Lexer<'src> {
                 }
             }
 
+            // Count trailing empty lines before trimming so we can emit Newline tokens
+            // for them. This lets the parser detect "doc + blank line" (module doc marker)
+            // even though the blank lines are consumed within the doc body scanner.
+            let trailing_blank_count = lines.iter().rev().take_while(|l| l.is_empty()).count();
+
             // Trim trailing empty lines
             while lines.last().is_some_and(|l| l.is_empty()) {
                 lines.pop();
             }
 
             let content = lines.join("\n");
-            self.emit(TokenKind::DocBody(content), body_start, self.pos);
+            let body_end = self.pos;
+            self.emit(TokenKind::DocBody(content), body_start, body_end);
+
+            // Emit synthetic Newline tokens for each trailing blank line so the parser
+            // can count them in `peek_after_doc_block_newlines`. We emit 2 per blank line
+            // (mirroring the normal token count for a blank line: end-of-content-line + blank line)
+            // so that `peek_after_doc_block_newlines >= 2` reliably signals a trailing blank line.
+            for _ in 0..trailing_blank_count * 2 {
+                self.emit(TokenKind::Newline, body_end, body_end);
+            }
         } else {
             // Inline form: rest of the line after `doc `
             let content_start = self.pos;

@@ -53,10 +53,12 @@ pub enum Category {
     TypeError,
     /// Missing required type annotation on declaration boundaries.
     MissingAnnotation,
+    /// Public module is missing a module-level doc block.
+    MissingModuleDoc,
 }
 
 impl Category {
-    pub const ALL: [Category; 13] = [
+    pub const ALL: [Category; 14] = [
         Category::TypeMismatch,
         Category::MissingField,
         Category::DuplicateField,
@@ -70,6 +72,7 @@ impl Category {
         Category::ExtraField,
         Category::TypeError,
         Category::MissingAnnotation,
+        Category::MissingModuleDoc,
     ];
 
     pub fn all() -> &'static [Category] {
@@ -91,6 +94,7 @@ impl Category {
             Category::ExtraField => "extra_field",
             Category::TypeError => "type_error",
             Category::MissingAnnotation => "missing_annotation",
+            Category::MissingModuleDoc => "missing_module_doc",
         }
     }
 
@@ -109,6 +113,7 @@ impl Category {
             Category::ExtraField => "E0011",
             Category::TypeError => "E0012",
             Category::MissingAnnotation => "E0801",
+            Category::MissingModuleDoc => "W1001",
         }
     }
 
@@ -128,6 +133,9 @@ impl Category {
             Category::TypeError => "General type checking error.",
             Category::MissingAnnotation => {
                 "A required declaration-boundary type annotation is missing."
+            }
+            Category::MissingModuleDoc => {
+                "A public module has no module-level doc block."
             }
         }
     }
@@ -158,6 +166,9 @@ impl Category {
             }
             Category::MissingAnnotation => {
                 "Add explicit parameter/return type annotations on named declarations."
+            }
+            Category::MissingModuleDoc => {
+                "Add a `doc` block followed by a blank line at the top of the file, before any use statements."
             }
         }
     }

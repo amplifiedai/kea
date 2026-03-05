@@ -929,6 +929,8 @@ pub enum ImportItems {
 pub struct Module {
     /// Module-level documentation (a `doc` block at the top of the file).
     pub doc: Option<String>,
+    /// Module-level annotations (e.g. `@nodoc`).
+    pub annotations: Vec<Annotation>,
     pub declarations: Vec<Decl>,
     pub span: Span,
 }

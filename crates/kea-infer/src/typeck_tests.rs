@@ -12552,6 +12552,7 @@ fn validate_module_fn_annotations_checks_trait_and_impl_methods() {
     };
     let module = Module {
         doc: None,
+        annotations: vec![],
         declarations: vec![
             sp(DeclKind::TraitDef(trait_def)),
             sp(DeclKind::ImplBlock(impl_block)),
@@ -12576,6 +12577,7 @@ fn validate_module_fn_annotations_warns_on_legacy_effect_syntax() {
     volatile_fn.effect_annotation = Some(sp(EffectAnnotation::Volatile));
     let module = Module {
         doc: None,
+        annotations: vec![],
         declarations: vec![
             sp(DeclKind::Function(impure_fn)),
             sp(DeclKind::Function(volatile_fn)),
@@ -12611,6 +12613,7 @@ fn validate_module_annotations_unknown_annotation_suggests_known_name() {
 
     let module = Module {
         doc: None,
+        annotations: vec![],
         declarations: vec![sp(DeclKind::Function(fn_decl))],
         span: s(),
     };
@@ -12630,6 +12633,7 @@ fn validate_module_annotations_intrinsic_function_annotation_is_allowed() {
 
     let module = Module {
         doc: None,
+        annotations: vec![],
         declarations: vec![sp(DeclKind::Function(fn_decl))],
         span: s(),
     };
@@ -12650,6 +12654,7 @@ fn validate_module_annotations_intrinsic_requires_string_literal_argument() {
 
     let module = Module {
         doc: None,
+        annotations: vec![],
         declarations: vec![sp(DeclKind::Function(fn_decl))],
         span: s(),
     };
@@ -12673,6 +12678,7 @@ fn validate_module_annotations_default_literal_type_mismatch_errors() {
     record.field_annotations = vec![vec![ann("default", vec![ann_arg(lit_str("slow"))])]];
     let module = Module {
         doc: None,
+        annotations: vec![],
         declarations: vec![sp(DeclKind::RecordDef(record))],
         span: s(),
     };
@@ -12699,6 +12705,7 @@ fn validate_module_annotations_default_impure_argument_rejected() {
     )]];
     let module = Module {
         doc: None,
+        annotations: vec![],
         declarations: vec![sp(DeclKind::RecordDef(record))],
         span: s(),
     };
@@ -12725,6 +12732,7 @@ fn validate_module_annotations_skip_if_option_guard_requires_optional_field() {
     )]];
     let module = Module {
         doc: None,
+        annotations: vec![],
         declarations: vec![sp(DeclKind::RecordDef(record))],
         span: s(),
     };
@@ -12747,6 +12755,7 @@ fn validate_module_annotations_serialization_without_derive_is_warning() {
     record.field_annotations = vec![vec![ann("rename", vec![ann_arg(lit_str("apiKey"))])]];
     let module = Module {
         doc: None,
+        annotations: vec![],
         declarations: vec![sp(DeclKind::RecordDef(record))],
         span: s(),
     };

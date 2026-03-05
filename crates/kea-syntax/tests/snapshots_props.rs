@@ -61,7 +61,7 @@ fn lexer_layout_snapshot_corpus() {
 
 #[test]
 fn parser_snapshot_corpus() {
-    let cases: [ParseCase; 24] = [
+    let cases: [ParseCase; 27] = [
         ParseCase {
             name: "module_fn_decl",
             mode: ParseMode::Module,
@@ -182,6 +182,21 @@ fn parser_snapshot_corpus() {
             mode: ParseMode::Module,
             source: "fn broken(x) -> Int",
         },
+        ParseCase {
+            name: "module_doc_with_blank_line_is_module_doc",
+            mode: ParseMode::Module,
+            source: "doc\n  This is the module doc.\n\nfn foo() -> Int\n  0",
+        },
+        ParseCase {
+            name: "module_nodoc_annotation",
+            mode: ParseMode::Module,
+            source: "@nodoc\nfn foo() -> Int\n  0",
+        },
+        ParseCase {
+            name: "module_doc_before_use_is_module_doc",
+            mode: ParseMode::Module,
+            source: "doc\n  Module-level docs.\n\nuse Eq\nfn foo() -> Int\n  0",
+        },
     ];
 
     let mut output = String::new();
@@ -288,14 +303,22 @@ fn render_parse_case(case: ParseCase) -> String {
     match case.mode {
         ParseMode::Module => match parse_module_source(case.source, FileId(0)) {
             Ok(module) => {
-                let mut decls = String::new();
+                let mut out = String::new();
+                if let Some(doc) = &module.doc {
+                    let _ = writeln!(&mut out, "module_doc: {doc:?}");
+                }
+                if !module.annotations.is_empty() {
+                    let ann_names: Vec<&str> =
+                        module.annotations.iter().map(|a| a.name.node.as_str()).collect();
+                    let _ = writeln!(&mut out, "annotations: [{}]", ann_names.join(", "));
+                }
                 for (idx, decl) in module.declarations.iter().enumerate() {
                     if idx > 0 {
-                        decls.push_str("\n---\n");
+                        out.push_str("\n---\n");
                     }
-                    let _ = writeln!(&mut decls, "{:#?}", decl.node);
+                    let _ = writeln!(&mut out, "{:#?}", decl.node);
                 }
-                format!("status: ok\n{}", strip_span_and_location_blocks(&decls))
+                format!("status: ok\n{}", strip_span_and_location_blocks(&out))
             }
             Err(diags) => format!("status: err\n{}", render_diagnostics(&diags)),
         },

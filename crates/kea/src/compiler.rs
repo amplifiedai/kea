@@ -118,6 +118,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
     diagnostics.extend(validate_module_fn_annotations(&module));
     diagnostics.extend(validate_module_annotations(&module));
     diagnostics.extend(validate_unsafe_call_sites(&module, None, None, None));
+    warn_missing_module_doc(&module, &mut diagnostics);
     if has_errors(&diagnostics) {
         return Err(format_diagnostics(
             "type annotation validation failed",
@@ -1022,6 +1023,7 @@ pub fn process_module_in_env(
         Some(&unsafe_registry),
         Some(&unsafe_names),
     ));
+    warn_missing_module_doc(&module, &mut diagnostics);
     if has_errors(&diagnostics) {
         return Err(diagnostics);
     }
@@ -1424,6 +1426,7 @@ fn strip_test_decls_for_runner(module: &Module) -> (Module, Vec<RunnerTestCase>)
     (
         Module {
             doc: module.doc.clone(),
+            annotations: module.annotations.clone(),
             declarations,
             span: module.span,
         },
@@ -2077,6 +2080,7 @@ fn expand_derived_impls(module: &Module, diagnostics: &mut Vec<Diagnostic>) -> M
 
     Module {
         doc: module.doc.clone(),
+        annotations: module.annotations.clone(),
         declarations,
         span: module.span,
     }
@@ -2287,6 +2291,7 @@ fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
 
     Module {
         doc: None,
+        annotations: vec![],
         declarations,
         // Merged project modules may originate from different files.
         // Keep a synthetic span to avoid cross-file merge assertions.
@@ -2892,6 +2897,7 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
 
     Module {
         doc: module.doc.clone(),
+        annotations: module.annotations.clone(),
         declarations,
         span: module.span,
     }
@@ -5706,6 +5712,52 @@ fn collect_fip_offending_sites(function: &kea_mir::MirFunction, limit: usize) ->
 
 fn has_errors(diags: &[Diagnostic]) -> bool {
     diags.iter().any(is_error)
+}
+
+/// Emit W1001 if a module has public declarations but no module-level doc block.
+///
+/// Suppressed by `@nodoc` at the top of the file.
+fn warn_missing_module_doc(module: &Module, diagnostics: &mut Vec<Diagnostic>) {
+    if module.doc.is_some() {
+        return;
+    }
+    let has_nodoc = module
+        .annotations
+        .iter()
+        .any(|a| a.name.node == "nodoc");
+    if has_nodoc {
+        return;
+    }
+    let has_pub = module.declarations.iter().any(|d| match &d.node {
+        DeclKind::Function(f) => f.public,
+        DeclKind::ExprFn(e) => e.public,
+        DeclKind::TypeDef(t) => t.public,
+        DeclKind::RecordDef(r) => r.public,
+        DeclKind::AliasDecl(a) => a.public,
+        DeclKind::OpaqueTypeDef(o) => o.public,
+        DeclKind::TraitDef(t) => t.public,
+        DeclKind::EffectDecl(e) => e.public,
+        _ => false,
+    });
+    if !has_pub {
+        return;
+    }
+    let span = module.span;
+    let loc = SourceLocation {
+        file_id: span.file.0,
+        start: span.start,
+        end: span.start, // point at the top of the file
+    };
+    diagnostics.push(
+        Diagnostic::warning(
+            Category::MissingModuleDoc,
+            "public module has no module-level doc",
+        )
+        .at(loc)
+        .with_help(
+            "add a `doc` block followed by a blank line at the top of the file, before any use statements; or add `@nodoc` to suppress this warning",
+        ),
+    );
 }
 
 fn is_error(diag: &Diagnostic) -> bool {

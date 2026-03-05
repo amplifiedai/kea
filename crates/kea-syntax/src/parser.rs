@@ -97,23 +97,111 @@ impl Parser {
 
     // -- Module-level parsing --
 
+    /// Parse the optional `@nodoc` annotation and module-level doc block that must
+    /// appear before any `use` statements or declarations.
+    ///
+    /// File structure (strict order):
+    ///   `[@nodoc]  [module doc + blank line]  [use statements]  [declarations]`
+    fn module_doc_prefix(&mut self) -> (Option<String>, Vec<Annotation>) {
+        self.skip_newlines();
+
+        // Only consume `@nodoc` at file scope; all other `@` annotations belong to declarations.
+        let annotations = self.consume_nodoc_annotation();
+        self.skip_newlines();
+
+        // Optional module doc: `doc` block followed by a blank line (≥2 newlines) at the
+        // very top of the file. A single-newline `doc` is an item doc and stays for
+        // `declaration()` to consume.
+        let doc = if self.check(&TokenKind::Doc) {
+            let newline_count = self.peek_after_doc_block_newlines();
+            if newline_count >= 2 {
+                if let Some((content, _)) = self.consume_doc_block_with_newline_count() {
+                    self.skip_newlines();
+                    Some(content)
+                } else {
+                    None
+                }
+            } else {
+                // Single newline: item doc for the first declaration — leave it unconsumed.
+                None
+            }
+        } else {
+            None
+        };
+
+        (doc, annotations)
+    }
+
     fn module(&mut self) -> Module {
         let start = self.current_span();
         let mut declarations: Vec<Decl> = Vec::new();
         self.skip_newlines();
 
+        let (module_doc, module_annotations) = self.module_doc_prefix();
+
+        let mut seen_decl = false;
         while !self.at_eof() {
-            if let Some(decl) = self.declaration() {
+            if let Some(decl) = self.declaration_checked(seen_decl) {
+                seen_decl = true;
                 declarations.push(decl);
             }
             self.skip_newlines();
         }
         let end = self.current_span();
         Module {
-            doc: None,
+            doc: module_doc,
+            annotations: module_annotations,
             declarations,
             span: start.merge(end),
         }
+    }
+
+    /// Wraps `declaration()` to detect floating doc blocks (doc + blank line that appears
+    /// after the first declaration has been seen). Emits a parse error and then falls through
+    /// to `declaration()` which will attach the doc to the next item.
+    fn declaration_checked(&mut self, seen_decl: bool) -> Option<Decl> {
+        if seen_decl && self.check(&TokenKind::Doc) {
+            let newline_count = self.peek_after_doc_block_newlines();
+            if newline_count >= 2 {
+                let doc_span = self.current_span();
+                let loc = SourceLocation {
+                    file_id: self.file.0,
+                    start: doc_span.start,
+                    end: doc_span.end,
+                };
+                self.errors.push(
+                    Diagnostic::error(Category::Syntax, "floating doc block")
+                        .at(loc)
+                        .with_help("doc blocks with a blank line after them are only valid at the top of the file; remove the blank line to attach this doc to the following declaration, or move it to the top of the file as a module-level doc"),
+                );
+            }
+        }
+        self.declaration()
+    }
+
+    /// Peek past a `doc` + optional `DocBody` and count the trailing `Newline` tokens
+    /// without consuming anything.
+    fn peek_after_doc_block_newlines(&self) -> usize {
+        let mut i = self.pos;
+        // skip Doc token
+        if i < self.tokens.len() && self.tokens[i].kind == TokenKind::Doc {
+            i += 1;
+        }
+        // skip Newlines between doc keyword and DocBody
+        while i < self.tokens.len() && self.tokens[i].kind == TokenKind::Newline {
+            i += 1;
+        }
+        // skip DocBody if present
+        if i < self.tokens.len() && let TokenKind::DocBody(_) = &self.tokens[i].kind {
+            i += 1;
+        }
+        // count trailing newlines
+        let mut n = 0;
+        while i < self.tokens.len() && self.tokens[i].kind == TokenKind::Newline {
+            n += 1;
+            i += 1;
+        }
+        n
     }
 
     fn declaration(&mut self) -> Option<Decl> {
@@ -129,7 +217,7 @@ impl Parser {
         if self.check(&TokenKind::Use) || self.check(&TokenKind::Import) {
             if doc.is_some() {
                 self.error_at_current(
-                    "doc comments can only be attached to fn, type, alias, opaque, struct, trait, or effect declarations",
+                    "doc blocks cannot be attached to use statements; place the doc block before a fn, type, struct, trait, or effect declaration",
                 );
             }
             if !annotations.is_empty() {
@@ -4803,6 +4891,28 @@ impl Parser {
         tok
     }
 
+    /// Consume `@nodoc` if it appears at the current position, returning it as an annotation.
+    /// All other `@` annotations are left unconsumed for `declaration()` to handle.
+    fn consume_nodoc_annotation(&mut self) -> Vec<Annotation> {
+        if !self.check(&TokenKind::At) {
+            return vec![];
+        }
+        // Peek at the identifier after `@` without consuming
+        let next_is_nodoc = self
+            .tokens
+            .get(self.pos + 1)
+            .map(|t| matches!(&t.kind, TokenKind::Ident(name) if name == "nodoc"))
+            .unwrap_or(false);
+        if !next_is_nodoc {
+            return vec![];
+        }
+        if let Some(ann) = self.parse_annotation() {
+            vec![ann]
+        } else {
+            vec![]
+        }
+    }
+
     fn skip_newlines(&mut self) {
         while self.check_newline() {
             self.pos += 1;
@@ -4826,6 +4936,37 @@ impl Parser {
         } else {
             None
         }
+    }
+
+    /// Like `consume_doc_comment_block` but returns the trailing newline count without
+    /// consuming the newlines, so the caller can decide whether this is a module doc
+    /// (≥2 newlines = blank line) or an item doc.
+    fn consume_doc_block_with_newline_count(&mut self) -> Option<(String, usize)> {
+        if self.peek_kind() != Some(&TokenKind::Doc) {
+            return None;
+        }
+        self.advance(); // consume `doc`
+        self.skip_newlines();
+        let content = if let Some(TokenKind::DocBody(s)) = self.peek_kind() {
+            let s = s.clone();
+            self.advance();
+            s
+        } else {
+            String::new()
+        };
+        let count = self.count_leading_newlines();
+        Some((content, count))
+    }
+
+    /// Count consecutive `Newline` tokens starting at the current position without consuming them.
+    fn count_leading_newlines(&self) -> usize {
+        let mut i = self.pos;
+        let mut n = 0;
+        while i < self.tokens.len() && self.tokens[i].kind == TokenKind::Newline {
+            n += 1;
+            i += 1;
+        }
+        n
     }
 
     /// Skip newlines only when the next non-newline token would continue the expression
