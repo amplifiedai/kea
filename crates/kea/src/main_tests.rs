@@ -472,6 +472,19 @@ fn run_algorithm_gallery_with_kea_test_runner() {
     );
 }
 
+// Regression: accessing .0 and .1 on the same tuple variable as function call
+// arguments previously triggered an AnonRecord constraint conflict when the
+// check_expr_bidir path was used for numeric field access.
+#[test]
+fn compile_tuple_field_access_as_function_args_typechecks() {
+    let source = "\
+fn pair() -> (Int, Int)\n  (40, 2)\n\nfn add(a: Int, b: Int) -> Int\n  a + b\n\nfn main() -> Int\n  let p = pair()\n  add(p.0, p.1)\n";
+    let source_path = write_temp_source(source, "kea-tuple-field-args", "kea");
+    let run = run_file(&source_path).expect("tuple field args should compile and run");
+    assert_eq!(run.exit_code, 42, "p.0 + p.1 should equal 42");
+    let _ = std::fs::remove_file(source_path);
+}
+
 #[test]
 fn compile_and_execute_main_exit_code() {
     let source_path = write_temp_source("fn main() -> Int\n  9\n", "kea-cli-exec", "kea");

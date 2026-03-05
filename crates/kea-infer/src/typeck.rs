@@ -14087,6 +14087,71 @@ fn check_expr_bidir(
                 return ascribed_ty;
             }
         }
+        // Numeric tuple index in checking position: infer the object type first,
+        // then use the Tuple fast path. Avoids creating AnonRecord constraints for
+        // numeric indices, which causes conflicts when the same variable has
+        // multiple indexed fields accessed on it (e.g., `f(pair.0)` + `g(pair.1)`).
+        (ExprKind::FieldAccess { expr: obj, field }, _) if field.node.parse::<usize>().is_ok() => {
+            let obj_ty = infer_expr_bidir(obj, env, unifier, records, traits, sum_types);
+            let resolved_obj_ty = unifier.substitution.apply(&obj_ty);
+            let index: usize = field.node.parse().unwrap();
+            if let Type::Tuple(items) = &resolved_obj_ty {
+                if let Some(item_ty) = items.get(index) {
+                    constrain_type_eq(
+                        unifier,
+                        expected,
+                        item_ty,
+                        &Provenance {
+                            span: expr.span,
+                            reason: Reason::RecordField {
+                                label: Label::new(field.node.clone()),
+                            },
+                        },
+                    );
+                    return expected.clone();
+                }
+                unifier.push_error(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!(
+                            "tuple index `{index}` is out of bounds for tuple of length {}",
+                            items.len()
+                        ),
+                    )
+                    .at(span_to_loc(field.span)),
+                );
+                return unifier.fresh_type();
+            }
+            // Object not yet resolved to a tuple — use a fresh type variable for
+            // the field, constrain against expected, and the object against an
+            // open record. Unification will resolve later.
+            let label = Label::new(field.node.clone());
+            let field_ty = unifier.fresh_type();
+            let rest = unifier.fresh_row_var();
+            let required_obj_ty =
+                Type::AnonRecord(RowType::open(vec![(label.clone(), field_ty.clone())], rest));
+            constrain_type_eq(
+                unifier,
+                &required_obj_ty,
+                &obj_ty,
+                &Provenance {
+                    span: obj.span,
+                    reason: Reason::RecordField {
+                        label: label.clone(),
+                    },
+                },
+            );
+            constrain_type_eq(
+                unifier,
+                expected,
+                &field_ty,
+                &Provenance {
+                    span: expr.span,
+                    reason: Reason::RecordField { label },
+                },
+            );
+            return expected.clone();
+        }
         (ExprKind::FieldAccess { expr: obj, field }, _)
             if field.node != "value"
                 && !matches!(
