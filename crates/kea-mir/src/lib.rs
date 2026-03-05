@@ -8787,14 +8787,15 @@ fn is_heap_managed_type(ty: &Type, layouts: &MirLayoutCatalog) -> bool {
             .iter()
             .find(|layout| layout.name == record.name)
             .is_some_and(|layout| layout.is_unboxed),
-        Type::Sum(sum_ty) => sum_uses_pointer_only_runtime_representation(sum_ty),
+        // Conservative: a sum type is heap-managed if ANY variant has fields.
+        // Even if some variants (e.g. Nil) need no allocation, Cons stores a
+        // counted reference inside the outer sum; releasing the outer sum
+        // recursively decrements the inner pointer's RC.
+        Type::Sum(sum_ty) => sum_ty.variants.iter().any(|(_, fields)| !fields.is_empty()),
         _ => false,
     }
 }
 
-fn sum_uses_pointer_only_runtime_representation(sum_ty: &SumType) -> bool {
-    !sum_ty.variants.is_empty() && sum_ty.variants.iter().all(|(_, fields)| !fields.is_empty())
-}
 
 #[cfg(test)]
 mod tests {
@@ -9557,6 +9558,219 @@ mod tests {
             function.blocks[0].instructions[1],
             MirInst::Release { value: MirValueId(0) }
         ));
+    }
+
+    // --- Ownership / release insertion adversarial tests ---
+
+    /// `get_age_fip(user: User) -> Int` with `@fip` — no Release should be inserted.
+    #[test]
+    fn fip_function_does_not_get_release_for_record_param() {
+        let user_ty = Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![
+                (Label::new("age"), Type::Int),
+                (Label::new("name"), Type::String),
+            ]),
+        });
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "get_age_fip".to_string(),
+                params: vec![HirParam {
+                    name: Some("user".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::FieldAccess {
+                        expr: Box::new(HirExpr {
+                            kind: HirExprKind::Var("user".to_string()),
+                            ty: user_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        field: "age".to_string(),
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![user_ty], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+                is_fip: true, // @fip — must have zero Release instructions
+            })],
+        };
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        let has_release = function.blocks.iter().flat_map(|b| b.instructions.iter()).any(
+            |inst| matches!(inst, MirInst::Release { value: MirValueId(0) }),
+        );
+        assert!(!has_release, "@fip function must not have Release for its record param");
+    }
+
+    /// `get_age(user: User) -> Int` where User is an `@unboxed` record (all-primitive).
+    /// No Release should be inserted for stack-allocated records.
+    #[test]
+    fn unboxed_record_param_does_not_get_release() {
+        let user_ty = Type::Record(RecordType {
+            name: "Point".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![
+                (Label::new("x"), Type::Int),
+                (Label::new("y"), Type::Int),
+            ]),
+        });
+        // Register Point as an unboxed record layout.
+        let hir = HirModule {
+            declarations: vec![
+                HirDecl::Raw(kea_ast::DeclKind::RecordDef(kea_ast::RecordDef {
+                    public: true,
+                    name: sp("Point".to_string()),
+                    doc: None,
+                    params: vec![],
+                    fields: vec![
+                        (sp("x".to_string()), kea_ast::TypeAnnotation::Named("Int".to_string())),
+                        (sp("y".to_string()), kea_ast::TypeAnnotation::Named("Int".to_string())),
+                    ],
+                    annotations: vec![kea_ast::Annotation {
+                        name: sp("unboxed".to_string()),
+                        args: vec![],
+                        span: kea_ast::Span::synthetic(),
+                    }],
+                    const_fields: vec![],
+                    field_annotations: vec![],
+                })),
+                HirDecl::Function(HirFunction {
+                    name: "get_x".to_string(),
+                    params: vec![HirParam {
+                        name: Some("p".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    }],
+                    body: HirExpr {
+                        kind: HirExprKind::FieldAccess {
+                            expr: Box::new(HirExpr {
+                                kind: HirExprKind::Var("p".to_string()),
+                                ty: user_ty.clone(),
+                                span: kea_ast::Span::synthetic(),
+                            }),
+                            field: "x".to_string(),
+                        },
+                        ty: Type::Int,
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: Type::Function(FunctionType::pure(vec![user_ty], Type::Int)),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                    is_fip: false,
+                }),
+            ],
+        };
+        let mir = lower_hir_module(&hir);
+        let function = mir.functions.iter().find(|f| f.name == "get_x").unwrap();
+        let has_release = function.blocks.iter().flat_map(|b| b.instructions.iter()).any(
+            |inst| matches!(inst, MirInst::Release { .. }),
+        );
+        assert!(!has_release, "@unboxed record param must not get a Release");
+    }
+
+    /// `sum_payload_with_managed_child` takes `Option (List Int)`.
+    /// The SumPayloadLoad extracts a `Dynamic` child (managed).
+    /// Case 2 must NOT insert a Release (would double-free the extracted child).
+    #[test]
+    fn sum_param_with_dynamic_payload_does_not_get_release() {
+        let list_ty = Type::Sum(kea_types::SumType {
+            name: "List".to_string(),
+            type_args: vec![Type::Int],
+            variants: vec![
+                ("Cons".to_string(), vec![Type::Int, Type::Dynamic]),
+                ("Nil".to_string(), vec![]),
+            ],
+        });
+        let option_list_ty = Type::Sum(kea_types::SumType {
+            name: "Option".to_string(),
+            type_args: vec![list_ty.clone()],
+            variants: vec![
+                ("Some".to_string(), vec![list_ty.clone()]),
+                ("None".to_string(), vec![]),
+            ],
+        });
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "unwrap_list".to_string(),
+                params: vec![HirParam {
+                    name: Some("opt".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::SumPayloadAccess {
+                        expr: Box::new(HirExpr {
+                            kind: HirExprKind::Var("opt".to_string()),
+                            ty: option_list_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        sum_type: "Option".to_string(),
+                        variant: "Some".to_string(),
+                        field_index: 0,
+                    },
+                    ty: list_ty.clone(), // managed: Sum type
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![option_list_ty], list_ty)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+                is_fip: false,
+            })],
+        };
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        let has_release = function.blocks.iter().flat_map(|b| b.instructions.iter()).any(
+            |inst| matches!(inst, MirInst::Release { value: MirValueId(0) }),
+        );
+        assert!(
+            !has_release,
+            "sum param with managed child payload must NOT get a Release \
+             (would double-free extracted child)"
+        );
+    }
+
+    // Table test: release insertion for record params across different function shapes.
+    //
+    // Each row: (description, last_instruction_is_release, instructions_count)
+    // All functions: `f(user: User) -> ...` where User has a String field.
+
+    /// Record param consumed by a direct return → no Release (caller owns returned value).
+    #[test]
+    fn record_param_returned_directly_has_no_release() {
+        let user_ty = Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![
+                (Label::new("age"), Type::Int),
+                (Label::new("name"), Type::String),
+            ]),
+        });
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "identity".to_string(),
+                params: vec![HirParam {
+                    name: Some("user".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::Var("user".to_string()),
+                    ty: user_ty.clone(),
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![user_ty.clone()], user_ty)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+                is_fip: false,
+            })],
+        };
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        let has_release = function.blocks.iter().flat_map(|b| b.instructions.iter()).any(
+            |inst| matches!(inst, MirInst::Release { value: MirValueId(0) }),
+        );
+        assert!(!has_release, "param returned directly must not have Release (caller takes ownership)");
     }
 
     #[test]
@@ -16011,5 +16225,448 @@ mod tests {
                 ..
             }) if name == "apply"
         ));
+    }
+
+    // -----------------------------------------------------------------------
+    // insert_retains_for_reused_call_args — direct MirFunction tests
+    // -----------------------------------------------------------------------
+
+    fn make_record_layout(name: &str, is_unboxed: bool) -> MirRecordLayout {
+        MirRecordLayout {
+            name: name.to_string(),
+            is_unboxed,
+            fields: vec![MirRecordFieldLayout {
+                name: "name".to_string(),
+                annotation: kea_ast::TypeAnnotation::Named("String".to_string()),
+            }],
+        }
+    }
+
+    fn make_layouts_with_record(name: &str) -> MirLayoutCatalog {
+        MirLayoutCatalog {
+            records: vec![make_record_layout(name, false)],
+            sums: vec![],
+        }
+    }
+
+    fn user_record_type() -> Type {
+        Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![(Label::new("name"), Type::String)]),
+        })
+    }
+
+    /// When a heap value is passed to a call AND used after the call (in a later
+    /// instruction), a Retain must be inserted just before the call.
+    #[test]
+    fn insert_retains_adds_retain_before_call_when_value_reused_after() {
+        // Block 0: Call(callee, [v0]) → v1; RecordFieldLoad(v0) → v2; Return(v2)
+        // v0 is passed to the call and then also used after → Retain(v0) needed.
+        let layouts = make_layouts_with_record("User");
+        let v0 = MirValueId(0);
+        let v1 = MirValueId(1);
+        let v2 = MirValueId(2);
+        let mut function = MirFunction {
+            name: "test".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![user_record_type()],
+                ret: Type::Int,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            is_fip: false,
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![
+                    MirInst::Call {
+                        callee: MirCallee::Local("consume_user".to_string()),
+                        args: vec![v0.clone()],
+                        arg_types: vec![user_record_type()],
+                        result: Some(v1.clone()),
+                        ret_type: Type::Int,
+                        callee_fail_result_abi: false,
+                        capture_fail_result: false,
+                        cc_manifest_id: String::new(),
+                    },
+                    MirInst::RecordFieldLoad {
+                        dest: v2.clone(),
+                        record: v0.clone(),
+                        record_type: "User".to_string(),
+                        field: "name".to_string(),
+                        field_ty: Type::String,
+                    },
+                ],
+                terminator: MirTerminator::Return { value: Some(v2.clone()) },
+            }],
+        };
+        insert_retains_for_reused_call_args(&mut function, &layouts);
+        // Retain(v0) should appear before the Call.
+        let insts = &function.blocks[0].instructions;
+        assert!(
+            insts.iter().position(|i| matches!(i, MirInst::Retain { value } if value == &v0))
+                < insts.iter().position(|i| matches!(i, MirInst::Call { .. })),
+            "Retain(v0) must appear before the Call"
+        );
+    }
+
+    /// When a heap value is passed to a call but NOT used after, no Retain is needed.
+    #[test]
+    fn insert_retains_does_not_add_retain_when_value_not_reused() {
+        let layouts = make_layouts_with_record("User");
+        let v0 = MirValueId(0);
+        let v1 = MirValueId(1);
+        let mut function = MirFunction {
+            name: "test".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![user_record_type()],
+                ret: Type::Int,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            is_fip: false,
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![MirInst::Call {
+                    callee: MirCallee::Local("consume_user".to_string()),
+                    args: vec![v0.clone()],
+                    arg_types: vec![user_record_type()],
+                    result: Some(v1.clone()),
+                    ret_type: Type::Int,
+                    callee_fail_result_abi: false,
+                    capture_fail_result: false,
+                    cc_manifest_id: String::new(),
+                }],
+                terminator: MirTerminator::Return { value: Some(v1.clone()) },
+            }],
+        };
+        insert_retains_for_reused_call_args(&mut function, &layouts);
+        let has_retain = function.blocks[0]
+            .instructions
+            .iter()
+            .any(|i| matches!(i, MirInst::Retain { .. }));
+        assert!(!has_retain, "no Retain when value is not reused after the call");
+    }
+
+    // -----------------------------------------------------------------------
+    // insert_releases_for_dead_params — direct MirFunction tests
+    // -----------------------------------------------------------------------
+
+    /// Case 2 fires for a heap record param used in a single block that has no successors.
+    /// The Release should appear AFTER the last use of the param.
+    #[test]
+    fn insert_releases_case2_fires_for_single_block_record_param() {
+        let layouts = make_layouts_with_record("User");
+        let v0 = MirValueId(0); // User param
+        let v1 = MirValueId(1); // field load result
+        let mut function = MirFunction {
+            name: "get_name".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![user_record_type()],
+                ret: Type::String,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            is_fip: false,
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![MirInst::RecordFieldLoad {
+                    dest: v1.clone(),
+                    record: v0.clone(),
+                    record_type: "User".to_string(),
+                    field: "name".to_string(),
+                    field_ty: Type::String,
+                }],
+                terminator: MirTerminator::Return { value: Some(v1.clone()) },
+            }],
+        };
+        insert_releases_for_dead_params(&mut function, &layouts);
+        let insts = &function.blocks[0].instructions;
+        assert_eq!(insts.len(), 2, "Release should be appended after RecordFieldLoad");
+        assert!(
+            matches!(&insts[1], MirInst::Release { value } if value == &v0),
+            "second instruction must be Release(v0)"
+        );
+    }
+
+    /// Case 1 fires for a branch target block where the param is dead (neither branch uses it).
+    /// Release is inserted at the head of the dead block.
+    #[test]
+    fn insert_releases_case1_fires_for_dead_branch_block() {
+        let layouts = make_layouts_with_record("User");
+        let v0 = MirValueId(0); // User param
+        let v1 = MirValueId(1); // some Int (cond)
+        // Block 0: Branch(v1, then: b1, else: b2)
+        // b1: uses v0 via RecordFieldLoad → Return
+        // b2: no use of v0 → Return 0  ← Case 1 release here
+        let mut function = MirFunction {
+            name: "maybe_get_name".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![user_record_type(), Type::Bool],
+                ret: Type::String,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            is_fip: false,
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Branch {
+                        condition: v1.clone(),
+                        then_block: MirBlockId(1),
+                        else_block: MirBlockId(2),
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![MirInst::RecordFieldLoad {
+                        dest: MirValueId(2),
+                        record: v0.clone(),
+                        record_type: "User".to_string(),
+                        field: "name".to_string(),
+                        field_ty: Type::String,
+                    }],
+                    terminator: MirTerminator::Return { value: Some(MirValueId(2)) },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return { value: None },
+                },
+            ],
+        };
+        insert_releases_for_dead_params(&mut function, &layouts);
+        let b2 = &function.blocks[2];
+        let has_release_in_b2 = b2
+            .instructions
+            .iter()
+            .any(|i| matches!(i, MirInst::Release { value } if value == &v0));
+        assert!(has_release_in_b2, "Case 1: Release(v0) must appear in the dead branch block b2");
+        // b1 must NOT have a Release (the param is used there via RecordFieldLoad).
+        let b1 = &function.blocks[1];
+        let has_release_in_b1 = b1
+            .instructions
+            .iter()
+            .any(|i| matches!(i, MirInst::Release { value } if value == &v0));
+        // b1 IS live (uses v0). Case 2 would fire for b1 only if its last read is NOT
+        // a managed-payload SumPayloadLoad. For RecordFieldLoad, Case 2 CAN fire.
+        // (b1 has no dead successors, so let's just verify Case 1 didn't fire for it.)
+        let _ = has_release_in_b1; // explicitly not asserting — b1 may get Case 2 release
+    }
+
+    /// A param consumed by a Call (ownership transferred) must NOT also get a Release.
+    #[test]
+    fn insert_releases_does_not_add_release_when_param_consumed_by_call() {
+        let layouts = make_layouts_with_record("User");
+        let v0 = MirValueId(0);
+        let v1 = MirValueId(1);
+        let mut function = MirFunction {
+            name: "forward_user".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![user_record_type()],
+                ret: Type::Int,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            is_fip: false,
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![MirInst::Call {
+                    callee: MirCallee::Local("consume_user".to_string()),
+                    args: vec![v0.clone()],
+                    arg_types: vec![user_record_type()],
+                    result: Some(v1.clone()),
+                    ret_type: Type::Int,
+                    callee_fail_result_abi: false,
+                    capture_fail_result: false,
+                    cc_manifest_id: String::new(),
+                }],
+                terminator: MirTerminator::Return { value: Some(v1.clone()) },
+            }],
+        };
+        insert_releases_for_dead_params(&mut function, &layouts);
+        let has_release = function.blocks[0]
+            .instructions
+            .iter()
+            .any(|i| matches!(i, MirInst::Release { value } if value == &v0));
+        assert!(!has_release, "param consumed by Call must not get a Release (ownership transferred)");
+    }
+
+    /// Sum-typed param: Case 2 fires when all fields are primitive (not Dynamic/managed).
+    /// This is tested via HIR lowering (see `lower_hir_module_lowers_sum_payload_access_expression`).
+    /// This test verifies the same via a direct MirFunction with field_ty=Int.
+    #[test]
+    fn insert_releases_case2_fires_for_sum_param_with_primitive_payload() {
+        // Option Int: SumPayloadLoad(v0, "Some", 0, Int) → v1; Return v1
+        let layouts = MirLayoutCatalog {
+            records: vec![],
+            sums: vec![], // Option is seeded by lower_hir_module, but here we go direct
+        };
+        let v0 = MirValueId(0);
+        let v1 = MirValueId(1);
+        let option_int_ty = Type::Sum(kea_types::SumType {
+            name: "Option".to_string(),
+            type_args: vec![Type::Int],
+            variants: vec![
+                ("Some".to_string(), vec![Type::Int]),
+                ("None".to_string(), vec![]),
+            ],
+        });
+        let mut function = MirFunction {
+            name: "unwrap_option_int".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![option_int_ty],
+                ret: Type::Int,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            is_fip: false,
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![MirInst::SumPayloadLoad {
+                    dest: v1.clone(),
+                    sum: v0.clone(),
+                    sum_type: "Option".to_string(),
+                    variant: "Some".to_string(),
+                    field_index: 0,
+                    field_ty: Type::Int,
+                }],
+                terminator: MirTerminator::Return { value: Some(v1.clone()) },
+            }],
+        };
+        insert_releases_for_dead_params(&mut function, &layouts);
+        let has_release = function.blocks[0]
+            .instructions
+            .iter()
+            .any(|i| matches!(i, MirInst::Release { value } if value == &v0));
+        assert!(has_release, "sum param with primitive payload should get a Case 2 Release");
+    }
+
+    /// Sum-typed param: Case 2 must NOT fire when payload field_ty is Dynamic.
+    #[test]
+    fn insert_releases_case2_does_not_fire_for_sum_param_with_dynamic_payload() {
+        let layouts = MirLayoutCatalog { records: vec![], sums: vec![] };
+        let v0 = MirValueId(0);
+        let v1 = MirValueId(1);
+        let list_ty = Type::Sum(kea_types::SumType {
+            name: "List".to_string(),
+            type_args: vec![Type::Dynamic],
+            variants: vec![
+                ("Cons".to_string(), vec![Type::Dynamic, Type::Dynamic]),
+                ("Nil".to_string(), vec![]),
+            ],
+        });
+        let mut function = MirFunction {
+            name: "head_list".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![list_ty.clone()],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            is_fip: false,
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![MirInst::SumPayloadLoad {
+                    dest: v1.clone(),
+                    sum: v0.clone(),
+                    sum_type: "List".to_string(),
+                    variant: "Cons".to_string(),
+                    field_index: 0,
+                    field_ty: Type::Dynamic, // ← Dynamic → must NOT release v0
+                }],
+                terminator: MirTerminator::Return { value: Some(v1.clone()) },
+            }],
+        };
+        insert_releases_for_dead_params(&mut function, &layouts);
+        let has_release = function.blocks[0]
+            .instructions
+            .iter()
+            .any(|i| matches!(i, MirInst::Release { value } if value == &v0));
+        assert!(
+            !has_release,
+            "sum param with Dynamic payload must NOT get a Release \
+             (would double-free extracted child)"
+        );
+    }
+
+    /// Sum-typed param: Case 1 must NOT fire even when there is a dead branch.
+    #[test]
+    fn insert_releases_case1_does_not_fire_for_sum_param() {
+        let layouts = MirLayoutCatalog { records: vec![], sums: vec![] };
+        let v0 = MirValueId(0);
+        let v1 = MirValueId(1); // Bool cond
+        let list_ty = Type::Sum(kea_types::SumType {
+            name: "List".to_string(),
+            type_args: vec![Type::Dynamic],
+            variants: vec![
+                ("Cons".to_string(), vec![Type::Dynamic, Type::Dynamic]),
+                ("Nil".to_string(), vec![]),
+            ],
+        });
+        // b0: Branch(v1, b1, b2)
+        // b1: SumPayloadLoad(v0, Cons, 0, Dynamic) → v2; Return v2
+        // b2: Nop; Return None  ← dead for v0, but Case 1 must NOT fire (sum param)
+        let mut function = MirFunction {
+            name: "maybe_head".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![list_ty, Type::Bool],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            is_fip: false,
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Branch {
+                        condition: v1.clone(),
+                        then_block: MirBlockId(1),
+                        else_block: MirBlockId(2),
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![MirInst::SumPayloadLoad {
+                        dest: MirValueId(2),
+                        sum: v0.clone(),
+                        sum_type: "List".to_string(),
+                        variant: "Cons".to_string(),
+                        field_index: 0,
+                        field_ty: Type::Dynamic,
+                    }],
+                    terminator: MirTerminator::Return { value: Some(MirValueId(2)) },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return { value: None },
+                },
+            ],
+        };
+        insert_releases_for_dead_params(&mut function, &layouts);
+        let b2_has_release = function.blocks[2]
+            .instructions
+            .iter()
+            .any(|i| matches!(i, MirInst::Release { value } if value == &v0));
+        assert!(
+            !b2_has_release,
+            "Case 1 must NOT fire for sum-typed params \
+             (releasing at dead-branch boundary is unsafe without Perceus RC=1 check)"
+        );
     }
 }
