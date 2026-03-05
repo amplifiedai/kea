@@ -233,10 +233,11 @@ impl<'a> MonoPass<'a> {
                         continue;
                     }
                     let name = f.name.clone();
+                    let param_bindings = param_names(&f.params);
                     let rewritten = HirFunction {
                         name: name.clone(),
                         params: f.params.clone(),
-                        body: self.rewrite_calls(&f.body, 0, &name),
+                        body: self.rewrite_calls(&f.body, 0, &name, &param_bindings),
                         ty: f.ty.clone(),
                         effects: f.effects.clone(),
                         span: f.span,
@@ -258,7 +259,8 @@ impl<'a> MonoPass<'a> {
             // Pass orig_name as the caller context so same-module preference
             // applies even within specializations (e.g., List.zip__0 should
             // still prefer List.* for its recursive calls).
-            specialized.body = self.rewrite_calls(&specialized.body, depth, &orig_name);
+            let spec_bindings = param_names(&specialized.params);
+            specialized.body = self.rewrite_calls(&specialized.body, depth, &orig_name, &spec_bindings);
             self.specialized.push(specialized);
         }
 
@@ -274,12 +276,26 @@ impl<'a> MonoPass<'a> {
     /// `current_fn` is the fully-qualified name of the function whose body is
     /// being traversed.  It is used to extract the caller's module prefix for
     /// same-module name resolution (see `resolve_poly_name` step 4).
-    fn rewrite_calls(&mut self, expr: &HirExpr, depth: usize, current_fn: &str) -> HirExpr {
+    ///
+    /// `local_bindings` tracks names that are locally bound (function params,
+    /// `let` binders, lambda params, case-pattern binders) at the current
+    /// position in the expression tree.  A bare call whose name is locally
+    /// bound must not be renamed to a qualified module path — that local
+    /// binding shadows any global function with the same short name.
+    fn rewrite_calls(
+        &mut self,
+        expr: &HirExpr,
+        depth: usize,
+        current_fn: &str,
+        local_bindings: &BTreeSet<String>,
+    ) -> HirExpr {
         let caller_module = current_fn.rsplit_once('.').map(|(module, _)| module);
         let kind = match &expr.kind {
             HirExprKind::Call { func, args } => {
-                let rewritten_args: Vec<HirExpr> =
-                    args.iter().map(|a| self.rewrite_calls(a, depth, current_fn)).collect();
+                let rewritten_args: Vec<HirExpr> = args
+                    .iter()
+                    .map(|a| self.rewrite_calls(a, depth, current_fn, local_bindings))
+                    .collect();
                 let callee_name = match &func.kind {
                     HirExprKind::Var(name) => Some(name.as_str()),
                     _ => None,
@@ -288,9 +304,8 @@ impl<'a> MonoPass<'a> {
                 // When multiple modules define the same short name (e.g. "zip"
                 // in both List and Option), same-module preference picks the
                 // candidate from the caller's module when types are ambiguous.
-                let resolved_name = callee_name.and_then(|name| {
-                    self.resolve_poly_name(name, &rewritten_args, &expr.ty, caller_module)
-                });
+                let resolved_name = callee_name
+                    .and_then(|name| self.resolve_poly_name(name, &rewritten_args, &expr.ty, caller_module));
                 if let Some(ref resolved) = resolved_name
                     && let Some(poly_fn) = self.poly_fns.get(resolved.as_str())
                 {
@@ -305,8 +320,16 @@ impl<'a> MonoPass<'a> {
                         // a concrete type.
                         extract_bindings(&ft.ret, &expr.ty, &mut bindings);
 
+                        // When the bare callee name is locally bound (lambda
+                        // param, let-binder, case-pattern binder), the local
+                        // value shadows the global function.  Skip renaming
+                        // and specialization — just recurse on the original
+                        // callee expression.
+                        let bare_name_is_local =
+                            callee_name.is_some_and(|n| local_bindings.contains(n));
                         if !bindings.is_empty()
                             && bindings.values().all(|t| free_type_vars(t).is_empty())
+                            && !bare_name_is_local
                         {
                             let mangled = self.get_or_enqueue(resolved, &bindings, depth);
                             // Build the concrete function type for the rewritten callee.
@@ -330,16 +353,20 @@ impl<'a> MonoPass<'a> {
                             // so that bare-name collisions (e.g. "zip" resolved
                             // to "List.zip") do not dispatch to the wrong
                             // module's implementation at JIT link time.
+                            //
+                            // Exception: handled above — bare_name_is_local
+                            // prevents renaming when the local value shadows
+                            // the global function.
                             let callee_is_bare =
                                 callee_name.is_some_and(|n| n != resolved.as_str());
-                            let new_func = if callee_is_bare {
+                            let new_func = if callee_is_bare && !bare_name_is_local {
                                 Box::new(HirExpr {
                                     kind: HirExprKind::Var(resolved.clone()),
                                     ty: func.ty.clone(),
                                     span: func.span,
                                 })
                             } else {
-                                Box::new(self.rewrite_calls(func, depth, current_fn))
+                                Box::new(self.rewrite_calls(func, depth, current_fn, local_bindings))
                             };
                             HirExprKind::Call {
                                 func: new_func,
@@ -348,13 +375,13 @@ impl<'a> MonoPass<'a> {
                         }
                     } else {
                         HirExprKind::Call {
-                            func: Box::new(self.rewrite_calls(func, depth, current_fn)),
+                            func: Box::new(self.rewrite_calls(func, depth, current_fn, local_bindings)),
                             args: rewritten_args,
                         }
                     }
                 } else {
                     HirExprKind::Call {
-                        func: Box::new(self.rewrite_calls(func, depth, current_fn)),
+                        func: Box::new(self.rewrite_calls(func, depth, current_fn, local_bindings)),
                         args: rewritten_args,
                     }
                 }
@@ -370,7 +397,7 @@ impl<'a> MonoPass<'a> {
                 record_type: record_type.clone(),
                 fields: fields
                     .iter()
-                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth, current_fn)))
+                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth, current_fn, local_bindings)))
                     .collect(),
             },
 
@@ -380,10 +407,10 @@ impl<'a> MonoPass<'a> {
                 fields,
             } => HirExprKind::RecordUpdate {
                 record_type: record_type.clone(),
-                base: Box::new(self.rewrite_calls(base, depth, current_fn)),
+                base: Box::new(self.rewrite_calls(base, depth, current_fn, local_bindings)),
                 fields: fields
                     .iter()
-                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth, current_fn)))
+                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth, current_fn, local_bindings)))
                     .collect(),
             },
 
@@ -398,7 +425,7 @@ impl<'a> MonoPass<'a> {
                 tag: *tag,
                 fields: fields
                     .iter()
-                    .map(|e| self.rewrite_calls(e, depth, current_fn))
+                    .map(|e| self.rewrite_calls(e, depth, current_fn, local_bindings))
                     .collect(),
             },
 
@@ -408,35 +435,44 @@ impl<'a> MonoPass<'a> {
                 variant,
                 field_index,
             } => HirExprKind::SumPayloadAccess {
-                expr: Box::new(self.rewrite_calls(inner, depth, current_fn)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_bindings)),
                 sum_type: sum_type.clone(),
                 variant: variant.clone(),
                 field_index: *field_index,
             },
 
             HirExprKind::FieldAccess { expr: inner, field } => HirExprKind::FieldAccess {
-                expr: Box::new(self.rewrite_calls(inner, depth, current_fn)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_bindings)),
                 field: field.clone(),
             },
 
             HirExprKind::Binary { op, left, right } => HirExprKind::Binary {
                 op: *op,
-                left: Box::new(self.rewrite_calls(left, depth, current_fn)),
-                right: Box::new(self.rewrite_calls(right, depth, current_fn)),
+                left: Box::new(self.rewrite_calls(left, depth, current_fn, local_bindings)),
+                right: Box::new(self.rewrite_calls(right, depth, current_fn, local_bindings)),
             },
 
             HirExprKind::Unary { op, operand } => HirExprKind::Unary {
                 op: *op,
-                operand: Box::new(self.rewrite_calls(operand, depth, current_fn)),
+                operand: Box::new(self.rewrite_calls(operand, depth, current_fn, local_bindings)),
             },
 
-            HirExprKind::Lambda { params, body } => HirExprKind::Lambda {
-                params: params.clone(),
-                body: Box::new(self.rewrite_calls(body, depth, current_fn)),
-            },
+            HirExprKind::Lambda { params, body } => {
+                // Lambda params shadow any outer bindings with the same name.
+                let mut lambda_bindings = local_bindings.clone();
+                for p in params {
+                    if let Some(name) = &p.name {
+                        lambda_bindings.insert(name.clone());
+                    }
+                }
+                HirExprKind::Lambda {
+                    params: params.clone(),
+                    body: Box::new(self.rewrite_calls(body, depth, current_fn, &lambda_bindings)),
+                }
+            }
 
             HirExprKind::Catch { expr: inner } => HirExprKind::Catch {
-                expr: Box::new(self.rewrite_calls(inner, depth, current_fn)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_bindings)),
             },
 
             HirExprKind::Handle {
@@ -444,31 +480,38 @@ impl<'a> MonoPass<'a> {
                 clauses,
                 then_clause,
             } => HirExprKind::Handle {
-                expr: Box::new(self.rewrite_calls(inner, depth, current_fn)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_bindings)),
                 clauses: clauses
                     .iter()
-                    .map(|c| HirHandleClause {
-                        effect: c.effect.clone(),
-                        operation: c.operation.clone(),
-                        args: c.args.clone(),
-                        arg_types: c.arg_types.clone(),
-                        return_type: c.return_type.clone(),
-                        body: self.rewrite_calls(&c.body, depth, current_fn),
-                        span: c.span,
+                    .map(|c| {
+                        // Handler clause args are locally bound within the clause body.
+                        let mut clause_bindings = local_bindings.clone();
+                        for arg in &c.args {
+                            collect_pattern_names(arg, &mut clause_bindings);
+                        }
+                        HirHandleClause {
+                            effect: c.effect.clone(),
+                            operation: c.operation.clone(),
+                            args: c.args.clone(),
+                            arg_types: c.arg_types.clone(),
+                            return_type: c.return_type.clone(),
+                            body: self.rewrite_calls(&c.body, depth, current_fn, &clause_bindings),
+                            span: c.span,
+                        }
                     })
                     .collect(),
                 then_clause: then_clause
                     .as_ref()
-                    .map(|e| Box::new(self.rewrite_calls(e, depth, current_fn))),
+                    .map(|e| Box::new(self.rewrite_calls(e, depth, current_fn, local_bindings))),
             },
 
             HirExprKind::Resume { value } => HirExprKind::Resume {
-                value: Box::new(self.rewrite_calls(value, depth, current_fn)),
+                value: Box::new(self.rewrite_calls(value, depth, current_fn, local_bindings)),
             },
 
             HirExprKind::Let { pattern, value } => HirExprKind::Let {
                 pattern: pattern.clone(),
-                value: Box::new(self.rewrite_calls(value, depth, current_fn)),
+                value: Box::new(self.rewrite_calls(value, depth, current_fn, local_bindings)),
             },
 
             HirExprKind::If {
@@ -476,24 +519,35 @@ impl<'a> MonoPass<'a> {
                 then_branch,
                 else_branch,
             } => HirExprKind::If {
-                condition: Box::new(self.rewrite_calls(condition, depth, current_fn)),
-                then_branch: Box::new(self.rewrite_calls(then_branch, depth, current_fn)),
+                condition: Box::new(self.rewrite_calls(condition, depth, current_fn, local_bindings)),
+                then_branch: Box::new(self.rewrite_calls(then_branch, depth, current_fn, local_bindings)),
                 else_branch: else_branch
                     .as_ref()
-                    .map(|e| Box::new(self.rewrite_calls(e, depth, current_fn))),
+                    .map(|e| Box::new(self.rewrite_calls(e, depth, current_fn, local_bindings))),
             },
 
-            HirExprKind::Block(exprs) => HirExprKind::Block(
-                exprs
-                    .iter()
-                    .map(|e| self.rewrite_calls(e, depth, current_fn))
-                    .collect(),
-            ),
+            // In a Block, Let binders from earlier items are in scope for
+            // later items.  Walk items in order, extending local_bindings
+            // after each Let.
+            HirExprKind::Block(exprs) => {
+                let mut block_bindings = local_bindings.clone();
+                let mut new_exprs = Vec::with_capacity(exprs.len());
+                for e in exprs {
+                    let rewritten = self.rewrite_calls(e, depth, current_fn, &block_bindings);
+                    // After rewriting this item, add any names it binds so
+                    // that subsequent items in the block see them as local.
+                    if let HirExprKind::Let { pattern, .. } = &e.kind {
+                        collect_pattern_names(pattern, &mut block_bindings);
+                    }
+                    new_exprs.push(rewritten);
+                }
+                HirExprKind::Block(new_exprs)
+            }
 
             HirExprKind::Tuple(exprs) => HirExprKind::Tuple(
                 exprs
                     .iter()
-                    .map(|e| self.rewrite_calls(e, depth, current_fn))
+                    .map(|e| self.rewrite_calls(e, depth, current_fn, local_bindings))
                     .collect(),
             ),
 
@@ -542,6 +596,25 @@ impl<'a> MonoPass<'a> {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Collect all variable names bound by a pattern into `out`.
+fn collect_pattern_names(pattern: &crate::HirPattern, out: &mut BTreeSet<String>) {
+    match pattern {
+        crate::HirPattern::Var(name) => {
+            out.insert(name.clone());
+        }
+        crate::HirPattern::Raw(pat) => {
+            let mut names = std::collections::HashSet::new();
+            kea_ast::collect_pattern_bindings_pub(pat, &mut names);
+            out.extend(names);
+        }
+    }
+}
+
+/// Extract parameter names from a slice of HIR function parameters.
+fn param_names(params: &[crate::HirParam]) -> BTreeSet<String> {
+    params.iter().filter_map(|p| p.name.clone()).collect()
+}
 
 /// Returns true when a function's type is the all-Dynamic signature that HIR
 /// lowering produces for bare overlay functions whose env binding was lost

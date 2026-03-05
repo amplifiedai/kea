@@ -6095,8 +6095,8 @@ fn compile_rejects_fip_unique_handle_clause_shadowed_forwarder_name_call_escape(
         "expected call-boundary escape diagnostic, got: {err}"
     );
     assert!(
-        err.contains("forward_once$m") && err.contains("$Dyn"),
-        "expected mangled local callable site in diagnostic, got: {err}"
+        err.contains("- forward_once"),
+        "expected local callable site in diagnostic, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
@@ -6147,8 +6147,8 @@ fn compile_rejects_fip_unique_then_lambda_shadowed_forwarder_name_call_escape() 
         "expected call-boundary escape diagnostic, got: {err}"
     );
     assert!(
-        err.contains("forward_once$m") && err.contains("$Dyn"),
-        "expected mangled then-lambda local callable site in diagnostic, got: {err}"
+        err.contains("- forward_once"),
+        "expected local callable site in diagnostic, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
@@ -6199,8 +6199,8 @@ fn compile_rejects_fip_unique_with_binding_shadowed_forwarder_name_call_escape()
         "expected two unsupported boundaries (`with_forwarder` and shadowed local callable), got: {err}"
     );
     assert!(
-        err.contains("forward_once$m") && err.contains("$Dyn"),
-        "expected mangled local callable site from with-binding shadow, got: {err}"
+        err.contains("- forward_once"),
+        "expected local callable site from with-binding shadow, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
