@@ -249,31 +249,8 @@ pub enum ExprKind {
     /// Map literal: `%{"key" => value}`.
     MapLiteral(Vec<(Expr, Expr)>),
 
-    /// Spawn an actor: `spawn <expr>` or `spawn <expr> with { ... }`.
-    /// The value expression must be Sendable.
-    Spawn {
-        value: Box<Expr>,
-        config: Option<Box<SpawnConfig>>,
-    },
-
-    /// Await a spawned task.
-    /// `safe: false` = `await task` (extract or propagate crash),
-    /// `safe: true` = `await? task` (Result-returning).
-    Await { expr: Box<Expr>, safe: bool },
-
-    /// Stream generator block: `stream { ... }` or `stream { ... } with { buffer: n }`.
-    /// The body may contain `yield` and `yield_from` expressions.
-    StreamBlock {
-        body: Box<Expr>,
-        /// Internal channel buffer size. Defaults to 32.
-        buffer_size: usize,
-    },
-
-    /// Yield a value from inside a stream block: `yield expr`.
+    /// Yield a value (reserved for 0g generator/effect syntax — surface form TBD).
     Yield { value: Box<Expr> },
-
-    /// Forward values from another stream: `yield_from expr`.
-    YieldFrom { source: Box<Expr> },
 
     /// Send to an actor.
     ///
@@ -911,14 +888,6 @@ pub struct ImplBlock {
     pub where_clause: Vec<WhereItem>,
 }
 
-/// Spawn configuration: `spawn <expr> with { mailbox_size: 100, ... }`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SpawnConfig {
-    pub mailbox_size: Option<Expr>,
-    pub supervision: Option<Expr>,
-    pub max_restarts: Option<Expr>,
-    pub call_timeout: Option<Expr>,
-}
 
 /// A trait bound: `T: Additive`.
 #[derive(Debug, Clone, PartialEq)]
@@ -1145,20 +1114,8 @@ fn collect_free_vars(
                 collect_free_vars(&v.node, free, bound);
             }
         }
-        ExprKind::Spawn { value, .. } => {
-            collect_free_vars(&value.node, free, bound);
-        }
-        ExprKind::Await { expr, .. } => {
-            collect_free_vars(&expr.node, free, bound);
-        }
-        ExprKind::StreamBlock { body, .. } => {
-            collect_free_vars(&body.node, free, bound);
-        }
         ExprKind::Yield { value } => {
             collect_free_vars(&value.node, free, bound);
-        }
-        ExprKind::YieldFrom { source } => {
-            collect_free_vars(&source.node, free, bound);
         }
         ExprKind::ActorSend { actor, args, .. } | ExprKind::ActorCall { actor, args, .. } => {
             collect_free_vars(&actor.node, free, bound);

@@ -24,7 +24,7 @@ struct ParseCase {
 
 #[test]
 fn lexer_layout_snapshot_corpus() {
-    let cases: [(&str, &str); 17] = [
+    let cases: [(&str, &str); 15] = [
         ("fn_decl", "fn add(x, y) -> Int\n  x + y"),
         ("if_else_block", "if ready\n  start()\nelse\n  wait()"),
         ("case_block", "case x\n  Some(v) -> v\n  _ -> 0"),
@@ -36,14 +36,6 @@ fn lexer_layout_snapshot_corpus() {
             "Int as Show\n  fn show(self) -> String\n    \"int\"",
         ),
         ("for_expr", "for x in xs\n  x + 1"),
-        (
-            "spawn_with_config",
-            "spawn Counter { count: 0 } with\n  mailbox_size: 100",
-        ),
-        (
-            "stream_with_config",
-            "stream\n  yield 1\nwith\n  buffer: 128",
-        ),
         ("import_named", "import Kea.Core.{read_csv, write_csv}"),
         (
             "type_deriving",
@@ -69,7 +61,7 @@ fn lexer_layout_snapshot_corpus() {
 
 #[test]
 fn parser_snapshot_corpus() {
-    let cases: [ParseCase; 26] = [
+    let cases: [ParseCase; 24] = [
         ParseCase {
             name: "module_fn_decl",
             mode: ParseMode::Module,
@@ -169,16 +161,6 @@ fn parser_snapshot_corpus() {
             name: "expr_record_pattern",
             mode: ParseMode::Expr,
             source: "case x\n  User { name, .. } -> name",
-        },
-        ParseCase {
-            name: "expr_spawn_with_config",
-            mode: ParseMode::Expr,
-            source: "spawn Counter { count: 0 } with\n  mailbox_size: 100, max_restarts: 5",
-        },
-        ParseCase {
-            name: "expr_stream_with_buffer",
-            mode: ParseMode::Expr,
-            source: "stream\n  yield 1\nwith\n  buffer: 128",
         },
         ParseCase {
             name: "expr_actor_send_message_form",

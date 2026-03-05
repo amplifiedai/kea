@@ -665,9 +665,7 @@ fn collect_unsafe_call_site_diagnostics_in_expr(
                 diagnostics,
             );
         }
-        ExprKind::As { expr, .. }
-        | ExprKind::Await { expr, .. }
-        | ExprKind::FieldAccess { expr, .. } => {
+        ExprKind::As { expr, .. } | ExprKind::FieldAccess { expr, .. } => {
             collect_unsafe_call_site_diagnostics_in_expr(
                 expr,
                 unsafe_callees,
@@ -767,55 +765,9 @@ fn collect_unsafe_call_site_diagnostics_in_expr(
                 );
             }
         }
-        ExprKind::Spawn { value, config } => {
-            collect_unsafe_call_site_diagnostics_in_expr(
-                value,
-                unsafe_callees,
-                in_unsafe_context,
-                caller_name,
-                diagnostics,
-            );
-            if let Some(config) = config {
-                for expr in [
-                    &config.mailbox_size,
-                    &config.supervision,
-                    &config.max_restarts,
-                    &config.call_timeout,
-                ]
-                .into_iter()
-                .flatten()
-                {
-                    collect_unsafe_call_site_diagnostics_in_expr(
-                        expr,
-                        unsafe_callees,
-                        in_unsafe_context,
-                        caller_name,
-                        diagnostics,
-                    );
-                }
-            }
-        }
-        ExprKind::StreamBlock { body, .. } => {
-            collect_unsafe_call_site_diagnostics_in_expr(
-                body,
-                unsafe_callees,
-                in_unsafe_context,
-                caller_name,
-                diagnostics,
-            );
-        }
         ExprKind::Yield { value } => {
             collect_unsafe_call_site_diagnostics_in_expr(
                 value,
-                unsafe_callees,
-                in_unsafe_context,
-                caller_name,
-                diagnostics,
-            );
-        }
-        ExprKind::YieldFrom { source } => {
-            collect_unsafe_call_site_diagnostics_in_expr(
-                source,
                 unsafe_callees,
                 in_unsafe_context,
                 caller_name,
@@ -3291,11 +3243,7 @@ fn const_expr_references(
         | ExprKind::Handle { .. }
         | ExprKind::Resume { .. }
         | ExprKind::WhenGuard { .. }
-        | ExprKind::Await { .. }
-        | ExprKind::Spawn { .. }
-        | ExprKind::StreamBlock { .. }
         | ExprKind::Yield { .. }
-        | ExprKind::YieldFrom { .. }
         | ExprKind::ActorSend { .. }
         | ExprKind::ActorCall { .. }
         | ExprKind::ControlSend { .. }
@@ -3350,11 +3298,7 @@ fn const_expr_supported(expr: &Expr) -> bool {
         | ExprKind::Handle { .. }
         | ExprKind::Resume { .. }
         | ExprKind::WhenGuard { .. }
-        | ExprKind::Await { .. }
-        | ExprKind::Spawn { .. }
-        | ExprKind::StreamBlock { .. }
         | ExprKind::Yield { .. }
-        | ExprKind::YieldFrom { .. }
         | ExprKind::ActorSend { .. }
         | ExprKind::ActorCall { .. }
         | ExprKind::ControlSend { .. }

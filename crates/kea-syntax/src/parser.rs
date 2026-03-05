@@ -2643,27 +2643,9 @@ impl Parser {
             return None;
         }
 
-        // Spawn expression: spawn <expr>
-        if self.check(&TokenKind::Spawn) {
-            return self.spawn_expr();
-        }
-
-        // Await expression: await expr / await? expr
-        if self.check(&TokenKind::Await) {
-            return self.await_expr();
-        }
-
-        // Stream generator block: stream { ... } [with { buffer: N }]
-        if self.check(&TokenKind::Stream) {
-            return self.stream_block_expr();
-        }
-
-        // Yield expressions (only valid in stream blocks at type-check time).
+        // Yield expression (reserved for 0g generators — surface form TBD).
         if self.check(&TokenKind::Yield) {
             return self.yield_expr();
-        }
-        if self.check(&TokenKind::YieldFrom) {
-            return self.yield_from_expr();
         }
 
         // Anonymous record: #{field: val, ...}
@@ -3988,101 +3970,6 @@ impl Parser {
         ))
     }
 
-    /// Parse `spawn <expr>` or `spawn <expr> with { key: val, ... }`.
-    fn spawn_expr(&mut self) -> Option<Expr> {
-        let start = self.current_span();
-        self.advance(); // consume `spawn`
-        let value = self.expression()?;
-        let mut end = value.span;
-
-        // Optionally parse `with { ... }` config block
-        let config = if self.check(&TokenKind::With) {
-            self.advance(); // consume `with`
-            let delimiter = self.expect_block_start("expected config block after `with`")?;
-            let config = self.parse_spawn_config(delimiter)?;
-            end = self.current_span();
-            self.expect_block_end(delimiter, "expected end of spawn config")?;
-            Some(Box::new(config))
-        } else {
-            None
-        };
-
-        Some(Spanned::new(
-            ExprKind::Spawn {
-                value: Box::new(value),
-                config,
-            },
-            start.merge(end),
-        ))
-    }
-
-    /// Parse `stream { ... }` or `stream { ... } with { buffer: N }`.
-    fn stream_block_expr(&mut self) -> Option<Expr> {
-        let start = self.current_span();
-        self.advance(); // consume `stream`
-        let body = self.parse_block_expr("expected block after `stream`")?;
-        let mut end = body.span;
-        let mut buffer_size = 32usize;
-
-        if self.check(&TokenKind::With) {
-            self.advance(); // consume `with`
-            let delimiter = self.expect_block_start("expected config block after `with`")?;
-            buffer_size = self.parse_stream_config(delimiter)?;
-            end = self.current_span();
-            self.expect_block_end(delimiter, "expected end of stream config")?;
-        }
-
-        Some(Spanned::new(
-            ExprKind::StreamBlock {
-                body: Box::new(body),
-                buffer_size,
-            },
-            start.merge(end),
-        ))
-    }
-
-    /// Parse stream config inside `stream { ... } with { ... }`.
-    /// Currently only supports `buffer: <int>`.
-    fn parse_stream_config(&mut self, delimiter: BlockDelimiter) -> Option<usize> {
-        let mut buffer_size: Option<usize> = None;
-        self.skip_newlines();
-        while !self.at_block_end(delimiter) && !self.at_eof() {
-            let key_tok = self.advance();
-            let key = match &key_tok.kind {
-                TokenKind::Ident(s) => s.clone(),
-                _ => {
-                    self.error_at_current("expected stream config key (`buffer`)");
-                    return None;
-                }
-            };
-            self.expect(&TokenKind::Colon, "expected `:` after config key")?;
-
-            match key.as_str() {
-                "buffer" => match self.peek_kind() {
-                    Some(TokenKind::Int(n)) if *n > 0 => {
-                        buffer_size = Some(*n as usize);
-                        self.advance();
-                    }
-                    _ => {
-                        self.error_at_current("stream `buffer` must be a positive integer literal");
-                        return None;
-                    }
-                },
-                _ => {
-                    self.errors.push(Diagnostic::error(
-                        Category::Syntax,
-                        format!("unknown stream config key `{key}` (expected: buffer)"),
-                    ));
-                    return None;
-                }
-            }
-
-            let _ = self.match_token(&TokenKind::Comma);
-            self.skip_newlines();
-        }
-        Some(buffer_size.unwrap_or(32))
-    }
-
     fn yield_expr(&mut self) -> Option<Expr> {
         let start = self.current_span();
         self.advance(); // consume `yield`
@@ -4094,69 +3981,6 @@ impl Parser {
             },
             span,
         ))
-    }
-
-    fn yield_from_expr(&mut self) -> Option<Expr> {
-        let start = self.current_span();
-        self.advance(); // consume `yield_from`
-        let source = self.expression()?;
-        let span = start.merge(source.span);
-        Some(Spanned::new(
-            ExprKind::YieldFrom {
-                source: Box::new(source),
-            },
-            span,
-        ))
-    }
-
-    /// Parse the key-value pairs inside `spawn ... with { ... }`.
-    /// Allowed keys: mailbox_size, supervision, max_restarts, call_timeout.
-    fn parse_spawn_config(&mut self, delimiter: BlockDelimiter) -> Option<SpawnConfig> {
-        let mut config = SpawnConfig {
-            mailbox_size: None,
-            supervision: None,
-            max_restarts: None,
-            call_timeout: None,
-        };
-
-        self.skip_newlines();
-        while !self.at_block_end(delimiter) && !self.at_eof() {
-            let key_tok = self.advance();
-            let key = match &key_tok.kind {
-                TokenKind::Ident(s) => s.clone(),
-                _ => {
-                    self.error_at_current(
-                        "expected config key (mailbox_size, supervision, max_restarts, call_timeout)",
-                    );
-                    return None;
-                }
-            };
-            self.expect(&TokenKind::Colon, "expected `:` after config key")?;
-            let val = self.expression()?;
-            match key.as_str() {
-                "mailbox_size" => config.mailbox_size = Some(val),
-                "supervision" => config.supervision = Some(val),
-                "max_restarts" => config.max_restarts = Some(val),
-                "call_timeout" => config.call_timeout = Some(val),
-                "supervisor" => {
-                    self.errors.push(Diagnostic::error(
-                        Category::Syntax,
-                        "spawn config key `supervisor` removed — use Kea.Supervisor for supervision trees".to_string(),
-                    ));
-                    return None;
-                }
-                _ => {
-                    self.errors.push(Diagnostic::error(
-                        Category::Syntax,
-                        format!("unknown spawn config key `{key}` (expected: mailbox_size, supervision, max_restarts, call_timeout)"),
-                    ));
-                    return None;
-                }
-            }
-            let _ = self.match_token(&TokenKind::Comma);
-            self.skip_newlines();
-        }
-        Some(config)
     }
 
     /// Parse actor send/call (and legacy try_send alias).
@@ -4240,22 +4064,6 @@ impl Parser {
             }
         };
         Some(Spanned::new(kind, start.merge(end)))
-    }
-
-    fn await_expr(&mut self) -> Option<Expr> {
-        let start = self.current_span();
-        self.advance(); // await
-        let safe = self.match_token(&TokenKind::Question);
-        self.skip_newlines();
-        let expr = self.expression()?;
-        let end = expr.span;
-        Some(Spanned::new(
-            ExprKind::Await {
-                expr: Box::new(expr),
-                safe,
-            },
-            start.merge(end),
-        ))
     }
 
     fn assert_expr(&mut self) -> Option<Expr> {
@@ -8837,148 +8645,6 @@ mod tests {
     fn parse_legacy_import_still_supported() {
         let module = parse_mod("import Kea.Core");
         assert!(matches!(module.declarations[0].node, DeclKind::Import(_)));
-    }
-
-    // -- Actor operations --
-
-    #[test]
-    fn parse_spawn() {
-        let expr = parse("spawn x");
-        match &expr.node {
-            ExprKind::Spawn { value: inner, .. } => {
-                assert!(matches!(&inner.node, ExprKind::Var(name) if name == "x"));
-            }
-            other => panic!("expected Spawn, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_spawn_record() {
-        let expr = parse("spawn Counter { count: 0 }");
-        match &expr.node {
-            ExprKind::Spawn { value: inner, .. } => {
-                assert!(
-                    matches!(&inner.node, ExprKind::Record { name, .. } if name.node == "Counter")
-                );
-            }
-            other => panic!("expected Spawn, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_spawn_with_config() {
-        let expr = parse("spawn Counter { count: 0 } with\n  mailbox_size: 100, max_restarts: 5");
-        match &expr.node {
-            ExprKind::Spawn { value, config } => {
-                assert!(
-                    matches!(&value.node, ExprKind::Record { name, .. } if name.node == "Counter")
-                );
-                let cfg = config.as_ref().expect("config should be present");
-                assert!(cfg.mailbox_size.is_some(), "mailbox_size should be set");
-                assert!(cfg.max_restarts.is_some(), "max_restarts should be set");
-                assert!(cfg.supervision.is_none());
-                assert!(cfg.call_timeout.is_none());
-            }
-            other => panic!("expected Spawn, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_spawn_without_config() {
-        // Regression: spawn without `with` still works
-        let expr = parse("spawn x");
-        match &expr.node {
-            ExprKind::Spawn { config, .. } => {
-                assert!(config.is_none(), "config should be None without `with`");
-            }
-            other => panic!("expected Spawn, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_spawn_config_all_keys() {
-        let expr = parse(
-            "spawn x with\n  mailbox_size: 50, supervision: :restart, max_restarts: 10, call_timeout: 5000",
-        );
-        match &expr.node {
-            ExprKind::Spawn { config, .. } => {
-                let cfg = config.as_ref().expect("config should be present");
-                assert!(cfg.mailbox_size.is_some());
-                assert!(cfg.supervision.is_some());
-                assert!(cfg.max_restarts.is_some());
-                assert!(cfg.call_timeout.is_some());
-            }
-            other => panic!("expected Spawn, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_spawn_supervisor_key_errors() {
-        let errors = parse_err("spawn x with\n  supervisor: parent");
-        assert!(!errors.is_empty(), "supervisor key should produce error");
-        let msg = format!("{:?}", errors);
-        assert!(
-            msg.contains("supervisor") && msg.contains("removed"),
-            "should mention supervisor is removed, got: {msg}"
-        );
-    }
-
-    #[test]
-    fn parse_spawn_unknown_key_errors() {
-        let errors = parse_err("spawn x with\n  bad_key: 1");
-        assert!(!errors.is_empty(), "unknown key should produce error");
-        let msg = format!("{:?}", errors);
-        assert!(msg.contains("unknown spawn config key"), "got: {msg}");
-    }
-
-    #[test]
-    fn parse_stream_block() {
-        let expr = parse("stream\n  yield 1");
-        match &expr.node {
-            ExprKind::StreamBlock { body, buffer_size } => {
-                assert_eq!(*buffer_size, 32);
-                match &body.node {
-                    ExprKind::Yield { value } => {
-                        assert!(matches!(&value.node, ExprKind::Lit(Lit::Int(1))));
-                    }
-                    other => panic!("expected Yield body, got {other:?}"),
-                }
-            }
-            other => panic!("expected StreamBlock, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_stream_block_with_buffer_config() {
-        let expr = parse("stream\n  yield 1\nwith\n  buffer: 128");
-        match &expr.node {
-            ExprKind::StreamBlock { buffer_size, .. } => {
-                assert_eq!(*buffer_size, 128);
-            }
-            other => panic!("expected StreamBlock, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_stream_yield_from() {
-        let expr = parse("stream\n  yield_from other");
-        match &expr.node {
-            ExprKind::StreamBlock { body, .. } => match &body.node {
-                ExprKind::YieldFrom { source } => {
-                    assert!(matches!(&source.node, ExprKind::Var(name) if name == "other"));
-                }
-                other => panic!("expected YieldFrom body, got {other:?}"),
-            },
-            other => panic!("expected StreamBlock, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_stream_unknown_key_errors() {
-        let errors = parse_err("stream\n  yield 1\nwith\n  bad_key: 1");
-        assert!(!errors.is_empty(), "unknown key should produce error");
-        let msg = format!("{:?}", errors);
-        assert!(msg.contains("unknown stream config key"), "got: {msg}");
     }
 
     #[test]

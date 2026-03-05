@@ -5902,7 +5902,6 @@ fn is_annotation_expr_pure(expr: &Expr) -> bool {
         }
         ExprKind::FieldAccess { expr, .. } => is_annotation_expr_pure(expr),
         ExprKind::As { expr, .. } => is_annotation_expr_pure(expr),
-        ExprKind::Await { expr, .. } => is_annotation_expr_pure(expr),
         ExprKind::Constructor { args, .. } => {
             args.iter().all(|a| is_annotation_expr_pure(&a.value))
         }
@@ -10566,45 +10565,8 @@ fn collect_resume_usage(
                 );
             }
         }
-        ExprKind::Spawn { value, config } => {
-            collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
-            if let Some(cfg) = config {
-                for entry in [
-                    cfg.mailbox_size.as_ref(),
-                    cfg.supervision.as_ref(),
-                    cfg.max_restarts.as_ref(),
-                    cfg.call_timeout.as_ref(),
-                ]
-                .into_iter()
-                .flatten()
-                {
-                    collect_resume_usage(
-                        entry,
-                        inside_loop,
-                        inside_lambda,
-                        resume_count,
-                        diagnostics,
-                    );
-                }
-            }
-        }
-        ExprKind::Await { expr, .. } => {
-            collect_resume_usage(expr, inside_loop, inside_lambda, resume_count, diagnostics);
-        }
-        ExprKind::StreamBlock { body, .. } => {
-            collect_resume_usage(body, inside_loop, inside_lambda, resume_count, diagnostics);
-        }
         ExprKind::Yield { value } => {
             collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
-        }
-        ExprKind::YieldFrom { source } => {
-            collect_resume_usage(
-                source,
-                inside_loop,
-                inside_lambda,
-                resume_count,
-                diagnostics,
-            );
         }
         ExprKind::ActorSend { actor, args, .. } | ExprKind::ActorCall { actor, args, .. } => {
             collect_resume_usage(actor, inside_loop, inside_lambda, resume_count, diagnostics);
@@ -12946,240 +12908,17 @@ fn infer_expr_bidir(
             record_ty
         }
 
-        // -- Stream generator --
-        ExprKind::StreamBlock { body, .. } => {
-            let elem_ty = unifier.fresh_type();
-            env.push_stream_context(elem_ty.clone());
-            let _ = infer_expr_bidir(body, env, unifier, records, traits, sum_types);
-            env.pop_stream_context();
-            Type::Stream(Box::new(elem_ty))
-        }
-
+        // -- Yield (reserved for 0g generators) --
         ExprKind::Yield { value } => {
-            let value_ty = infer_expr_bidir(value, env, unifier, records, traits, sum_types);
-            if let Some(stream_elem_ty) = env.current_stream_context().cloned() {
-                constrain_type_eq(
-                    unifier,
-                    &value_ty,
-                    &stream_elem_ty,
-                    &prov(Reason::LetAnnotation),
-                );
-            } else {
-                unifier.push_error(
-                    Diagnostic::error(
-                        Category::TypeError,
-                        "`yield` is only valid inside `stream { ... }`",
-                    )
-                    .at(span_to_loc(expr.span)),
-                );
-            }
-            Type::Unit
-        }
-
-        ExprKind::YieldFrom { source } => {
-            let source_ty = infer_expr_bidir(source, env, unifier, records, traits, sum_types);
-            let yielded_ty = unifier.fresh_type();
-            constrain_type_eq(
-                unifier,
-                &source_ty,
-                &Type::Stream(Box::new(yielded_ty.clone())),
-                &prov(Reason::FunctionArg { param_index: 0 }),
-            );
-            if let Some(stream_elem_ty) = env.current_stream_context().cloned() {
-                constrain_type_eq(
-                    unifier,
-                    &yielded_ty,
-                    &stream_elem_ty,
-                    &prov(Reason::LetAnnotation),
-                );
-            } else {
-                unifier.push_error(
-                    Diagnostic::error(
-                        Category::TypeError,
-                        "`yield_from` is only valid inside `stream { ... }`",
-                    )
-                    .at(span_to_loc(expr.span)),
-                );
-            }
-            Type::Unit
-        }
-
-        // -- Actor operations --
-        ExprKind::Spawn {
-            value: value_expr,
-            config,
-        } => {
-            let inner_ty = infer_expr_bidir(value_expr, env, unifier, records, traits, sum_types);
-            // Check Sendable: the value being spawned must be safe to transfer
-            // across task boundaries. Apply current substitution to resolve what
-            // we can — unresolved Var(_) is assumed Sendable (checked at resolution).
-            let resolved = unifier.substitution.apply(&inner_ty);
-            if !matches!(resolved, Type::Var(_)) {
-                match resolve_sendable(traits, &resolved, unifier, value_expr.span) {
-                    SendableSatisfaction::Satisfied => {}
-                    SendableSatisfaction::Ambiguous => {}
-                    SendableSatisfaction::Unsatisfied => {
-                        let detail = sendable_violation(&resolved)
-                            .map(|v| format!(": {}", v.reason))
-                            .unwrap_or_default();
-                        unifier.errors.push(
-                            Diagnostic::error(
-                                Category::TypeError,
-                                format!(
-                                    "value spawned as actor must be Sendable, but `{resolved}` is not{detail}",
-                                ),
-                            )
-                            .at(span_to_loc(value_expr.span)),
-                        );
-                    }
-                }
-            }
-            let spawn_kind = if matches!(resolved, Type::Var(_)) {
-                SpawnKind::Task
-            } else {
-                match traits.solve_goal(&TraitGoal::Implements {
-                    trait_name: "Actor".to_string(),
-                    ty: resolved.clone(),
-                }) {
-                    SolveOutcome::Unique(_) | SolveOutcome::Ambiguous(_) => SpawnKind::Actor,
-                    SolveOutcome::NoMatch(_) => SpawnKind::Task,
-                }
-            };
-
-            // Type-check spawn config if present. Config applies only to Actor spawns.
-            if let Some(cfg) = config {
-                if !matches!(spawn_kind, SpawnKind::Actor) {
-                    unifier.errors.push(
-                        Diagnostic::error(
-                            Category::TypeError,
-                            "`spawn ... with { ... }` requires an Actor spawn target".to_string(),
-                        )
-                        .at(span_to_loc(expr.span)),
-                    );
-                }
-                if let Some(expr) = &cfg.mailbox_size {
-                    let ty = infer_expr_bidir(expr, env, unifier, records, traits, sum_types);
-                    let resolved_ty = unifier.substitution.apply(&ty);
-                    if matches!(resolved_ty, Type::Var(_)) {
-                        constrain_type_eq(
-                            unifier,
-                            &ty,
-                            &Type::Int,
-                            &prov(Reason::FunctionArg { param_index: 0 }),
-                        );
-                    } else if !resolved_ty.is_integer() {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::TypeError,
-                                format!(
-                                    "`mailbox_size` must be an integer type, but got `{resolved_ty}`"
-                                ),
-                            )
-                            .at(span_to_loc(expr.span)),
-                        );
-                    }
-                }
-                if let Some(expr) = &cfg.max_restarts {
-                    let ty = infer_expr_bidir(expr, env, unifier, records, traits, sum_types);
-                    let resolved_ty = unifier.substitution.apply(&ty);
-                    if matches!(resolved_ty, Type::Var(_)) {
-                        constrain_type_eq(
-                            unifier,
-                            &ty,
-                            &Type::Int,
-                            &prov(Reason::FunctionArg { param_index: 0 }),
-                        );
-                    } else if !resolved_ty.is_integer() {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::TypeError,
-                                format!(
-                                    "`max_restarts` must be an integer type, but got `{resolved_ty}`"
-                                ),
-                            )
-                            .at(span_to_loc(expr.span)),
-                        );
-                    }
-                }
-                if let Some(expr) = &cfg.call_timeout {
-                    let ty = infer_expr_bidir(expr, env, unifier, records, traits, sum_types);
-                    let resolved_ty = unifier.substitution.apply(&ty);
-                    if matches!(resolved_ty, Type::Var(_)) {
-                        constrain_type_eq(
-                            unifier,
-                            &ty,
-                            &Type::Int,
-                            &prov(Reason::FunctionArg { param_index: 0 }),
-                        );
-                    } else if !resolved_ty.is_integer() {
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::TypeError,
-                                format!(
-                                    "`call_timeout` must be an integer type, but got `{resolved_ty}`"
-                                ),
-                            )
-                            .at(span_to_loc(expr.span)),
-                        );
-                    }
-                }
-                if let Some(expr) = &cfg.supervision {
-                    let ty = infer_expr_bidir(expr, env, unifier, records, traits, sum_types);
-                    if let Some(supervision_ty) = sum_types.to_type("SupervisionAction") {
-                        constrain_type_eq(
-                            unifier,
-                            &ty,
-                            &supervision_ty,
-                            &prov(Reason::FunctionArg { param_index: 0 }),
-                        );
-                    }
-                }
-            }
-            unifier
-                .type_annotations
-                .spawn_kinds
-                .insert(expr.span, spawn_kind);
-            match spawn_kind {
-                SpawnKind::Actor => Type::Actor(Box::new(inner_ty)),
-                SpawnKind::Task => Type::Task(Box::new(inner_ty)),
-            }
-        }
-
-        ExprKind::Await {
-            expr: awaited,
-            safe,
-        } => {
-            if env.in_actor_context() {
-                unifier.push_error(
-                    Diagnostic::warning(
-                        Category::TypeError,
-                        "await inside actor handler may cause deadlock",
-                    )
-                    .with_code("W0901")
-                    .at(span_to_loc(expr.span))
-                    .with_help(
-                        "await blocks the actor mailbox; if the awaited task sends back to this actor, it can deadlock"
-                            .to_string(),
-                    ),
-                );
-            }
-            let task_ty = infer_expr_bidir(awaited, env, unifier, records, traits, sum_types);
-            let out = unifier.fresh_type();
-            constrain_type_eq(
-                unifier,
-                &task_ty,
-                &Type::Task(Box::new(out.clone())),
-                &prov(Reason::ActorOp),
-            );
-            if *safe {
-                Type::result(
-                    out,
-                    kea_types::builtin_error_sum_type("ActorError")
-                        .expect("builtin ActorError sum type"),
+            let _value_ty = infer_expr_bidir(value, env, unifier, records, traits, sum_types);
+            unifier.push_error(
+                Diagnostic::error(
+                    Category::TypeError,
+                    "`yield` is not yet supported — use the `Yield` effect (0g)",
                 )
-            } else {
-                out
-            }
+                .at(span_to_loc(expr.span)),
+            );
+            Type::Unit
         }
 
         ExprKind::ActorSend {

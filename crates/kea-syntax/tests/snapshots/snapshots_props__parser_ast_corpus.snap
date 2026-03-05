@@ -1,6 +1,5 @@
 ---
 source: crates/kea-syntax/tests/snapshots_props.rs
-assertion_line: 213
 expression: output
 ---
 ## module_fn_decl
@@ -1085,82 +1084,6 @@ Case {
             },
         },
     ],
-}
-
-## expr_spawn_with_config
-source:
-|spawn·Counter·{·count:·0·}·with
-|··mailbox_size:·100,·max_restarts:·5
-status: ok
-Spawn {
-    value: Spanned {
-        node: Record {
-            name: Spanned {
-                node: "Counter",
-            },
-            fields: [
-                (
-                    Spanned {
-                        node: "count",
-                    },
-                    Spanned {
-                        node: Lit(
-                            Int(
-                                0,
-                            ),
-                        ),
-                    },
-                ),
-            ],
-            spread: None,
-        },
-    },
-    config: Some(
-        SpawnConfig {
-            mailbox_size: Some(
-                Spanned {
-                    node: Lit(
-                        Int(
-                            100,
-                        ),
-                    ),
-                },
-            ),
-            supervision: None,
-            max_restarts: Some(
-                Spanned {
-                    node: Lit(
-                        Int(
-                            5,
-                        ),
-                    ),
-                },
-            ),
-            call_timeout: None,
-        },
-    ),
-}
-
-## expr_stream_with_buffer
-source:
-|stream
-|··yield·1
-|with
-|··buffer:·128
-status: ok
-StreamBlock {
-    body: Spanned {
-        node: Yield {
-            value: Spanned {
-                node: Lit(
-                    Int(
-                        1,
-                    ),
-                ),
-            },
-        },
-    },
-    buffer_size: 128,
 }
 
 ## expr_actor_send_message_form

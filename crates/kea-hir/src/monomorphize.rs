@@ -841,6 +841,16 @@ fn extract_bindings(poly: &Type, concrete: &Type, out: &mut BTreeMap<TypeVarId, 
                 extract_bindings(p, c, out);
             }
         }
+        (Type::Sum(ps), Type::Sum(cs)) => {
+            for (p, c) in ps.type_args.iter().zip(cs.type_args.iter()) {
+                extract_bindings(p, c, out);
+            }
+        }
+        (Type::Record(pr), Type::Record(cr)) => {
+            for (p, c) in pr.params.iter().zip(cr.params.iter()) {
+                extract_bindings(p, c, out);
+            }
+        }
         // Primitives and mismatches: nothing to extract.
         _ => {}
     }

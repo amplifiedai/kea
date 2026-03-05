@@ -1261,12 +1261,6 @@ proptest! {
 
 use crate::typeck::{SumTypeRegistry, TypeEnv, infer_and_resolve_in_context};
 
-const RECORD_NAME_POOL: &[&str] = &["Counter", "Acc", "State", "Buf", "Cfg"];
-
-fn arb_record_name() -> impl Strategy<Value = String> {
-    prop::sample::select(RECORD_NAME_POOL).prop_map(|s| s.to_string())
-}
-
 fn sp_ast<T>(node: T) -> kea_ast::Spanned<T> {
     kea_ast::Spanned {
         node,
@@ -1498,126 +1492,6 @@ fn register_container_with_projected_defaults(
         .expect("Container trait should register");
 }
 
-proptest! {
-    /// For any named record type, spawn infers `Task(T)` unless there is
-    /// a concrete `impl Actor for T`, in which case it infers `Actor(T)`.
-    #[test]
-    fn prop_spawn_dispatches_actor_vs_task(
-        name in arb_record_name(),
-        field_count in 1usize..=3,
-    ) {
-        use kea_ast::*;
-
-        let dummy_span = Span::new(FileId(0), 0, 0);
-        let sp = |node| Spanned { node, span: dummy_span };
-
-        // Build record fields: f0: Int, f1: Int, ..
-        let fields: Vec<(Spanned<String>, TypeAnnotation)> = (0..field_count)
-            .map(|i| (sp(format!("f{i}")), TypeAnnotation::Named("Int".to_string())))
-            .collect();
-        let rec_def = RecordDef {
-            annotations: vec![],
-            public: false,
-            name: sp(name.clone()),
-            doc: None,
-            params: vec![],
-            fields,
-            const_fields: vec![],
-            field_annotations: vec![],
-        };
-
-        // Build the row type
-        let row_fields: Vec<(Label, Type)> = (0..field_count)
-            .map(|i| (Label::new(format!("f{i}")), Type::Int))
-            .collect();
-        let rec_type = Type::Record(RecordType {
-            name: name.clone(),
-            params: vec![],
-            row: RowType::closed(row_fields),
-        });
-
-        // --- Without impl Actor ---
-        let mut records = RecordRegistry::new();
-        let mut traits = TraitRegistry::new();
-        let actor_trait = TraitDef {
-            public: true,
-            name: sp("Actor".to_string()),
-            doc: None,
-            type_params: vec![],
-            supertraits: vec![],
-            fundeps: vec![],
-            associated_types: vec![],
-            methods: vec![],
-        };
-        traits.register_trait(&actor_trait, &records).unwrap();
-        records.register(&rec_def).unwrap();
-        traits.register_type_owner(&name, "repl:");
-
-        let mut env = TypeEnv::new();
-        env.bind("val".into(), kea_types::TypeScheme::mono(rec_type.clone()));
-        let spawn = Spanned {
-            node: ExprKind::Spawn { value: Box::new(Spanned {
-                node: ExprKind::Var("val".to_string()),
-                span: dummy_span,
-            }), config: None },
-            span: dummy_span,
-        };
-        let mut ctx = crate::InferenceContext::new();
-        let ty_no_actor = infer_and_resolve_in_context(
-            &spawn,
-            &mut env,
-            &mut ctx,
-            &records,
-            &traits,
-            &SumTypeRegistry::new(),
-        );
-        prop_assert!(
-            !ctx.has_errors(),
-            "spawn without impl Actor should infer Task for {name}: {:?}",
-            ctx.errors()
-        );
-        prop_assert!(
-            matches!(ty_no_actor, Type::Task(_)),
-            "spawn without impl Actor should be Task(_), got {ty_no_actor}"
-        );
-
-        // --- With impl Actor ---
-        let impl_block = ImplBlock {
-            trait_name: sp("Actor".to_string()),
-            type_name: sp(name.clone()),
-            type_params: vec![],
-            methods: vec![],
-            control_type: None,
-            where_clause: vec![],
-        };
-        traits.register_trait_impl(&impl_block).unwrap();
-
-        let mut env2 = TypeEnv::new();
-        env2.bind("val".into(), kea_types::TypeScheme::mono(rec_type));
-        let spawn2 = Spanned {
-            node: ExprKind::Spawn { value: Box::new(Spanned {
-                node: ExprKind::Var("val".to_string()),
-                span: dummy_span,
-            }), config: None },
-            span: dummy_span,
-        };
-        let mut ctx2 = crate::InferenceContext::new();
-        let ty = infer_and_resolve_in_context(
-            &spawn2,
-            &mut env2,
-            &mut ctx2,
-            &records,
-            &traits,
-            &SumTypeRegistry::new(),
-        );
-        prop_assert!(
-            !ctx2.has_errors(),
-            "spawn with impl Actor should succeed for {name}: {:?}",
-            ctx2.errors()
-        );
-        prop_assert!(matches!(ty, Type::Actor(_)), "result should be Actor, got {ty}");
-    }
-}
 
 proptest! {
     /// GADT refinement constraints from one constructor arm must not leak into

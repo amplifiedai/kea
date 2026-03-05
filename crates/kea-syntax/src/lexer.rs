@@ -1204,11 +1204,7 @@ impl<'src> Lexer<'src> {
             "sql" => TokenKind::Sql,
             "html" => TokenKind::Html,
             "markdown" => TokenKind::Markdown,
-            "spawn" => TokenKind::Spawn,
-            "await" => TokenKind::Await,
-            "stream" => TokenKind::Stream,
             "yield" => TokenKind::Yield,
-            "yield_from" => TokenKind::YieldFrom,
             "assert" => TokenKind::Assert,
             "assert_eq" => TokenKind::AssertEq,
             "assert_ne" => TokenKind::AssertNe,
@@ -1776,17 +1772,13 @@ mod tests {
     fn reserved_words() {
         assert_eq!(
             lex_kinds(
-                "sql html markdown spawn await stream yield yield_from assert assert_eq assert_ne assert_frame_equal assert_snapshot assert_ok assert_error",
+                "sql html markdown yield assert assert_eq assert_ne assert_frame_equal assert_snapshot assert_ok assert_error",
             ),
             vec![
                 TokenKind::Sql,
                 TokenKind::Html,
                 TokenKind::Markdown,
-                TokenKind::Spawn,
-                TokenKind::Await,
-                TokenKind::Stream,
                 TokenKind::Yield,
-                TokenKind::YieldFrom,
                 TokenKind::Assert,
                 TokenKind::AssertEq,
                 TokenKind::AssertNe,

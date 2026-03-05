@@ -8788,58 +8788,6 @@ fn compile_rejects_unique_capture_then_reuse() {
 }
 
 #[test]
-fn compile_rejects_unique_reuse_after_spawn_move() {
-    let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn main() -[Spawn]> Int\n  let u = Unique(7)\n  let task = spawn u\n  case u\n    Unique(v) -> v\n",
-        "kea-cli-unique-reuse-after-spawn",
-        "kea",
-    );
-
-    let err = run_file(&source_path).expect_err("reusing unique value after spawn should fail");
-    assert!(
-        err.contains("use of moved value `u`"),
-        "expected moved-value diagnostic for spawned unique value, got: {err}"
-    );
-
-    let _ = std::fs::remove_file(source_path);
-}
-
-#[test]
-fn compile_rejects_spawning_borrow_parameter() {
-    let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn bad(borrow value: Unique Int) -[Spawn]> Unit\n  let task = spawn value\n\nfn main() -> Int\n  0\n",
-        "kea-cli-borrow-spawn-consume-rejected",
-        "kea",
-    );
-
-    let err = run_file(&source_path).expect_err("spawning a borrowed unique parameter should fail");
-    assert!(
-        err.contains("borrowed value `value` cannot be consumed"),
-        "expected borrow-consumption diagnostic for spawn, got: {err}"
-    );
-
-    let _ = std::fs::remove_file(source_path);
-}
-
-#[test]
-fn compile_rejects_spawning_borrow_parameter_through_alias() {
-    let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn bad(borrow value: Unique Int) -[Spawn]> Unit\n  let forwarded = value\n  let task = spawn forwarded\n\nfn main() -> Int\n  0\n",
-        "kea-cli-borrow-spawn-alias-consume-rejected",
-        "kea",
-    );
-
-    let err =
-        run_file(&source_path).expect_err("spawning an aliased borrowed unique parameter should fail");
-    assert!(
-        err.contains("borrowed value") && err.contains("cannot be consumed"),
-        "expected borrow-consumption diagnostic through alias, got: {err}"
-    );
-
-    let _ = std::fs::remove_file(source_path);
-}
-
-#[test]
 fn compile_rejects_actor_send_borrow_parameter_argument() {
     let source_path = write_temp_source(
         "enum Unique a\n  Unique(a)\n\nfn bad(actor: Actor Int, borrow value: Unique Int) -> Unit\n  send(actor, :push, value)\n\nfn main() -> Int\n  0\n",

@@ -176,22 +176,9 @@ fn block(exprs: Vec<Expr>) -> Expr {
     sp(ExprKind::Block(exprs))
 }
 
-fn stream_block(body: Expr) -> Expr {
-    sp(ExprKind::StreamBlock {
-        body: Box::new(body),
-        buffer_size: 32,
-    })
-}
-
 fn yield_expr(value: Expr) -> Expr {
     sp(ExprKind::Yield {
         value: Box::new(value),
-    })
-}
-
-fn yield_from_expr(source: Expr) -> Expr {
-    sp(ExprKind::YieldFrom {
-        source: Box::new(source),
     })
 }
 
@@ -229,19 +216,6 @@ fn resume(value: Expr) -> Expr {
     })
 }
 
-fn spawn_expr(value: Expr) -> Expr {
-    sp(ExprKind::Spawn {
-        value: Box::new(value),
-        config: None,
-    })
-}
-
-fn await_expr(expr: Expr, safe: bool) -> Expr {
-    sp(ExprKind::Await {
-        expr: Box::new(expr),
-        safe,
-    })
-}
 
 fn actor_send(actor: Expr, method: &str, args: Vec<Expr>) -> Expr {
     sp(ExprKind::ActorSend {
@@ -277,35 +251,6 @@ fn actor_call_safe(actor: Expr, method: &str, args: Vec<Expr>) -> Expr {
         args,
         safe: true,
     })
-}
-
-fn traits_with_actor() -> TraitRegistry {
-    let records = RecordRegistry::new();
-    let mut traits = TraitRegistry::new();
-    let actor_trait = kea_ast::TraitDef {
-        public: true,
-        name: sp("Actor".to_string()),
-        doc: None,
-        type_params: vec![],
-        supertraits: vec![],
-        fundeps: vec![],
-        associated_types: vec![],
-        methods: vec![],
-    };
-    traits
-        .register_trait(&actor_trait, &records)
-        .expect("register Actor trait");
-    traits
-        .register_trait_impl(&kea_ast::ImplBlock {
-            trait_name: sp("Actor".to_string()),
-            type_name: sp("Int".to_string()),
-            type_params: vec![],
-            methods: vec![],
-            control_type: None,
-            where_clause: vec![],
-        })
-        .expect("register Actor for Int");
-    traits
 }
 
 fn apply_first_arg(left: Expr, right: Expr) -> Expr {
@@ -2003,41 +1948,6 @@ fn case_ignores_unreachable_gadt_arms_without_errors() {
     assert_eq!(unifier.substitution.apply(&ty), Type::Int);
 }
 
-#[test]
-fn await_inside_actor_context_emits_deadlock_warning() {
-    let records = RecordRegistry::new();
-    let sums = SumTypeRegistry::new();
-    let mut traits = TraitRegistry::new();
-    register_hkt_for_use_for_traits(&mut traits, &records);
-    let mut env = TypeEnv::new();
-    env.push_actor_context();
-    env.bind(
-        "t".into(),
-        TypeScheme::mono(Type::Task(Box::new(Type::Int))),
-    );
-    let expr = sp(ExprKind::Await {
-        expr: Box::new(var("t")),
-        safe: false,
-    });
-
-    let mut unifier = Unifier::new();
-    let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
-    env.pop_actor_context();
-
-    assert_eq!(unifier.substitution.apply(&ty), Type::Int);
-    assert!(
-        unifier.errors().iter().any(|diag| {
-            matches!(diag.severity, kea_diag::Severity::Warning)
-                && diag.code.as_deref() == Some("W0901")
-                && diag
-                    .message
-                    .contains("await inside actor handler may cause deadlock")
-        }),
-        "expected W0901 warning, got: {:?}",
-        unifier.errors()
-    );
-}
-
 // ===========================================================================
 // Literal inference
 // ===========================================================================
@@ -2302,47 +2212,12 @@ fn infer_nested_stream_call_resolves_inner_type_parameter() {
 }
 
 #[test]
-fn infer_stream_block_with_yields_has_stream_type() {
-    let expr = stream_block(block(vec![
-        yield_expr(lit_int(1)),
-        yield_expr(lit_int(2)),
-        yield_expr(lit_int(3)),
-    ]));
-    let (ty, u) = infer(&expr);
-    assert!(!u.has_errors(), "Errors: {:?}", u.errors());
-    assert_eq!(ty, Type::Stream(Box::new(Type::Int)));
-}
-
-#[test]
-fn infer_yield_outside_stream_errors() {
+fn infer_yield_errors() {
+    // Yield is reserved for 0g generators; not yet supported
     let expr = yield_expr(lit_int(42));
     let (_ty, u) = infer(&expr);
-    assert!(u.has_errors(), "yield outside stream should error");
+    assert!(u.has_errors(), "yield should error (not yet supported)");
 }
-
-#[test]
-fn infer_stream_block_rejects_mixed_yield_types() {
-    let expr = stream_block(block(vec![
-        yield_expr(lit_int(1)),
-        yield_expr(lit_str("x")),
-    ]));
-    let (_ty, u) = infer(&expr);
-    assert!(u.has_errors(), "mixed yield types should error");
-}
-
-#[test]
-fn infer_stream_block_rejects_yield_from_mismatch() {
-    let expr = stream_block(block(vec![
-        yield_expr(lit_int(1)),
-        yield_from_expr(stream_block(yield_expr(lit_str("x")))),
-    ]));
-    let (_ty, u) = infer(&expr);
-    assert!(
-        u.has_errors(),
-        "yield_from element type mismatch should error"
-    );
-}
-
 
 #[test]
 fn infer_nested_list_call_resolves_inner_type_parameter() {
@@ -10097,10 +9972,6 @@ fn trait_bound_enforcement_end_to_end() {
 // frame literal parsing
 // =========================================================================
 
-// ---------------------------------------------------------------------------
-// Actor trait enforcement on spawn
-// ---------------------------------------------------------------------------
-
 /// Helper: register a named record + optionally impl Actor for it.
 fn setup_actor_test(impl_actor: bool) -> (TypeEnv, RecordRegistry, TraitRegistry) {
     let mut records = RecordRegistry::new();
@@ -10155,341 +10026,14 @@ fn setup_actor_test(impl_actor: bool) -> (TypeEnv, RecordRegistry, TraitRegistry
     (env, records, traits)
 }
 
-#[test]
-fn spawn_without_actor_impl_returns_task() {
-    let (mut env, records, traits) = setup_actor_test(false);
-    let expr = spawn_expr(var("counter_val"));
-    let mut unifier = Unifier::new();
-    let ty = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-    assert!(
-        !unifier.has_errors(),
-        "spawn without impl Actor should infer Task: {:?}",
-        unifier.errors()
-    );
-    assert!(matches!(ty, Type::Task(_)), "expected Task(_), got {ty}");
-}
+// spawn/await/stream tests removed — these constructs are not part of Kea;
+// they were vestigial Rill syntax. See 0f1/0f2 briefs for Par/fiber design.
 
 #[test]
-fn spawn_with_actor_impl_succeeds() {
-    let (mut env, records, traits) = setup_actor_test(true);
-    let expr = spawn_expr(var("counter_val"));
-    let mut unifier = Unifier::new();
-    let ty = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-    assert!(
-        !unifier.has_errors(),
-        "spawn with impl Actor should succeed: {:?}",
-        unifier.errors()
-    );
-    assert!(
-        matches!(ty, Type::Actor(_)),
-        "result should be Actor type, got {ty}"
-    );
-}
-
-#[test]
-fn spawn_primitive_still_works() {
-    // Spawn of a primitive type (Int) is permissive — generic dispatch
-    let mut env = TypeEnv::new();
-    let records = RecordRegistry::new();
-    let traits = traits_with_actor();
-    let mut unifier = Unifier::new();
-    let expr = spawn_expr(lit_int(42));
-    let ty = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-    assert!(
-        !unifier.has_errors(),
-        "spawn Int should still work: {:?}",
-        unifier.errors
-    );
-    assert!(matches!(ty, Type::Actor(ref inner) if **inner == Type::Int));
-}
-
-#[test]
-fn spawn_still_checks_sendable_with_actor() {
-    // Even with impl Actor, closure is still not Sendable
-    let (mut env, records, traits) = setup_actor_test(true);
-    // Override counter_val binding with a closure type to trigger Sendable error
-    env.bind(
-        "bad_val".into(),
-        kea_types::TypeScheme::mono(Type::Function(kea_types::FunctionType {
-            params: vec![Type::Int],
-            ret: Box::new(Type::Int),
-            effects: EffectRow::pure(),
-        })),
-    );
-    let expr = spawn_expr(var("bad_val"));
-    let mut unifier = Unifier::new();
-    let _ty = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-    assert!(
-        unifier.has_errors(),
-        "spawn of Function should still fail Sendable check"
-    );
-    let msg = format!("{:?}", unifier.errors());
-    assert!(
-        msg.contains("Sendable"),
-        "error should mention Sendable, got: {msg}"
-    );
-}
-
-#[test]
-fn infer_await_requires_task() {
-    let expr = await_expr(lit_int(1), false);
-    let mut env = TypeEnv::new();
-    let records = RecordRegistry::new();
-    let traits = TraitRegistry::new();
-    let mut unifier = Unifier::new();
-    let _ = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-    assert!(unifier.has_errors(), "await on non-Task should error");
-}
-
-#[test]
-fn infer_await_and_await_safe_types() {
-    let expr = block(vec![
-        let_bind("t", spawn_expr(lit_int(7))),
-        sp(ExprKind::Tuple(vec![
-            await_expr(var("t"), false),
-            await_expr(var("t2"), true),
-        ])),
-    ]);
-    let mut env = TypeEnv::new();
-    env.bind(
-        "t2".into(),
-        TypeScheme::mono(Type::Task(Box::new(Type::Int))),
-    );
-    let records = RecordRegistry::new();
-    let traits = TraitRegistry::new();
-    let mut unifier = Unifier::new();
-    let ty = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-    assert!(
-        !unifier.has_errors(),
-        "await over Task should typecheck: {:?}",
-        unifier.errors()
-    );
-    match ty {
-        Type::Tuple(items) => {
-            assert_eq!(items[0], Type::Int);
-            assert_eq!(
-                items[1],
-                Type::result(
-                    Type::Int,
-                    kea_types::builtin_error_sum_type("ActorError")
-                        .expect("builtin ActorError type"),
-                )
-            );
-        }
-        other => panic!("expected tuple result, got {other}"),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Spawn config type checking
-// ---------------------------------------------------------------------------
-
-#[test]
-fn spawn_config_mailbox_size_must_be_int() {
-    let (mut env, records, traits) = setup_actor_test(true);
-    let mut unifier = Unifier::new();
-    let config = kea_ast::SpawnConfig {
-        mailbox_size: Some(lit_str("not_int")),
-        supervision: None,
-        max_restarts: None,
-        call_timeout: None,
-    };
-    let expr = sp(ExprKind::Spawn {
-        value: Box::new(var("counter_val")),
-        config: Some(Box::new(config)),
-    });
-    let _ty = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-    assert!(
-        unifier.has_errors(),
-        "String mailbox_size should cause type error"
-    );
-}
-
-#[test]
-fn spawn_config_valid_int_succeeds() {
-    let (mut env, records, traits) = setup_actor_test(true);
-    let mut unifier = Unifier::new();
-    let config = kea_ast::SpawnConfig {
-        mailbox_size: Some(lit_int(100)),
-        supervision: None,
-        max_restarts: Some(lit_int(5)),
-        call_timeout: None,
-    };
-    let expr = sp(ExprKind::Spawn {
-        value: Box::new(var("counter_val")),
-        config: Some(Box::new(config)),
-    });
-    let ty = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-    assert!(!unifier.has_errors(), "errors: {:?}", unifier.errors());
-    // Return type should still be Actor(Counter)
-    assert!(matches!(ty, Type::Actor(_)));
-}
-
-#[test]
-fn spawn_config_precision_int_types_succeed() {
-    let (mut env, records, traits) = setup_actor_test(true);
-    env.bind(
-        "mailbox_i32".to_string(),
-        kea_types::TypeScheme::mono(Type::IntN(
-            kea_types::IntWidth::I32,
-            kea_types::Signedness::Signed,
-        )),
-    );
-    env.bind(
-        "restarts_u16".to_string(),
-        kea_types::TypeScheme::mono(Type::IntN(
-            kea_types::IntWidth::I16,
-            kea_types::Signedness::Unsigned,
-        )),
-    );
-    env.bind(
-        "timeout_i64".to_string(),
-        kea_types::TypeScheme::mono(Type::IntN(
-            kea_types::IntWidth::I64,
-            kea_types::Signedness::Signed,
-        )),
-    );
-
-    let mut unifier = Unifier::new();
-    let config = kea_ast::SpawnConfig {
-        mailbox_size: Some(var("mailbox_i32")),
-        supervision: None,
-        max_restarts: Some(var("restarts_u16")),
-        call_timeout: Some(var("timeout_i64")),
-    };
-    let expr = sp(ExprKind::Spawn {
-        value: Box::new(var("counter_val")),
-        config: Some(Box::new(config)),
-    });
-    let ty = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-
-    assert!(
-        !unifier.has_errors(),
-        "precision integer config should be accepted: {:?}",
-        unifier.errors()
-    );
-    assert!(matches!(ty, Type::Actor(_)));
-}
-
-#[test]
-fn spawn_config_supervision_requires_supervision_action_sum_type() {
-    let (mut env, records, traits) = setup_actor_test(true);
-    let mut unifier = Unifier::new();
-    let config = kea_ast::SpawnConfig {
-        mailbox_size: None,
-        supervision: Some(atom_expr("restart")),
-        max_restarts: None,
-        call_timeout: None,
-    };
-    let expr = sp(ExprKind::Spawn {
-        value: Box::new(var("counter_val")),
-        config: Some(Box::new(config)),
-    });
-    let _ty = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-    assert!(
-        unifier.has_errors(),
-        "atom supervision value should fail (expected SupervisionAction)"
-    );
-}
-
-#[test]
-fn spawn_config_supervision_accepts_restart_constructor() {
-    let (mut env, records, traits) = setup_actor_test(true);
-    let mut unifier = Unifier::new();
-    let config = kea_ast::SpawnConfig {
-        mailbox_size: None,
-        supervision: Some(constructor("Restart", vec![])),
-        max_restarts: None,
-        call_timeout: None,
-    };
-    let expr = sp(ExprKind::Spawn {
-        value: Box::new(var("counter_val")),
-        config: Some(Box::new(config)),
-    });
-    let ty = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-    assert!(
-        !unifier.has_errors(),
-        "Restart constructor should satisfy SupervisionAction: {:?}",
-        unifier.errors()
-    );
-    assert!(matches!(ty, Type::Actor(_)));
+fn dispatch_semantics_self_return_placeholder() {
+    // placeholder to keep setup_actor_test referenced
+    let _ = setup_actor_test(false);
+    let _ = setup_actor_test(true);
 }
 
 // ---------------------------------------------------------------------------
@@ -11393,97 +10937,6 @@ fn send_call_with_state_method_is_error() {
     assert!(
         msg.contains("use `call`"),
         "expected 'use call' error for CallWithState method, got: {msg}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// spawn record with closure field fails Sendable check
-// ---------------------------------------------------------------------------
-
-#[test]
-fn spawn_record_with_closure_field_not_sendable() {
-    // record Handler { callback: (Int) -> Int }
-    // spawn Handler { callback: |x| x }
-    // Should fail Sendable check on the record's fields
-    let mut records = RecordRegistry::new();
-    let mut traits = TraitRegistry::new();
-
-    // Register Actor trait
-    let actor_trait = kea_ast::TraitDef {
-        public: true,
-        name: sp("Actor".to_string()),
-        doc: None,
-        type_params: vec![],
-        supertraits: vec![],
-        fundeps: vec![],
-        associated_types: vec![],
-        methods: vec![],
-    };
-    traits.register_trait(&actor_trait, &records).unwrap();
-
-    // Register `record Handler { callback: (Int) -> Int }` — we use the AST def
-    // for registration but the record row manually with Function type.
-    // RecordDef needs TypeAnnotation, but RecordRegistry stores the resolved row.
-    // The key fact is that the record HAS a Function-typed field.
-    let handler_def = make_record_def(
-        "Handler",
-        vec![(
-            "callback",
-            TypeAnnotation::Function(
-                vec![TypeAnnotation::Named("Int".to_string())],
-                Box::new(TypeAnnotation::Named("Int".to_string())),
-            ),
-        )],
-    );
-    records.register(&handler_def).unwrap();
-    traits.register_type_owner("Handler", "repl:");
-
-    // Register `impl Actor for Handler {}`
-    let impl_block = kea_ast::ImplBlock {
-        trait_name: sp("Actor".to_string()),
-        type_name: sp("Handler".to_string()),
-        type_params: vec![],
-        methods: vec![],
-        control_type: None,
-        where_clause: vec![],
-    };
-    traits.register_trait_impl(&impl_block).unwrap();
-
-    // Build the Handler value with a Function-typed field
-    let handler_ty = Type::Record(RecordType {
-        name: "Handler".to_string(),
-        params: vec![],
-        row: RowType::closed(vec![(
-            Label::new("callback"),
-            Type::Function(FunctionType {
-                params: vec![Type::Int],
-                ret: Box::new(Type::Int),
-                effects: EffectRow::pure(),
-            }),
-        )]),
-    });
-
-    let mut env = TypeEnv::new();
-    env.bind("h".into(), kea_types::TypeScheme::mono(handler_ty));
-
-    let expr = spawn_expr(var("h"));
-    let mut unifier = Unifier::new();
-    let _ty = infer_and_resolve(
-        &expr,
-        &mut env,
-        &mut unifier,
-        &records,
-        &traits,
-        &SumTypeRegistry::new(),
-    );
-    assert!(
-        unifier.has_errors(),
-        "spawn of record with Function field should fail Sendable check"
-    );
-    let msg = format!("{:?}", unifier.errors());
-    assert!(
-        msg.contains("Sendable"),
-        "error should mention Sendable, got: {msg}"
     );
 }
 

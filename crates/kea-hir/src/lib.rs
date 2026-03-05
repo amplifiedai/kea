@@ -667,9 +667,7 @@ fn check_unique_moves_ast_expr(
             check_unique_moves_ast_expr(left, state, diagnostics, borrow_param_map);
             check_unique_moves_ast_expr(right, state, diagnostics, borrow_param_map);
         }
-        ExprKind::UnaryOp { operand, .. }
-        | ExprKind::WhenGuard { body: operand, .. }
-        | ExprKind::Await { expr: operand, .. } => {
+        ExprKind::UnaryOp { operand, .. } | ExprKind::WhenGuard { body: operand, .. } => {
             check_unique_moves_ast_expr(operand, state, diagnostics, borrow_param_map);
         }
         ExprKind::Unsafe { body } => {
@@ -702,10 +700,7 @@ fn check_unique_moves_ast_expr(
             check_unique_moves_ast_expr(actor, state, diagnostics, borrow_param_map);
             check_unique_moves_ast_expr(signal, state, diagnostics, borrow_param_map);
         }
-        ExprKind::FieldAccess { expr, .. }
-        | ExprKind::YieldFrom { source: expr }
-        | ExprKind::Spawn { value: expr, .. }
-        | ExprKind::StreamBlock { body: expr, .. } => {
+        ExprKind::FieldAccess { expr, .. } => {
             check_unique_moves_ast_expr(expr, state, diagnostics, borrow_param_map);
         }
         ExprKind::Constructor { args, .. } => {
