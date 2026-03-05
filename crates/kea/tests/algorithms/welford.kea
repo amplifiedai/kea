@@ -1,0 +1,87 @@
+doc
+  Welford's online algorithm for computing running mean and variance.
+
+  O(n) time, O(1) space, numerically stable. Avoids catastrophic cancellation
+  that occurs with the naive two-pass formula: sum(x^2)/n - mean^2.
+
+  Reference: B.P. Welford (1962), "Note on a method for calculating corrected
+  sums of squares and products", Technometrics 4(3):419–420.
+
+  Wikipedia example: [2, 4, 4, 4, 5, 5, 7, 9] → mean=5.0, variance=4.0
+
+use Float
+use Int
+use List
+use Test
+
+doc
+  Compute the mean and population variance of a list of integers.
+
+  Returns (mean, population_variance). Population variance divides by n
+  (biased estimator). For empty input returns (0.0, 0.0); for a single
+  element returns (x, 0.0).
+
+    welford([2, 4, 4, 4, 5, 5, 7, 9]) -- => (5.0, 4.0)
+    welford([])                        -- => (0.0, 0.0)
+    welford([42])                      -- => (42.0, 0.0)
+fn welford(xs: List Int) -> (Float, Float)
+  welford_step(xs, 0, 0.0, 0.0)
+
+fn welford_step(xs: List Int, n: Int, mean: Float, m2: Float) -> (Float, Float)
+  case xs
+    Nil ->
+      if n < 1
+        (mean, 0.0)
+      else
+        let variance = m2 / Int.to_float(n)
+        (mean, variance)
+    Cons(x, rest) ->
+      let n1 = n + 1
+      let xf = Int.to_float(x)
+      let delta = xf - mean
+      let new_mean = mean + delta / Int.to_float(n1)
+      let delta2 = xf - new_mean
+      let new_m2 = m2 + delta * delta2
+      welford_step(rest, n1, new_mean, new_m2)
+
+fn approx_eq(a: Float, b: Float, epsilon: Float) -> Bool
+  let diff = Float.fabs(a - b)
+  diff < epsilon
+
+test "welford empty"
+  let result = welford([])
+  let mean = result.0
+  let var = result.1
+  Test.assert(approx_eq(mean, 0.0, 0.001))
+  Test.assert(approx_eq(var, 0.0, 0.001))
+
+test "welford single element"
+  let result = welford([42])
+  let mean = result.0
+  let var = result.1
+  Test.assert(approx_eq(mean, 42.0, 0.001))
+  Test.assert(approx_eq(var, 0.0, 0.001))
+
+test "welford wikipedia example"
+  -- [2, 4, 4, 4, 5, 5, 7, 9]: mean = 5.0, sample variance = 4.0
+  let result = welford([2, 4, 4, 4, 5, 5, 7, 9])
+  let mean = result.0
+  let var = result.1
+  Test.assert(approx_eq(mean, 5.0, 0.0001))
+  Test.assert(approx_eq(var, 4.0, 0.0001))
+
+test "welford constant sequence"
+  -- All same values: mean = value, variance = 0
+  let result = welford([7, 7, 7, 7, 7])
+  let mean = result.0
+  let var = result.1
+  Test.assert(approx_eq(mean, 7.0, 0.0001))
+  Test.assert(approx_eq(var, 0.0, 0.0001))
+
+test "welford two elements"
+  -- [1, 3]: mean = 2.0, population variance = ((1-2)^2 + (3-2)^2) / 2 = 1.0
+  let result = welford([1, 3])
+  let mean = result.0
+  let var = result.1
+  Test.assert(approx_eq(mean, 2.0, 0.0001))
+  Test.assert(approx_eq(var, 1.0, 0.0001))

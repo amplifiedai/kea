@@ -1,0 +1,85 @@
+doc
+  Binary search on a sorted List Int.
+
+  Implemented using List.nth for indexed access, which is O(n) per lookup.
+  The search itself reduces the search space by half each step (O(log n)
+  comparisons), but each comparison costs O(n) for list traversal —
+  total: O(n log n). A Vector-based version will be O(log n).
+
+  This file establishes the algorithm structure and test baseline; the
+  interface is stable and will work identically with the Vector backend.
+
+use List
+use Option
+use Test
+
+doc
+  Search a sorted list for `target`. Returns Some(index) on the first match,
+  None if not found.
+
+    binary_search([1, 3, 5, 7], 5) -- => Some(2)
+    binary_search([1, 3, 5, 7], 4) -- => None
+    binary_search([], 1)           -- => None
+fn binary_search(xs: List Int, target: Int) -> Option Int
+  search(xs, target, 0, List.length(xs) - 1)
+
+fn search(xs: List Int, target: Int, lo: Int, hi: Int) -> Option Int
+  if lo > hi
+    None
+  else
+    let mid = lo + (hi - lo) / 2
+    case List.nth(xs, mid)
+      None -> None
+      Some(v) ->
+        if v == target
+          Some(mid)
+        else
+          if v < target
+            search(xs, target, mid + 1, hi)
+          else
+            search(xs, target, lo, mid - 1)
+
+fn unwrap_or(opt: Option Int, default: Int) -> Int
+  case opt
+    Some(x) -> x
+    None -> default
+
+fn is_none(opt: Option Int) -> Bool
+  case opt
+    Some(_) -> false
+    None -> true
+
+test "binary_search empty"
+  Test.assert(is_none(binary_search([], 1)))
+
+test "binary_search singleton found"
+  Test.assert(unwrap_or(binary_search([42], 42), -1) == 0)
+
+test "binary_search singleton not found"
+  Test.assert(is_none(binary_search([42], 7)))
+
+test "binary_search found in middle"
+  let xs = [1, 3, 5, 7, 9]
+  Test.assert(unwrap_or(binary_search(xs, 5), -1) == 2)
+
+test "binary_search found at start"
+  let xs = [1, 3, 5, 7, 9]
+  Test.assert(unwrap_or(binary_search(xs, 1), -1) == 0)
+
+test "binary_search found at end"
+  let xs = [1, 3, 5, 7, 9]
+  Test.assert(unwrap_or(binary_search(xs, 9), -1) == 4)
+
+test "binary_search not found below range"
+  Test.assert(is_none(binary_search([2, 4, 6, 8], 1)))
+
+test "binary_search not found above range"
+  Test.assert(is_none(binary_search([2, 4, 6, 8], 10)))
+
+test "binary_search not found between elements"
+  Test.assert(is_none(binary_search([1, 3, 5, 7], 4)))
+
+test "binary_search even length list"
+  let xs = [10, 20, 30, 40]
+  Test.assert(unwrap_or(binary_search(xs, 20), -1) == 1)
+  Test.assert(unwrap_or(binary_search(xs, 40), -1) == 3)

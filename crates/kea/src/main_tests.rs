@@ -416,8 +416,10 @@ fn run_stdlib_case_corpus_with_kea_test_runner() {
 fn run_algorithm_gallery_with_kea_test_runner() {
     let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms");
     let supported = [
+        "binary_search.kea",
         "fnv1a.kea",
         "merge_sort.kea",
+        "welford.kea",
     ];
     let mut case_files = std::fs::read_dir(&cases_dir)
         .expect("algorithm gallery dir should exist")
