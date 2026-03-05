@@ -241,6 +241,7 @@ impl<'a> MonoPass<'a> {
                         ty: f.ty.clone(),
                         effects: f.effects.clone(),
                         span: f.span,
+                        is_fip: f.is_fip,
                     };
                     declarations.push(HirDecl::Function(rewritten));
                 }
@@ -650,6 +651,7 @@ fn apply_subst_to_function(f: &HirFunction, subst: &Substitution) -> HirFunction
         ty: subst.apply(&f.ty),
         effects: subst.apply_effect_row(&f.effects),
         span: f.span,
+        is_fip: f.is_fip,
     }
 }
 
@@ -982,6 +984,7 @@ mod tests {
             ty: make_fn_type(vec![Type::Var(var_a)], Type::Var(var_a)),
             effects: kea_types::EffectRow::pure(),
             span: dummy_span(),
+            is_fip: false,
         };
 
         // Monomorphic function: main() calls identity(42)
@@ -996,6 +999,7 @@ mod tests {
             ty: make_fn_type(vec![], Type::Int),
             effects: kea_types::EffectRow::pure(),
             span: dummy_span(),
+            is_fip: false,
         };
 
         let module = HirModule {

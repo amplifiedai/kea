@@ -1060,6 +1060,10 @@ fn compile_into_module<M: Module>(
     if requires_free {
         define_drop_functions(module, layout_plan, &drop_func_ids, &mut runtime_imports)?;
     }
+    let retain_func_ids = declare_retain_functions(module, layout_plan, requires_free)?;
+    if requires_free {
+        define_retain_functions(module, layout_plan, &retain_func_ids)?;
+    }
 
     let mut builder_context = FunctionBuilderContext::new();
 
@@ -1174,6 +1178,7 @@ fn compile_into_module<M: Module>(
                     external_func_ids: &external_func_ids,
                     layout_plan,
                     drop_func_ids: &drop_func_ids,
+                    retain_func_ids: &retain_func_ids,
                     value_types: &value_types,
                     stack_unboxed_record_inits: &stack_unboxed_record_inits,
                     stack_record_release_elision_values: &stack_record_release_elision_values,
@@ -1884,6 +1889,15 @@ fn drop_function_for_type(ty: &Type, drop_func_ids: &DropFunctionIds) -> Option<
     }
 }
 
+fn retain_function_for_type(ty: &Type, retain_func_ids: &RetainFunctionIds) -> Option<FuncId> {
+    match ty {
+        Type::Record(record) => retain_func_ids.records.get(record.name.as_str()).copied(),
+        _ => drop_sum_name_for_type(ty)
+            .and_then(|name| retain_func_ids.sums.get(name))
+            .copied(),
+    }
+}
+
 fn sum_type_has_immediate_variants(ty: &Type, layout_plan: &BackendLayoutPlan) -> bool {
     drop_sum_name_for_type(ty)
         .and_then(|name| layout_plan.sums.get(name))
@@ -2166,6 +2180,7 @@ struct LowerInstCtx<'a> {
     external_func_ids: &'a BTreeMap<String, FuncId>,
     layout_plan: &'a BackendLayoutPlan,
     drop_func_ids: &'a DropFunctionIds,
+    retain_func_ids: &'a RetainFunctionIds,
     value_types: &'a BTreeMap<MirValueId, Type>,
     stack_unboxed_record_inits: &'a BTreeSet<MirValueId>,
     stack_record_release_elision_values: &'a BTreeSet<MirValueId>,
@@ -2735,6 +2750,28 @@ fn emit_typed_release<M: Module>(
     emit_generic_release(module, builder, function_name, payload_ptr, imports)
 }
 
+fn emit_typed_retain<M: Module>(
+    module: &mut M,
+    builder: &mut FunctionBuilder,
+    payload_ptr: Value,
+    value_ty: Option<&Type>,
+    layout_plan: &BackendLayoutPlan,
+    retain_func_ids: &RetainFunctionIds,
+) -> Result<(), CodegenError> {
+    if let Some(ty) = value_ty {
+        if !is_managed_heap_type(ty, layout_plan) {
+            return Ok(());
+        }
+        if let Some(retain_func_id) = retain_function_for_type(ty, retain_func_ids) {
+            let retain_ref = module.declare_func_in_func(retain_func_id, builder.func);
+            let _ = builder.ins().call(retain_ref, &[payload_ptr]);
+            return Ok(());
+        }
+    }
+    emit_retain(builder, payload_ptr);
+    Ok(())
+}
+
 fn declare_drop_functions<M: Module>(
     module: &mut M,
     layout_plan: &BackendLayoutPlan,
@@ -2770,6 +2807,59 @@ fn declare_drop_functions<M: Module>(
         drop_ids.sums.insert(sum_name.clone(), func_id);
     }
     Ok(drop_ids)
+}
+
+fn declare_retain_functions<M: Module>(
+    module: &mut M,
+    layout_plan: &BackendLayoutPlan,
+    enabled: bool,
+) -> Result<RetainFunctionIds, CodegenError> {
+    if !enabled {
+        return Ok(RetainFunctionIds::default());
+    }
+    let ptr_ty = module.target_config().pointer_type();
+    let mut signature = module.make_signature();
+    signature.params.push(AbiParam::new(ptr_ty));
+
+    let mut retain_ids = RetainFunctionIds::default();
+    for (record_name, layout) in &layout_plan.records {
+        if layout.is_unboxed {
+            continue;
+        }
+        // Only need deep retain if record has at least one managed heap field.
+        if !layout
+            .field_types
+            .values()
+            .any(|ft| is_managed_heap_type(ft, layout_plan))
+        {
+            continue;
+        }
+        let symbol = mangle_drop_symbol("__kea_deep_retain_record", record_name);
+        let func_id = module
+            .declare_function(&symbol, Linkage::Local, &signature)
+            .map_err(|detail| CodegenError::Module {
+                detail: detail.to_string(),
+            })?;
+        retain_ids.records.insert(record_name.clone(), func_id);
+    }
+    for (sum_name, layout) in &layout_plan.sums {
+        let has_managed = layout.variant_field_types.values().any(|field_types| {
+            field_types
+                .iter()
+                .any(|ft| is_managed_heap_type(ft, layout_plan))
+        });
+        if !has_managed {
+            continue;
+        }
+        let symbol = mangle_drop_symbol("__kea_deep_retain_sum", sum_name);
+        let func_id = module
+            .declare_function(&symbol, Linkage::Local, &signature)
+            .map_err(|detail| CodegenError::Module {
+                detail: detail.to_string(),
+            })?;
+        retain_ids.sums.insert(sum_name.clone(), func_id);
+    }
+    Ok(retain_ids)
 }
 
 fn define_record_drop_function<M: Module>(
@@ -2864,6 +2954,83 @@ fn define_record_drop_function<M: Module>(
         .define_function(func_id, &mut context)
         .map_err(|detail| CodegenError::Module {
             detail: format!("drop function `{type_name}`: {detail:?}"),
+        })?;
+    module.clear_context(&mut context);
+    Ok(())
+}
+
+fn define_record_retain_function<M: Module>(
+    module: &mut M,
+    type_name: &str,
+    layout: &BackendRecordLayout,
+    layout_plan: &BackendLayoutPlan,
+    retain_func_ids: &RetainFunctionIds,
+) -> Result<(), CodegenError> {
+    let func_id = *retain_func_ids
+        .records
+        .get(type_name)
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: format!("missing declared retain function for record `{type_name}`"),
+        })?;
+
+    let mut context = module.make_context();
+    let ptr_ty = module.target_config().pointer_type();
+    context.func.signature.params.push(AbiParam::new(ptr_ty));
+
+    let mut builder_context = FunctionBuilderContext::new();
+    let mut builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
+    let entry = builder.create_block();
+    let ret_block = builder.create_block();
+    builder.append_block_params_for_function_params(entry);
+    builder.switch_to_block(entry);
+
+    let payload_ptr = builder
+        .block_params(entry)
+        .first()
+        .copied()
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: "retain function missing payload parameter".to_string(),
+        })?;
+
+    // Increment reference count of this record node.
+    let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
+    let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+    let next = builder.ins().iadd_imm(rc_value, 1);
+    builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+
+    // Deep-retain each managed field so interior structure stays alive when shared.
+    for (field_name, field_ty) in &layout.field_types {
+        if !is_managed_heap_type(field_ty, layout_plan) {
+            continue;
+        }
+        let Some(field_offset) = layout.field_offsets.get(field_name) else {
+            continue;
+        };
+        let field_offset =
+            i32::try_from(*field_offset).map_err(|_| CodegenError::UnsupportedMir {
+                function: type_name.to_string(),
+                detail: format!(
+                    "record `{type_name}` field `{field_name}` offset does not fit i32"
+                ),
+            })?;
+        let field_ptr = builder
+            .ins()
+            .load(ptr_ty, MemFlags::new(), payload_ptr, field_offset);
+        emit_typed_retain(module, &mut builder, field_ptr, Some(field_ty), layout_plan, retain_func_ids)?;
+    }
+    builder.ins().jump(ret_block, &[]);
+
+    builder.switch_to_block(ret_block);
+    builder.ins().return_(&[]);
+    builder.seal_all_blocks();
+    builder.finalize();
+
+    module
+        .define_function(func_id, &mut context)
+        .map_err(|detail| CodegenError::Module {
+            detail: format!("retain function `{type_name}`: {detail:?}"),
         })?;
     module.clear_context(&mut context);
     Ok(())
@@ -3239,6 +3406,369 @@ fn define_sum_drop_function<M: Module>(
     Ok(())
 }
 
+fn define_sum_retain_function<M: Module>(
+    module: &mut M,
+    type_name: &str,
+    layout: &BackendSumLayout,
+    layout_plan: &BackendLayoutPlan,
+    retain_func_ids: &RetainFunctionIds,
+) -> Result<(), CodegenError> {
+    let func_id = *retain_func_ids
+        .sums
+        .get(type_name)
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: format!("missing declared retain function for sum `{type_name}`"),
+        })?;
+
+    let mut context = module.make_context();
+    let ptr_ty = module.target_config().pointer_type();
+    context.func.signature.params.push(AbiParam::new(ptr_ty));
+
+    let mut builder_context = FunctionBuilderContext::new();
+    let mut builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
+    let entry = builder.create_block();
+    let ret_block = builder.create_block();
+    builder.append_block_params_for_function_params(entry);
+    builder.switch_to_block(entry);
+
+    let payload_ptr = builder
+        .block_params(entry)
+        .first()
+        .copied()
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: "retain function missing payload parameter".to_string(),
+        })?;
+
+    let has_unit_variant = layout
+        .variant_field_counts
+        .values()
+        .any(|count| *count == 0);
+    let has_payload_variant = layout.variant_field_counts.values().any(|count| *count > 0);
+    let max_immediate_tag = if has_unit_variant && has_payload_variant {
+        Some(
+            i64::try_from(layout.variant_field_counts.len()).map_err(|_| {
+                CodegenError::UnsupportedMir {
+                    function: type_name.to_string(),
+                    detail: format!("sum `{type_name}` has invalid mixed-variant tag cardinality"),
+                }
+            })? - 1,
+        )
+    } else {
+        None
+    };
+
+    // All-unit type: stored as tagged ints, never heap allocated.
+    if has_unit_variant && !has_payload_variant {
+        builder.ins().return_(&[]);
+        builder.seal_all_blocks();
+        builder.finalize();
+        module
+            .define_function(func_id, &mut context)
+            .map_err(|detail| CodegenError::Module {
+                detail: format!("retain function `{type_name}`: {detail:?}"),
+            })?;
+        module.clear_context(&mut context);
+        return Ok(());
+    }
+
+    let tag_offset =
+        i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: format!("sum `{type_name}` tag offset does not fit i32"),
+        })?;
+    let payload_offset =
+        i32::try_from(layout.payload_offset).map_err(|_| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: format!("sum `{type_name}` payload offset does not fit i32"),
+        })?;
+    let mut variants = layout
+        .variant_tags
+        .iter()
+        .filter_map(|(variant_name, tag)| {
+            let field_types = layout.variant_field_types.get(variant_name)?;
+            let mut self_field_count = 0usize;
+            let mut self_field_index = None;
+            for (field_idx, field_ty) in field_types.iter().enumerate() {
+                if let Type::Sum(sum_ty) = field_ty
+                    && sum_ty.name == type_name
+                {
+                    self_field_count = self_field_count.saturating_add(1);
+                    if self_field_index.is_none() {
+                        self_field_index = Some(field_idx);
+                    }
+                }
+            }
+            if field_types
+                .iter()
+                .any(|field_ty| is_managed_heap_type(field_ty, layout_plan))
+            {
+                Some((
+                    *tag,
+                    field_types.as_slice(),
+                    self_field_count,
+                    self_field_index,
+                ))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    variants.sort_by_key(|(tag, _, _, _)| *tag);
+
+    let iterative_self_chain_supported = variants
+        .iter()
+        .all(|(_, _, self_count, _)| *self_count <= 1)
+        && variants
+            .iter()
+            .any(|(_, _, self_count, _)| *self_count == 1);
+
+    if iterative_self_chain_supported {
+        // Build an iterative loop that traverses the chain without stack recursion.
+        let loop_block = builder.create_block();
+        builder.append_block_param(loop_block, ptr_ty);
+        builder.ins().jump(loop_block, &[payload_ptr]);
+        builder.switch_to_block(loop_block);
+        let current_payload_ptr = builder
+            .block_params(loop_block)
+            .first()
+            .copied()
+            .ok_or_else(|| CodegenError::UnsupportedMir {
+                function: type_name.to_string(),
+                detail: format!(
+                    "sum `{type_name}` iterative retain loop missing payload parameter"
+                ),
+            })?;
+
+        // Check for immediate (unit) variants encoded as tagged ints.
+        if let Some(max_tag) = max_immediate_tag {
+            let pointer_block = builder.create_block();
+            let max_tag_value = builder.ins().iconst(ptr_ty, max_tag);
+            let is_immediate = builder.ins().icmp(
+                IntCC::UnsignedLessThanOrEqual,
+                current_payload_ptr,
+                max_tag_value,
+            );
+            builder
+                .ins()
+                .brif(is_immediate, ret_block, &[], pointer_block, &[]);
+            builder.switch_to_block(pointer_block);
+        }
+
+        // Increment reference count of this node.
+        let rc_ptr = builder.ins().iadd_imm(current_payload_ptr, -8);
+        let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+        let next = builder.ins().iadd_imm(rc_value, 1);
+        builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+
+        // Read variant tag and dispatch to per-variant retain logic.
+        // current_block is either loop_block (pure-payload) or pointer_block (mixed),
+        // after the rc increment above — that is our dispatch start.
+        let tag_value = builder
+            .ins()
+            .load(types::I32, MemFlags::new(), current_payload_ptr, tag_offset);
+        let mut check_block = builder.current_block().ok_or_else(|| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: "retain function lost current block after rc increment".to_string(),
+        })?;
+
+        for (idx, (variant_tag, field_types, _self_count, self_field_index)) in
+            variants.iter().enumerate()
+        {
+            if idx > 0 {
+                builder.switch_to_block(check_block);
+            }
+            let variant_retain_block = builder.create_block();
+            let next_check_or_ret = if idx + 1 < variants.len() {
+                builder.create_block()
+            } else {
+                ret_block
+            };
+
+            let expected_tag = builder.ins().iconst(types::I32, i64::from(*variant_tag));
+            let is_match = builder.ins().icmp(IntCC::Equal, tag_value, expected_tag);
+            builder
+                .ins()
+                .brif(is_match, variant_retain_block, &[], next_check_or_ret, &[]);
+
+            builder.switch_to_block(variant_retain_block);
+            let mut next_chain_payload = None;
+            for (field_idx, field_ty) in field_types.iter().enumerate() {
+                if !is_managed_heap_type(field_ty, layout_plan) {
+                    continue;
+                }
+                let field_offset = payload_offset
+                    .checked_add(i32::try_from(field_idx.saturating_mul(8)).map_err(|_| {
+                        CodegenError::UnsupportedMir {
+                            function: type_name.to_string(),
+                            detail: format!(
+                                "sum `{type_name}` variant tag `{variant_tag}` field offset overflow"
+                            ),
+                        }
+                    })?)
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: type_name.to_string(),
+                        detail: format!(
+                            "sum `{type_name}` variant tag `{variant_tag}` field offset overflow"
+                        ),
+                    })?;
+                let field_ptr = builder
+                    .ins()
+                    .load(ptr_ty, MemFlags::new(), current_payload_ptr, field_offset);
+                // Self-referencing field: continue the loop instead of recursing.
+                if self_field_index.is_some_and(|self_idx| self_idx == field_idx)
+                    && matches!(field_ty, Type::Sum(sum_ty) if sum_ty.name == type_name)
+                {
+                    next_chain_payload = Some(field_ptr);
+                    continue;
+                }
+                emit_typed_retain(
+                    module,
+                    &mut builder,
+                    field_ptr,
+                    Some(field_ty),
+                    layout_plan,
+                    retain_func_ids,
+                )?;
+            }
+            if let Some(next_chain_payload) = next_chain_payload {
+                if let Some(max_tag) = max_immediate_tag {
+                    let loop_continue_block = builder.create_block();
+                    let max_tag_value = builder.ins().iconst(ptr_ty, max_tag);
+                    let is_immediate = builder.ins().icmp(
+                        IntCC::UnsignedLessThanOrEqual,
+                        next_chain_payload,
+                        max_tag_value,
+                    );
+                    builder
+                        .ins()
+                        .brif(is_immediate, ret_block, &[], loop_continue_block, &[]);
+                    builder.switch_to_block(loop_continue_block);
+                }
+                builder.ins().jump(loop_block, &[next_chain_payload]);
+            } else {
+                builder.ins().jump(ret_block, &[]);
+            }
+            check_block = next_check_or_ret;
+        }
+
+        if check_block != ret_block {
+            builder.switch_to_block(check_block);
+            builder.ins().jump(ret_block, &[]);
+        }
+    } else {
+        // Non-iterative path: handle mixed-variant immediate check then increment + retain children.
+        if let Some(max_tag) = max_immediate_tag {
+            let pointer_block = builder.create_block();
+            let max_tag_value = builder.ins().iconst(ptr_ty, max_tag);
+            let is_immediate = builder
+                .ins()
+                .icmp(IntCC::UnsignedLessThanOrEqual, payload_ptr, max_tag_value);
+            builder
+                .ins()
+                .brif(is_immediate, ret_block, &[], pointer_block, &[]);
+            builder.switch_to_block(pointer_block);
+        }
+        let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
+        let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+        let next = builder.ins().iadd_imm(rc_value, 1);
+        builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+
+        let tag_value = builder
+            .ins()
+            .load(types::I32, MemFlags::new(), payload_ptr, tag_offset);
+
+        if variants.is_empty() {
+            builder.ins().jump(ret_block, &[]);
+        } else {
+            let mut check_block = builder.current_block().ok_or_else(|| {
+                CodegenError::UnsupportedMir {
+                    function: type_name.to_string(),
+                    detail: "retain function lost current block".to_string(),
+                }
+            })?;
+            for (idx, (variant_tag, field_types, _self_count, _self_field_index)) in
+                variants.iter().enumerate()
+            {
+                if idx > 0 {
+                    builder.switch_to_block(check_block);
+                }
+                let variant_retain_block = builder.create_block();
+                let next_check_or_ret = if idx + 1 < variants.len() {
+                    builder.create_block()
+                } else {
+                    ret_block
+                };
+
+                let expected_tag = builder.ins().iconst(types::I32, i64::from(*variant_tag));
+                let is_match = builder.ins().icmp(IntCC::Equal, tag_value, expected_tag);
+                builder.ins().brif(
+                    is_match,
+                    variant_retain_block,
+                    &[],
+                    next_check_or_ret,
+                    &[],
+                );
+
+                builder.switch_to_block(variant_retain_block);
+                for (field_idx, field_ty) in field_types.iter().enumerate() {
+                    if !is_managed_heap_type(field_ty, layout_plan) {
+                        continue;
+                    }
+                    let field_offset = payload_offset
+                        .checked_add(
+                            i32::try_from(field_idx.saturating_mul(8)).map_err(|_| {
+                                CodegenError::UnsupportedMir {
+                                    function: type_name.to_string(),
+                                    detail: format!(
+                                        "sum `{type_name}` variant tag `{variant_tag}` field offset overflow"
+                                    ),
+                                }
+                            })?,
+                        )
+                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: type_name.to_string(),
+                            detail: format!(
+                                "sum `{type_name}` variant tag `{variant_tag}` field offset overflow"
+                            ),
+                        })?;
+                    let field_ptr = builder
+                        .ins()
+                        .load(ptr_ty, MemFlags::new(), payload_ptr, field_offset);
+                    emit_typed_retain(
+                        module,
+                        &mut builder,
+                        field_ptr,
+                        Some(field_ty),
+                        layout_plan,
+                        retain_func_ids,
+                    )?;
+                }
+                builder.ins().jump(ret_block, &[]);
+                check_block = next_check_or_ret;
+            }
+            if check_block != ret_block {
+                builder.switch_to_block(check_block);
+                builder.ins().jump(ret_block, &[]);
+            }
+        }
+    }
+
+    builder.switch_to_block(ret_block);
+    builder.ins().return_(&[]);
+    builder.seal_all_blocks();
+    builder.finalize();
+
+    module
+        .define_function(func_id, &mut context)
+        .map_err(|detail| CodegenError::Module {
+            detail: format!("retain function `{type_name}`: {detail:?}"),
+        })?;
+    module.clear_context(&mut context);
+    Ok(())
+}
+
 fn define_drop_functions<M: Module>(
     module: &mut M,
     layout_plan: &BackendLayoutPlan,
@@ -3267,6 +3797,32 @@ fn define_drop_functions<M: Module>(
             drop_func_ids,
             imports,
         )?;
+    }
+    Ok(())
+}
+
+fn define_retain_functions<M: Module>(
+    module: &mut M,
+    layout_plan: &BackendLayoutPlan,
+    retain_func_ids: &RetainFunctionIds,
+) -> Result<(), CodegenError> {
+    for (record_name, layout) in &layout_plan.records {
+        if layout.is_unboxed || !retain_func_ids.records.contains_key(record_name) {
+            continue;
+        }
+        define_record_retain_function(
+            module,
+            record_name,
+            layout,
+            layout_plan,
+            retain_func_ids,
+        )?;
+    }
+    for (sum_name, layout) in &layout_plan.sums {
+        if !retain_func_ids.sums.contains_key(sum_name) {
+            continue;
+        }
+        define_sum_retain_function(module, sum_name, layout, layout_plan, retain_func_ids)?;
     }
     Ok(())
 }
@@ -4917,7 +5473,15 @@ fn lower_instruction<M: Module>(
             let ptr_ty = module.target_config().pointer_type();
             let payload_ptr = get_value(values, function_name, value)?;
             let payload_ptr = coerce_value_to_clif_type(builder, payload_ptr, ptr_ty);
-            emit_retain(builder, payload_ptr);
+            let value_ty = ctx.value_types.get(value);
+            emit_typed_retain(
+                module,
+                builder,
+                payload_ptr,
+                value_ty,
+                ctx.layout_plan,
+                ctx.retain_func_ids,
+            )?;
             Ok(false)
         }
         MirInst::Release { value } => {
@@ -5903,6 +6467,12 @@ struct DropFunctionIds {
     sums: BTreeMap<String, FuncId>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct RetainFunctionIds {
+    records: BTreeMap<String, FuncId>,
+    sums: BTreeMap<String, FuncId>,
+}
+
 fn align_up(value: u32, align: u32) -> u32 {
     if align == 0 {
         return value;
@@ -6648,6 +7218,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -6683,6 +7254,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -6716,6 +7288,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -6749,6 +7322,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -6784,6 +7358,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -6821,6 +7396,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -6864,6 +7440,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("Clock"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -6893,6 +7470,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("Clock"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -6922,6 +7500,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("Rand"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -6951,6 +7530,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("Rand"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -6984,6 +7564,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7019,6 +7600,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7069,6 +7651,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7107,6 +7690,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -7159,6 +7743,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7185,6 +7770,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7220,6 +7806,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7252,6 +7839,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7289,6 +7877,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7334,6 +7923,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -7399,6 +7989,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("State"), Type::Int)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -7464,6 +8055,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("State"), Type::Int)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7502,6 +8094,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7541,6 +8134,7 @@ mod tests {
                         effects: EffectRow::pure(),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -7573,6 +8167,7 @@ mod tests {
                         effects: EffectRow::pure(),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -7619,6 +8214,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7664,6 +8260,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7714,6 +8311,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7767,6 +8365,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -7865,6 +8464,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -7952,6 +8552,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -8029,6 +8630,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -8122,6 +8724,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -8211,6 +8814,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -8271,6 +8875,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -8353,6 +8958,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -8423,6 +9029,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -8497,6 +9104,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -8582,6 +9190,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -8691,6 +9300,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -8786,6 +9396,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -8897,6 +9508,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -9004,6 +9616,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -9068,6 +9681,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
@@ -9156,6 +9770,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -9211,6 +9826,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -9293,6 +9909,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -9359,6 +9976,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -9417,6 +10035,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -9448,6 +10067,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -9471,6 +10091,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("Fail"), Type::String)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -9492,6 +10113,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("State"), Type::Int)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -9513,6 +10135,7 @@ mod tests {
                     effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -9535,6 +10158,7 @@ mod tests {
                         effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -9562,6 +10186,7 @@ mod tests {
                         effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -9596,6 +10221,7 @@ mod tests {
                         effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -9616,6 +10242,7 @@ mod tests {
                         effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -9663,6 +10290,7 @@ mod tests {
                         effects: EffectRow::pure(),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -9691,6 +10319,7 @@ mod tests {
                         effects: EffectRow::pure(),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -9717,6 +10346,7 @@ mod tests {
                         effects: EffectRow::pure(),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -9755,6 +10385,7 @@ mod tests {
                         effects: EffectRow::pure(),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -9806,6 +10437,7 @@ mod tests {
                         effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -9827,6 +10459,7 @@ mod tests {
                         effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -9853,6 +10486,7 @@ mod tests {
                         effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -9879,6 +10513,7 @@ mod tests {
                         effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                     },
                     entry: MirBlockId(0),
+                    is_fip: false,
                     blocks: vec![MirBlock {
                         id: MirBlockId(0),
                         params: vec![],
@@ -10083,6 +10718,7 @@ mod tests {
                     effects: EffectRow::pure(),
                 },
                 entry: MirBlockId(0),
+                is_fip: false,
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
                     params: vec![],
@@ -11110,6 +11746,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11149,6 +11786,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Unit)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11187,6 +11825,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11216,6 +11855,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11266,6 +11906,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11309,6 +11950,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![Type::Bool, Type::Bool], Type::Bool)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11331,6 +11973,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11356,6 +11999,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11382,6 +12026,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11419,6 +12064,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 

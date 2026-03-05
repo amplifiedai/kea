@@ -92,6 +92,10 @@ pub struct MirFunction {
     pub signature: MirFunctionSignature,
     pub entry: MirBlockId,
     pub blocks: Vec<MirBlock>,
+    /// Whether this function was annotated with `@fip`. FIP functions use reuse
+    /// tokens for all memory management; explicit Release insertion would conflict
+    /// with the FIP verifier which requires zero explicit releases.
+    pub is_fip: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -514,6 +518,8 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
     }
 
     for function in &mut functions {
+        insert_retains_for_reused_call_args(function, &layouts);
+        insert_releases_for_dead_params(function, &layouts);
         rewrite_trmc_descending_sum_chain(function);
         emit_reuse_tokens_for_trailing_release_alloc(function, &layouts);
         schedule_trailing_releases_after_last_use(function);
@@ -522,6 +528,24 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
         fuse_release_alloc_cross_block_jump(function, &layouts);
         emit_reuse_tokens_for_mixed_predecessor_joins(function, &layouts);
         emit_reuse_tokens_for_loop_backedge_joins(function, &layouts);
+    }
+
+    if std::env::var("KEA_DUMP_MIR").as_deref() == Ok("1") {
+        for function in &functions {
+            eprintln!("=== MIR: {} ===", function.name);
+            for block in &function.blocks {
+                let params: Vec<String> = block
+                    .params
+                    .iter()
+                    .map(|p| format!("v{}:{:?}", p.id.0, p.ty))
+                    .collect();
+                eprintln!("  block b{} (params: [{}]):", block.id.0, params.join(", "));
+                for (i, inst) in block.instructions.iter().enumerate() {
+                    eprintln!("    {i:3}: {inst:?}");
+                }
+                eprintln!("    term: {:?}", block.terminator);
+            }
+        }
     }
 
     MirModule { functions, layouts }
@@ -2201,9 +2225,8 @@ fn emit_reuse_tokens_for_mixed_predecessor_joins(
 
                 let token_value = MirValueId(next_value_id);
                 next_value_id = next_value_id.saturating_add(1);
-                if let Some(release_inst_idx) = find_trailing_release_idx(pred_block)
-                    && let MirInst::Release { value } = &pred_block.instructions[release_inst_idx]
-                    && *value == incoming_value
+                if let Some(release_inst_idx) =
+                    find_release_idx_for_value(pred_block, &incoming_value)
                 {
                     saw_tokenized_release = true;
                     pred_actions.push(TokenFlowPredAction {
@@ -2355,18 +2378,12 @@ fn emit_reuse_tokens_for_loop_backedge_joins(
                     all_predecessors_tokenize = false;
                     break;
                 };
-                let Some(release_inst_idx) = find_trailing_release_idx(pred_block) else {
+                let Some(release_inst_idx) =
+                    find_release_idx_for_value(pred_block, &incoming_value)
+                else {
                     all_predecessors_tokenize = false;
                     break;
                 };
-                let MirInst::Release { value } = &pred_block.instructions[release_inst_idx] else {
-                    all_predecessors_tokenize = false;
-                    break;
-                };
-                if *value != incoming_value {
-                    all_predecessors_tokenize = false;
-                    break;
-                }
 
                 let token_value = MirValueId(next_value_id);
                 next_value_id = next_value_id.saturating_add(1);
@@ -2719,6 +2736,518 @@ fn find_trailing_release_idx(block: &MirBlock) -> Option<usize> {
     None
 }
 
+/// Find the index of a `Release { value }` instruction anywhere in a block.
+///
+/// Unlike `find_trailing_release_idx`, this searches the entire block. Needed
+/// because `schedule_trailing_releases_after_last_use` moves releases away from
+/// the tail, so the backedge and mixed-predecessor reuse passes must search the
+/// whole block rather than only the tail.
+/// Returns true when `value` is consumed by the given Call instruction — either as a
+/// regular argument or as the callee (closure). In Perceus semantics, both cases
+/// transfer ownership: the caller should not retain or release the value afterward.
+fn inst_value_consumed_by_call(inst: &MirInst, value: &MirValueId) -> bool {
+    match inst {
+        MirInst::Call { args, callee, .. } => {
+            args.contains(value)
+                || matches!(callee, MirCallee::Value(callee_v) if callee_v == value)
+        }
+        _ => false,
+    }
+}
+
+fn find_release_idx_for_value(block: &MirBlock, value: &MirValueId) -> Option<usize> {
+    block.instructions.iter().position(|inst| {
+        matches!(inst, MirInst::Release { value: v } if v == value)
+    })
+}
+
+/// Insert `Release` instructions for heap-managed function parameters that die
+/// in a block without being forwarded to a callee or returned.
+///
+/// Perceus reference counting requires that every heap-managed value is released
+/// exactly once on each execution path. The lowering inserts releases for
+/// locally-created `let`-bound values via the Block cleanup, but function
+/// parameters are in `incoming_scope` and are therefore excluded from that path.
+/// This pass fills the gap by inserting releases at the "death boundary" —
+/// blocks where the parameter stops being live.
+///
+/// A block `B` is a death boundary for parameter `v_i` when:
+/// Insert `Retain` instructions before call sites where a heap-managed argument
+/// is live in at least one successor block (i.e., the caller uses the value again
+/// after the call returns).  The corresponding `Release` is inserted in each dead
+/// successor so the retained reference is freed on every path where it is not
+/// consumed by a later call.
+///
+/// This implements the caller-side half of Perceus ownership: when a value is
+/// passed to a function that takes ownership of its arguments, the caller must
+/// retain the value if it continues to use it after the call returns.  Without
+/// this pass, a second use of the same value after a callee-side release would
+/// be a use-after-free.
+fn insert_retains_for_reused_call_args(function: &mut MirFunction, _layouts: &MirLayoutCatalog) {
+    let heap_value_layouts = infer_heap_layout_keys(function);
+    if heap_value_layouts.is_empty() {
+        return;
+    }
+
+    // Build successor / predecessor maps.
+    let mut successors: BTreeMap<MirBlockId, Vec<MirBlockId>> = function
+        .blocks
+        .iter()
+        .map(|b| (b.id.clone(), Vec::new()))
+        .collect();
+    for block in &function.blocks {
+        match &block.terminator {
+            MirTerminator::Jump { target, .. } => {
+                successors.entry(block.id.clone()).or_default().push(target.clone());
+            }
+            MirTerminator::Branch { then_block, else_block, .. } => {
+                successors.entry(block.id.clone()).or_default().push(then_block.clone());
+                successors.entry(block.id.clone()).or_default().push(else_block.clone());
+            }
+            _ => {}
+        }
+    }
+
+    // For each heap-managed value, compute the set of blocks where it is live
+    // (directly uses it or can reach a block that does).
+    let mut live_sets: BTreeMap<MirValueId, BTreeSet<MirBlockId>> = BTreeMap::new();
+    for value_id in heap_value_layouts.keys() {
+        let direct_use: BTreeSet<MirBlockId> = function
+            .blocks
+            .iter()
+            .filter(|block| {
+                block.instructions.iter().any(|inst| inst_reads_value(inst, value_id))
+                    || match &block.terminator {
+                        MirTerminator::Jump { args, .. } => args.contains(value_id),
+                        MirTerminator::Return { value: Some(v), .. } => v == value_id,
+                        MirTerminator::Branch { condition, .. } => condition == value_id,
+                        _ => false,
+                    }
+            })
+            .map(|b| b.id.clone())
+            .collect();
+        let mut live = direct_use;
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for block in &function.blocks {
+                if live.contains(&block.id) {
+                    continue;
+                }
+                if successors
+                    .get(&block.id)
+                    .is_some_and(|s| s.iter().any(|sid| live.contains(sid)))
+                {
+                    live.insert(block.id.clone());
+                    changed = true;
+                }
+            }
+        }
+        live_sets.insert(value_id.clone(), live);
+    }
+
+    // Blocks that receive a value via Jump args (ownership transferred via block param).
+    let mut forwarded_to: BTreeMap<MirValueId, BTreeSet<MirBlockId>> = BTreeMap::new();
+    for block in &function.blocks {
+        if let MirTerminator::Jump { target, args } = &block.terminator {
+            for arg in args {
+                if heap_value_layouts.contains_key(arg) {
+                    forwarded_to.entry(arg.clone()).or_default().insert(target.clone());
+                }
+            }
+        }
+    }
+
+    // Collect retains and releases to insert (compute before mutating the function).
+    // retain: (block_id, instruction_index_before_which_to_insert, value_id)
+    // release: (block_id, value_id) — inserted at block tail
+    let mut retains: Vec<(MirBlockId, usize, MirValueId)> = Vec::new();
+    let mut releases: BTreeSet<(MirBlockId, MirValueId)> = BTreeSet::new();
+
+    for block in &function.blocks {
+        for (inst_idx, inst) in block.instructions.iter().enumerate() {
+            // Collect all heap-managed values consumed by this instruction as
+            // call arguments, callee value, or closure captures.
+            let consumed: Vec<MirValueId> = match inst {
+                MirInst::Call { args, callee, .. } => {
+                    let mut vals: Vec<MirValueId> = args
+                        .iter()
+                        .filter(|a| heap_value_layouts.contains_key(*a))
+                        .cloned()
+                        .collect();
+                    if let MirCallee::Value(callee_v) = callee
+                        && heap_value_layouts.contains_key(callee_v)
+                    {
+                        vals.push(callee_v.clone());
+                    }
+                    vals
+                }
+                // ClosureInit moves its captures into the closure object. If a
+                // captured heap value is also used later (either in subsequent
+                // instructions of this block or in a live successor block), we
+                // must Retain it before the ClosureInit so the later use is safe.
+                MirInst::ClosureInit { captures, .. } => captures
+                    .iter()
+                    .filter(|c| heap_value_layouts.contains_key(*c))
+                    .cloned()
+                    .collect(),
+                _ => continue,
+            };
+
+            for value_id in consumed {
+                let Some(live) = live_sets.get(&value_id) else {
+                    continue;
+                };
+
+                // Is the value live in any successor block?
+                let live_in_successor = successors
+                    .get(&block.id)
+                    .is_some_and(|succs| succs.iter().any(|sid| live.contains(sid)));
+
+                // Is the value used in a later instruction of this block?
+                let used_later_in_block = block.instructions[inst_idx + 1..]
+                    .iter()
+                    .any(|i| inst_reads_value(i, &value_id));
+
+                if !live_in_successor && !used_later_in_block {
+                    // Value is consumed exactly once by this call on this path — no Retain needed.
+                    continue;
+                }
+
+                retains.push((block.id.clone(), inst_idx, value_id.clone()));
+
+                // The retained extra reference must be released in every dead successor
+                // (where the value is not live and not forwarded via Jump args).
+                if let Some(succs) = successors.get(&block.id) {
+                    for succ_id in succs {
+                        if live.contains(succ_id) {
+                            continue; // will be consumed on that path
+                        }
+                        let is_forwarded = forwarded_to
+                            .get(&value_id)
+                            .is_some_and(|ft| ft.contains(succ_id));
+                        if is_forwarded {
+                            continue;
+                        }
+                        let already_has_release = function
+                            .blocks
+                            .iter()
+                            .find(|b| &b.id == succ_id)
+                            .is_some_and(|b| {
+                                b.instructions.iter().any(|i| {
+                                    matches!(i, MirInst::Release { value } if value == &value_id)
+                                })
+                            });
+                        if !already_has_release {
+                            releases.insert((succ_id.clone(), value_id.clone()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Insert Retains (reverse order to preserve instruction indices).
+    retains.reverse();
+    for (block_id, inst_idx, value) in retains {
+        if let Some(block) = function.blocks.iter_mut().find(|b| b.id == block_id) {
+            block.instructions.insert(inst_idx, MirInst::Retain { value });
+        }
+    }
+
+    // Insert Releases at tails of dead successor blocks.
+    for (block_id, value) in releases {
+        if let Some(block) = function.blocks.iter_mut().find(|b| b.id == block_id) {
+            // Only insert if not already present (idempotent).
+            let already = block
+                .instructions
+                .iter()
+                .any(|i| matches!(i, MirInst::Release { value: v } if v == &value));
+            if !already {
+                block.instructions.push(MirInst::Release { value });
+            }
+        }
+    }
+}
+
+/// - `B` is dead at entry (v_i not live along any path from B to a use),
+/// - at least one predecessor of `B` is live at entry for v_i, and
+/// - no predecessor forwards v_i explicitly as a Jump argument to B
+///   (which would create a new SSA alias handled by the Block cleanup).
+///
+/// Releases inserted at block tails are then rescheduled to just after the
+/// parameter's last use by `schedule_trailing_releases_after_last_use`, enabling
+/// same-layout reuse fusion when the next `RecordInit`/`SumInit` of matching
+/// layout follows.
+fn insert_releases_for_dead_params(function: &mut MirFunction, layouts: &MirLayoutCatalog) {
+    // FIP functions must have zero explicit releases — the FIP verifier rejects any Release
+    // instruction as evidence that the function is not truly functional in-place.
+    if function.is_fip {
+        return;
+    }
+    // Identify heap-managed function parameters.
+    // Use infer_heap_layout_keys rather than is_heap_managed_type so that:
+    // - Function-typed params (closure objects) are excluded — releasing a closure param here
+    //   would cause a double-free of its captures when the closure destructor also releases them.
+    // - Unboxed record params (is_unboxed == true, e.g. all-primitive-field structs) are also
+    //   excluded — they are stack-allocated; inserting Release triggers reuse analysis which
+    //   converts a 0-alloc stack init into a RecordInitReuse (counted as 1 alloc in stats).
+    // - Sum-typed params use Case 2 only (not Case 1). Case 1 (release at head of dead
+    //   successor block) is unsafe for sum types without Perceus RC=1 uniqueness checks:
+    //   releasing a parent sum at the boundary of a dead branch could free inner nodes that
+    //   the caller still holds references to via a shallow Retain of the outermost pointer.
+    //   Case 2 is safe when the extracted payload type is a known primitive (not Dynamic).
+    let heap_layout_keys = infer_heap_layout_keys(function);
+    let mut managed_record_params: Vec<MirValueId> = Vec::new();
+    let mut managed_sum_params: Vec<MirValueId> = Vec::new();
+    for i in 0..function.signature.params.len() {
+        let param_id = MirValueId(i as u32);
+        let Some(key) = heap_layout_keys.get(&param_id) else {
+            continue;
+        };
+        if let Some(record_name) = key.strip_prefix("record:") {
+            // If a layout is registered, check whether it's unboxed or all-primitive
+            // (stack-allocated). Releasing such params is a no-op at runtime but
+            // triggers reuse analysis that turns stack RecordInits into RecordInitReuse.
+            // Records with no registered layout (e.g. in isolated unit tests, or forward
+            // references) are treated as heap-managed by default.
+            if layouts
+                .records
+                .iter()
+                .find(|l| l.name == record_name)
+                .is_some_and(|layout| layout.is_unboxed || mir_record_has_only_primitive_fields(layout))
+            {
+                continue;
+            }
+            managed_record_params.push(param_id);
+        } else if key.starts_with("sum:") {
+            managed_sum_params.push(param_id);
+        }
+    }
+    let managed_params: Vec<MirValueId> = managed_record_params
+        .iter()
+        .chain(managed_sum_params.iter())
+        .cloned()
+        .collect();
+
+    if managed_params.is_empty() {
+        return;
+    }
+
+    // Build successor and predecessor maps once, reused for each parameter.
+    let mut successors: BTreeMap<MirBlockId, Vec<MirBlockId>> = function
+        .blocks
+        .iter()
+        .map(|b| (b.id.clone(), Vec::new()))
+        .collect();
+    let mut predecessors: BTreeMap<MirBlockId, Vec<MirBlockId>> = function
+        .blocks
+        .iter()
+        .map(|b| (b.id.clone(), Vec::new()))
+        .collect();
+    for block in &function.blocks {
+        match &block.terminator {
+            MirTerminator::Jump { target, .. } => {
+                successors.entry(block.id.clone()).or_default().push(target.clone());
+                predecessors.entry(target.clone()).or_default().push(block.id.clone());
+            }
+            MirTerminator::Branch {
+                then_block,
+                else_block,
+                ..
+            } => {
+                successors
+                    .entry(block.id.clone())
+                    .or_default()
+                    .push(then_block.clone());
+                successors
+                    .entry(block.id.clone())
+                    .or_default()
+                    .push(else_block.clone());
+                predecessors
+                    .entry(then_block.clone())
+                    .or_default()
+                    .push(block.id.clone());
+                predecessors
+                    .entry(else_block.clone())
+                    .or_default()
+                    .push(block.id.clone());
+            }
+            _ => {}
+        }
+    }
+
+    for param_id in &managed_params {
+        // --- Step 1: Backward liveness --- //
+        // A block is "live" if it directly uses the parameter (in instructions
+        // or terminator) OR any of its successors is live.
+        let direct_use: BTreeSet<MirBlockId> = function
+            .blocks
+            .iter()
+            .filter(|block| {
+                block
+                    .instructions
+                    .iter()
+                    .any(|inst| inst_reads_value(inst, param_id))
+                    || match &block.terminator {
+                        MirTerminator::Jump { args, .. } => args.contains(param_id),
+                        MirTerminator::Return { value: Some(v), .. } => v == param_id,
+                        MirTerminator::Branch { condition, .. } => condition == param_id,
+                        _ => false,
+                    }
+            })
+            .map(|b| b.id.clone())
+            .collect();
+
+        let mut live: BTreeSet<MirBlockId> = direct_use;
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for block in &function.blocks {
+                if live.contains(&block.id) {
+                    continue;
+                }
+                if successors
+                    .get(&block.id)
+                    .is_some_and(|s| s.iter().any(|sid| live.contains(sid)))
+                {
+                    live.insert(block.id.clone());
+                    changed = true;
+                }
+            }
+        }
+
+        // --- Step 2: Blocks that receive param via an explicit Jump arg --- //
+        // These blocks get param as a new SSA block-param alias; the Block
+        // cleanup already handles releases for those aliases when needed.
+        let param_forwarded_to: BTreeSet<MirBlockId> = function
+            .blocks
+            .iter()
+            .filter_map(|block| {
+                if let MirTerminator::Jump { target, args } = &block.terminator {
+                    if args.contains(param_id) { Some(target.clone()) } else { None }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // --- Step 3: Compute release insertion points (before inserting anything) --- //
+        //
+        // Case 1 — death boundary: param is live in predecessor but dead in this block.
+        // Release is inserted at the head of the first dead block on each path.
+        let case1_candidates: BTreeSet<MirBlockId> = function
+            .blocks
+            .iter()
+            .filter(|block| {
+                // Must be dead at entry (param not live here or downstream).
+                !live.contains(&block.id)
+                // Must not already receive param via a predecessor's Jump arg.
+                && !param_forwarded_to.contains(&block.id)
+                // Must not already have an explicit Release for this param.
+                && !block.instructions.iter().any(|inst| {
+                    matches!(inst, MirInst::Release { value } if value == param_id)
+                })
+                // Must have at least one predecessor that is live at entry
+                // (so the param is alive on the incoming edge and needs to die here).
+                && predecessors
+                    .get(&block.id)
+                    .is_some_and(|preds| preds.iter().any(|pid| live.contains(pid)))
+                // Must not be an unreachable block.
+                && !matches!(block.terminator, MirTerminator::Unreachable)
+            })
+            .map(|b| b.id.clone())
+            .collect();
+
+        // Case 2 — last-user inline: param IS used in a block but all successors are dead.
+        // Insert Release at the block's tail. Only fires when Case 1 would NOT also insert
+        // releases in the dead successors — otherwise we'd double-release on every path
+        // that exits through those successors.
+        //
+        // A dead successor is "covered by Case 1" when it IS a Case 1 candidate.
+        // If any dead successor is a Case 1 candidate, Case 1 handles that path and
+        // Case 2 must not also insert inline (they're mutually exclusive per param per path).
+        //
+        // Case 2 fires only when all dead successors are excluded from Case 1:
+        //   - they receive the param via Jump args (param_forwarded_to), or
+        //   - they are Unreachable, or
+        //   - they already had a Release before this pass ran.
+        let case2_candidates: BTreeSet<MirBlockId> = function
+            .blocks
+            .iter()
+            .filter(|block| {
+                // Must be in live (directly reads the param).
+                live.contains(&block.id)
+                // All successors must be outside the live set — this block is the last user.
+                && successors
+                    .get(&block.id)
+                    .map(|succs| succs.iter().all(|sid| !live.contains(sid)))
+                    .unwrap_or(true)
+                // Param must not be forwarded to a successor via Jump args.
+                && !matches!(&block.terminator, MirTerminator::Jump { args, .. } if args.contains(param_id))
+                // Param must not be returned to the caller — caller owns the returned value.
+                && !matches!(&block.terminator, MirTerminator::Return { value: Some(v) } if v == param_id)
+                // Last read of param must not be as a Call arg/callee (ownership transferred).
+                // Also: if the last read was a SumPayloadLoad that extracted a managed-type
+                // child (or a Dynamic child — Dynamic can hold a heap pointer in polymorphic
+                // functions), releasing the sum parent would run its destructor and double-free
+                // the extracted child. Skip until a Perceus uniqueness-check pass is added.
+                && !block.instructions.iter().rev()
+                    .find(|inst| inst_reads_value(inst, param_id))
+                    .is_some_and(|inst| {
+                        inst_value_consumed_by_call(inst, param_id)
+                            || matches!(inst, MirInst::SumPayloadLoad { sum, field_ty, .. }
+                                if sum == param_id
+                                    && (is_heap_managed_type(field_ty, layouts)
+                                        || *field_ty == Type::Dynamic))
+                    })
+                // Must not already have an explicit Release for this param.
+                && !block.instructions.iter().any(|inst| {
+                    matches!(inst, MirInst::Release { value } if value == param_id)
+                })
+                && !matches!(block.terminator, MirTerminator::Unreachable)
+                // KEY: only fire if Case 1 would NOT also release in the dead successors.
+                // If any dead successor is a Case 1 candidate, let Case 1 handle it.
+                && successors
+                    .get(&block.id)
+                    .map(|succs| {
+                        succs
+                            .iter()
+                            .filter(|sid| !live.contains(*sid))
+                            .all(|sid| !case1_candidates.contains(sid))
+                    })
+                    .unwrap_or(true)
+            })
+            .map(|b| b.id.clone())
+            .collect();
+
+        // --- Step 4: Insert the releases --- //
+        // Case 1 (dead-boundary release) is only applied to record-typed params.
+        // Sum-typed params skip Case 1 because releasing a sum at the boundary of a dead
+        // successor block is unsafe without Perceus RC=1 uniqueness checks: the caller may
+        // only hold a shallow Retain of the outermost pointer, so freeing an inner node
+        // (e.g. the Nil base-case) while the caller still traverses the chain causes
+        // use-after-free. Case 2 is still applied for sum params (with the Dynamic guard).
+        if !managed_sum_params.contains(param_id) {
+            for block_id in case1_candidates {
+                if let Some(block) = function.blocks.iter_mut().find(|b| b.id == block_id) {
+                    block.instructions.push(MirInst::Release {
+                        value: param_id.clone(),
+                    });
+                }
+            }
+        }
+
+        for block_id in case2_candidates {
+            if let Some(block) = function.blocks.iter_mut().find(|b| b.id == block_id) {
+                block.instructions.push(MirInst::Release {
+                    value: param_id.clone(),
+                });
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum ReuseInitCandidate {
     Record {
@@ -2943,6 +3472,18 @@ fn infer_heap_layout_keys(function: &MirFunction) -> BTreeMap<MirValueId, String
         }
     }
     keys
+}
+
+/// Returns true if every field of the record layout has a primitive (non-managed-heap)
+/// annotation. Records with only primitive fields are stack-lowered by codegen, so inserting
+/// a Release for such a parameter would be a no-op at runtime — but the Release instruction
+/// triggers the reuse analysis which converts a stack-eligible `RecordInit` into a
+/// `RecordInitReuse`, adding spurious alloc stats.
+fn mir_record_has_only_primitive_fields(layout: &MirRecordLayout) -> bool {
+    const PRIMITIVES: &[&str] = &["Int", "Bool", "Unit", "Char", "Float", "Dynamic"];
+    layout.fields.iter().all(|f| {
+        matches!(&f.annotation, kea_ast::TypeAnnotation::Named(n) if PRIMITIVES.contains(&n.as_str()))
+    })
 }
 
 fn type_layout_key(ty: &Type) -> Option<String> {
@@ -3327,6 +3868,7 @@ fn generate_default_capability_wrappers(
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: Vec::new(),
@@ -4380,6 +4922,7 @@ fn lower_hir_function(
         },
         entry: MirBlockId(0),
         blocks,
+        is_fip: function.is_fip,
     }];
     functions.extend(lifted_functions);
     functions
@@ -4622,6 +5165,7 @@ impl FunctionLoweringCtx {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: Vec::new(),
@@ -4711,6 +5255,7 @@ impl FunctionLoweringCtx {
             }),
             effects: EffectRow::pure(),
             span,
+            is_fip: false,
         };
 
         let lowered_functions = lower_hir_function(
@@ -5168,6 +5713,7 @@ impl FunctionLoweringCtx {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: Vec::new(),
@@ -5208,6 +5754,7 @@ impl FunctionLoweringCtx {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: Vec::new(),
@@ -5246,6 +5793,7 @@ impl FunctionLoweringCtx {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: Vec::new(),
@@ -5399,6 +5947,7 @@ impl FunctionLoweringCtx {
             name: entry_name,
             signature: wrapper_signature,
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: Vec::new(),
@@ -5528,6 +6077,7 @@ impl FunctionLoweringCtx {
             ty: Type::Function(lifted_fn_ty),
             effects: fail_effects,
             span: caught.span,
+            is_fip: false,
         };
 
         let mut known = self.known_functions.clone();
@@ -5646,6 +6196,7 @@ impl FunctionLoweringCtx {
             ty: Type::Function(lifted_fn_ty),
             effects: resolved_fn_ty.effects.clone(),
             span: expr.span,
+            is_fip: false,
         };
         let mut known = self.known_functions.clone();
         known.insert(lambda_name.clone());
@@ -5794,6 +6345,64 @@ impl FunctionLoweringCtx {
 
     fn emit_inst(&mut self, inst: MirInst) {
         self.current_block_mut().instructions.push(inst);
+    }
+
+    /// Returns true if `value_id` is a parameter of the current block or is
+    /// defined by an instruction in the current block. Used by the Block
+    /// cleanup to guard Release insertion for Dynamic-typed join params so we
+    /// don't emit Release for SSA values from dominating blocks that were not
+    /// re-passed as explicit block arguments.
+    /// Returns true if the last read of `value_id` in the current block's instructions
+    /// was as a direct argument or the callee of a `Call` instruction (i.e., ownership
+    /// was transferred — Perceus calls consume both args and the callee closure). In
+    /// that case the Block cleanup should NOT emit a Release for the value; the callee
+    /// mechanism is now responsible for the refcount.
+    fn value_was_consumed_by_call(&self, value_id: &MirValueId) -> bool {
+        for inst in self.current_block().instructions.iter().rev() {
+            if inst_reads_value(inst, value_id) {
+                return inst_value_consumed_by_call(inst, value_id);
+            }
+        }
+        false
+    }
+
+    fn value_is_live_in_current_block(&self, value_id: &MirValueId) -> bool {
+        let block = self.current_block();
+        if block.params.iter().any(|p| &p.id == value_id) {
+            return true;
+        }
+        block.instructions.iter().any(|inst| match inst {
+            MirInst::Const { dest, .. }
+            | MirInst::Binary { dest, .. }
+            | MirInst::Unary { dest, .. }
+            | MirInst::RecordInit { dest, .. }
+            | MirInst::RecordInitReuse { dest, .. }
+            | MirInst::ReuseToken { dest, .. }
+            | MirInst::RecordInitFromToken { dest, .. }
+            | MirInst::SumInit { dest, .. }
+            | MirInst::SumInitReuse { dest, .. }
+            | MirInst::SumInitFromToken { dest, .. }
+            | MirInst::SumTagLoad { dest, .. }
+            | MirInst::SumPayloadLoad { dest, .. }
+            | MirInst::RecordFieldLoad { dest, .. }
+            | MirInst::FunctionRef { dest, .. }
+            | MirInst::ClosureInit { dest, .. }
+            | MirInst::ClosureCaptureLoad { dest, .. }
+            | MirInst::StateCellNew { dest, .. }
+            | MirInst::StateCellLoad { dest, .. }
+            | MirInst::Move { dest, .. }
+            | MirInst::Borrow { dest, .. }
+            | MirInst::TryClaim { dest, .. }
+            | MirInst::Freeze { dest, .. }
+            | MirInst::CowUpdate { dest, .. } => dest == value_id,
+            MirInst::EffectOp {
+                result: Some(dest), ..
+            }
+            | MirInst::Call {
+                result: Some(dest), ..
+            } => dest == value_id,
+            _ => false,
+        })
     }
 
     fn set_terminator(&mut self, terminator: MirTerminator) {
@@ -6173,13 +6782,40 @@ impl FunctionLoweringCtx {
                         if !is_shadowed_or_new {
                             continue;
                         }
-                        let Some(ty) = self.var_types.get(name) else {
-                            continue;
+                        let is_heap_managed = {
+                            let by_static_type = self
+                                .var_types
+                                .get(name)
+                                .is_some_and(|ty| is_heap_managed_type(ty, &self.layouts));
+                            // If the static type is Dynamic (common for if/case join params),
+                            // also check the runtime record/sum type maps to determine whether
+                            // the value is heap-managed. Only do this when the value is live
+                            // in the current block (is a param or defined here), to avoid
+                            // emitting Release for SSA values from earlier blocks that are no
+                            // longer in scope at this join point.
+                            let by_tracked_record_type = !by_static_type
+                                && self.record_value_types.get(value_id).is_some_and(|rname| {
+                                    !self
+                                        .layouts
+                                        .records
+                                        .iter()
+                                        .any(|l| l.name == *rname && l.is_unboxed)
+                                })
+                                && self.value_is_live_in_current_block(value_id);
+                            let by_tracked_sum_type = !by_static_type
+                                && self.sum_value_types.contains_key(value_id)
+                                && self.value_is_live_in_current_block(value_id);
+                            by_static_type || by_tracked_record_type || by_tracked_sum_type
                         };
-                        if !is_heap_managed_type(ty, &self.layouts) {
+                        if !is_heap_managed {
                             continue;
                         }
                         if last.as_ref().is_some_and(|result_id| result_id == value_id) {
+                            continue;
+                        }
+                        // If the value's last use was as a direct Call argument, ownership
+                        // was transferred to the callee — don't release from the caller side.
+                        if self.value_was_consumed_by_call(value_id) {
                             continue;
                         }
                         releases.push(value_id.clone());
@@ -8338,6 +8974,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(kea_types::Label::new("IO"), Type::Unit)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -8363,6 +9000,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -8404,6 +9042,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -8454,6 +9093,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -8506,6 +9146,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![sum_ty], Type::Bool)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
         let mir = lower_hir_module(&hir);
@@ -8572,6 +9213,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![maybe_maybe_ty], Type::Bool)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -8607,6 +9249,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -8647,6 +9290,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -8687,6 +9331,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -8742,6 +9387,7 @@ mod tests {
                 )),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -8834,6 +9480,7 @@ mod tests {
                 )),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -8888,12 +9535,14 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![user_ty], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
         let mir = lower_hir_module(&hir);
         let function = &mir.functions[0];
-        assert_eq!(function.blocks[0].instructions.len(), 1);
+        // RecordFieldLoad followed by Release for the record parameter (Perceus ownership).
+        assert_eq!(function.blocks[0].instructions.len(), 2);
         assert!(matches!(
             function.blocks[0].instructions[0],
             MirInst::RecordFieldLoad {
@@ -8903,6 +9552,10 @@ mod tests {
                 field_ty: Type::Int,
                 ..
             } if record_type == "User" && field == "age"
+        ));
+        assert!(matches!(
+            function.blocks[0].instructions[1],
+            MirInst::Release { value: MirValueId(0) }
         ));
     }
 
@@ -8949,6 +9602,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], user_ty)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -8991,6 +9645,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Dynamic)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -9057,6 +9712,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -9121,6 +9777,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![user_ty.clone()], user_ty)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -9218,6 +9875,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![user_ty.clone()], user_ty)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -9316,6 +9974,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -9432,6 +10091,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -9498,6 +10158,7 @@ mod tests {
             ty: Type::Function(FunctionType::pure(vec![], option_ty)),
             effects: EffectRow::pure(),
             span: kea_ast::Span::synthetic(),
+            is_fip: false,
         });
 
         let mir = lower_hir_module(&HirModule {
@@ -9559,6 +10220,7 @@ mod tests {
             ty: Type::Function(FunctionType::pure(vec![], option_ty)),
             effects: EffectRow::pure(),
             span: kea_ast::Span::synthetic(),
+            is_fip: false,
         });
 
         let mir = lower_hir_module(&HirModule {
@@ -9618,12 +10280,14 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![option_ty], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
         let mir = lower_hir_module(&hir);
         let function = &mir.functions[0];
-        assert_eq!(function.blocks[0].instructions.len(), 1);
+        // Expect SumPayloadLoad + Release for the managed `opt` param.
+        assert_eq!(function.blocks[0].instructions.len(), 2);
         assert!(matches!(
             function.blocks[0].instructions[0],
             MirInst::SumPayloadLoad {
@@ -9634,6 +10298,10 @@ mod tests {
                 field_ty: Type::Int,
                 ..
             } if sum_type == "Option" && variant == "Some"
+        ));
+        assert!(matches!(
+            function.blocks[0].instructions[1],
+            MirInst::Release { value: MirValueId(0) }
         ));
     }
 
@@ -9691,6 +10359,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -9752,6 +10421,7 @@ mod tests {
                     )),
                     effects: EffectRow::pure(),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
             ],
         };
@@ -9803,6 +10473,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Unit)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -9857,6 +10528,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -9925,6 +10597,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![Type::Bool, Type::Bool], Type::Bool)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -9991,6 +10664,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![Type::Bool, Type::Bool], Type::Bool)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10045,6 +10719,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10108,6 +10783,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10167,6 +10843,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10222,6 +10899,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("Clock"), Type::Unit)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10275,6 +10953,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10335,6 +11014,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10384,6 +11064,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("Clock"), Type::Unit)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10433,6 +11114,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("Rand"), Type::Unit)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10486,6 +11168,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("Rand"), Type::Unit)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10546,6 +11229,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10639,6 +11323,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10708,6 +11393,7 @@ mod tests {
                 )),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10799,6 +11485,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10855,6 +11542,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10913,6 +11601,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -10988,6 +11677,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11076,6 +11766,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::String)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11159,6 +11850,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -11198,6 +11890,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: vec![],
@@ -11244,6 +11937,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: vec![],
@@ -11292,6 +11986,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: vec![],
@@ -11355,6 +12050,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: vec![],
@@ -11427,6 +12123,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: vec![],
@@ -11487,6 +12184,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: vec![],
@@ -11559,6 +12257,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: vec![],
@@ -11639,6 +12338,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: vec![],
@@ -11723,6 +12423,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: vec![],
@@ -11791,6 +12492,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -11882,6 +12584,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -11974,6 +12677,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -12092,6 +12796,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -12197,6 +12902,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -12287,6 +12993,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -12422,6 +13129,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -12566,6 +13274,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: vec![],
@@ -12626,6 +13335,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![MirBlock {
                 id: MirBlockId(0),
                 params: vec![],
@@ -12680,6 +13390,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -12828,6 +13539,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -12968,6 +13680,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -13103,6 +13816,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -13238,6 +13952,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -13392,6 +14107,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -13530,6 +14246,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -13640,6 +14357,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -13779,6 +14497,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -13889,6 +14608,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -13999,6 +14719,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -14109,6 +14830,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -14238,6 +14960,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -14355,6 +15078,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -14466,6 +15190,7 @@ mod tests {
                 effects: EffectRow::pure(),
             },
             entry: MirBlockId(0),
+            is_fip: false,
             blocks: vec![
                 MirBlock {
                     id: MirBlockId(0),
@@ -14615,6 +15340,7 @@ mod tests {
                     ty: make_adder_ty.clone(),
                     effects: EffectRow::pure(),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
                 HirDecl::Function(HirFunction {
                     name: "main".to_string(),
@@ -14667,6 +15393,7 @@ mod tests {
                     ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                     effects: EffectRow::pure(),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
             ],
         };
@@ -14732,6 +15459,7 @@ mod tests {
                     ty: Type::Function(FunctionType::pure(vec![user_ty.clone()], user_ty.clone())),
                     effects: EffectRow::pure(),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
                 HirDecl::Function(HirFunction {
                     name: "main".to_string(),
@@ -14772,6 +15500,7 @@ mod tests {
                     ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                     effects: EffectRow::pure(),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
             ],
         };
@@ -14843,6 +15572,7 @@ mod tests {
                     ty: make_adder_ty.clone(),
                     effects: EffectRow::pure(),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
                 HirDecl::Function(HirFunction {
                     name: "factory_use".to_string(),
@@ -14866,6 +15596,7 @@ mod tests {
                     ty: Type::Function(FunctionType::pure(vec![], inner_fn_ty)),
                     effects: EffectRow::pure(),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
             ],
         };
@@ -14941,6 +15672,7 @@ mod tests {
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -15008,6 +15740,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -15066,6 +15799,7 @@ mod tests {
                 )),
                 effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                 span: kea_ast::Span::synthetic(),
+                is_fip: false,
             })],
         };
 
@@ -15109,6 +15843,7 @@ mod tests {
                     ty: fail_fn_ty.clone(),
                     effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
                 HirDecl::Function(HirFunction {
                     name: "main".to_string(),
@@ -15134,6 +15869,7 @@ mod tests {
                     ty: Type::Function(FunctionType::pure(vec![], result_ty)),
                     effects: EffectRow::pure(),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
             ],
         };
@@ -15174,6 +15910,7 @@ mod tests {
                     ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
                     effects: EffectRow::pure(),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
                 HirDecl::Function(HirFunction {
                     name: "apply".to_string(),
@@ -15209,6 +15946,7 @@ mod tests {
                     )),
                     effects: EffectRow::pure(),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
                 HirDecl::Function(HirFunction {
                     name: "caller".to_string(),
@@ -15245,6 +15983,7 @@ mod tests {
                     ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
                     effects: EffectRow::pure(),
                     span: kea_ast::Span::synthetic(),
+                    is_fip: false,
                 }),
             ],
         };

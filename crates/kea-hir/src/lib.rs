@@ -36,6 +36,8 @@ pub struct HirFunction {
     pub ty: Type,
     pub effects: EffectRow,
     pub span: Span,
+    /// Whether this function was annotated with `@fip`.
+    pub is_fip: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1670,6 +1672,7 @@ fn lower_function_with_variants(fn_decl: &FnDecl, env: &TypeEnv, ctx: &LowerCtx)
         ty: fn_ty,
         effects,
         span: fn_decl.span,
+        is_fip: fn_decl.annotations.iter().any(|ann| ann.name.node == "fip"),
     }
 }
 

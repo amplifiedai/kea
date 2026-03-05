@@ -8172,18 +8172,16 @@ fn compile_unboxed_struct_emits_no_retain_release_in_stats() {
     );
 
     let compiled = compile_file(&source_path, CodegenMode::Jit).expect("compile should work");
-    let retain_count: usize = compiled
+    // Only check functions from the user source — stdlib functions (e.g. List.nth, which
+    // correctly releases polymorphic sum-type bindings in guard-fail paths) are excluded.
+    let user_fns: Vec<_> = compiled
         .stats
         .per_function
         .iter()
-        .map(|f| f.retain_count)
-        .sum();
-    let release_count: usize = compiled
-        .stats
-        .per_function
-        .iter()
-        .map(|f| f.release_count)
-        .sum();
+        .filter(|f| matches!(f.function.as_str(), "mk" | "main"))
+        .collect();
+    let retain_count: usize = user_fns.iter().map(|f| f.retain_count).sum();
+    let release_count: usize = user_fns.iter().map(|f| f.release_count).sum();
     assert_eq!(
         retain_count, 0,
         "expected no retain ops for @unboxed-only kernel, stats: {:?}",
