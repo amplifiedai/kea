@@ -873,6 +873,21 @@ pub fn run_file(input: &Path) -> Result<RunResult, String> {
     execute_jit(&ctx)
 }
 
+#[derive(Debug)]
+pub struct CheckResult {
+    pub diagnostics: Vec<Diagnostic>,
+    pub has_errors: bool,
+}
+
+pub fn check_file(input: &Path) -> Result<CheckResult, String> {
+    let ctx = compile_project(input)?;
+    let errors = has_errors(&ctx.diagnostics);
+    Ok(CheckResult {
+        diagnostics: ctx.diagnostics,
+        has_errors: errors,
+    })
+}
+
 pub fn run_test_file(input: &Path) -> Result<TestRunResult, String> {
     let loaded_modules = collect_project_modules_for_tests(input)?;
     let entry_module_path = module_path_from_entry(input);

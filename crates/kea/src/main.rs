@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kea::{
-    DepSpec, PackageCommand, PackageManifest, compile_file, emit_diagnostics, execute_pkg_command,
-    find_manifest, run_file, run_test_file, serve_mcp_stdio,
+    DepSpec, PackageCommand, PackageManifest, check_file, compile_file,
+    emit_diagnostics, execute_pkg_command, find_manifest, run_file, run_test_file, serve_mcp_stdio,
 };
 use kea_codegen::CodegenMode;
 
@@ -27,6 +27,15 @@ fn run() -> Result<(), String> {
     let command = parse_cli(&args)?;
 
     match command {
+        Command::Check { input } => {
+            let input = resolve_command_input(input)?;
+            let result = check_file(&input)?;
+            emit_diagnostics(&result.diagnostics);
+            if result.has_errors {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
         Command::Run { input } => {
             let input = resolve_command_input(input)?;
             let result = run_file(&input)?;
@@ -172,6 +181,9 @@ fn run() -> Result<(), String> {
 
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
+    Check {
+        input: Option<PathBuf>,
+    },
     Run {
         input: Option<PathBuf>,
     },
@@ -197,6 +209,13 @@ fn parse_cli(args: &[String]) -> Result<Command, String> {
     }
 
     match args[1].as_str() {
+        "check" => {
+            let input = args.get(2).map(PathBuf::from);
+            if args.len() > 3 {
+                return Err(format!("unexpected arguments for `check`\n{}", usage()));
+            }
+            Ok(Command::Check { input })
+        }
         "run" => {
             let input = args.get(2).map(PathBuf::from);
             if args.len() > 3 {
@@ -395,7 +414,7 @@ fn parse_pkg_cli(args: &[String]) -> Result<Command, String> {
 }
 
 fn usage() -> String {
-    "usage:\n  kea run [file.kea]\n  kea build [file.kea] [-o output|output.o]\n  kea test [file.kea]\n  kea mcp [--help|--version]\n  kea pkg init\n  kea pkg add <name> (--git <url> [--tag <tag>|--rev <rev>|--branch <branch>] | --path <path>)\n  kea pkg update [dependency-name]".to_string()
+    "usage:\n  kea check [file.kea]\n  kea run [file.kea]\n  kea build [file.kea] [-o output|output.o]\n  kea test [file.kea]\n  kea mcp [--help|--version]\n  kea pkg init\n  kea pkg add <name> (--git <url> [--tag <tag>|--rev <rev>|--branch <branch>] | --path <path>)\n  kea pkg update [dependency-name]".to_string()
 }
 
 fn print_mcp_help() {

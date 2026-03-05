@@ -439,6 +439,35 @@ fn run_stdlib_case_corpus_with_kea_test_runner() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
+fn run_stdlib_vector_tests() {
+    let vector_kea = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../stdlib/vector.kea");
+    let run = run_test_file(&vector_kea).expect("stdlib/vector.kea should compile and run");
+    let failures: Vec<_> = run
+        .cases
+        .iter()
+        .filter(|c| !c.passed)
+        .map(|c| {
+            format!(
+                "{} ({})",
+                c.name,
+                c.error.as_deref().unwrap_or("unknown failure")
+            )
+        })
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "stdlib/vector.kea test failures:\n{}",
+        failures.join("\n")
+    );
+    assert!(
+        !run.cases.is_empty(),
+        "stdlib/vector.kea: no test declarations found"
+    );
+}
+
+#[test]
 fn run_algorithm_gallery_with_kea_test_runner() {
     let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms");
     let supported = [
@@ -12659,6 +12688,177 @@ fn compile_and_execute_float_state_handler() {
     assert_eq!(run.exit_code, 0);
 
     let _ = std::fs::remove_file(source_path);
+}
+
+// --- kea check tests ---
+
+#[test]
+fn parse_check_command_with_file() {
+    let args = vec![
+        "kea".to_string(),
+        "check".to_string(),
+        "main.kea".to_string(),
+    ];
+    let command = parse_cli(&args).expect("cli parse should succeed");
+    assert_eq!(
+        command,
+        Command::Check {
+            input: Some(PathBuf::from("main.kea")),
+        }
+    );
+}
+
+#[test]
+fn parse_check_command_without_file() {
+    let args = vec!["kea".to_string(), "check".to_string()];
+    let command = parse_cli(&args).expect("cli parse should succeed");
+    assert_eq!(command, Command::Check { input: None });
+}
+
+#[test]
+fn parse_check_rejects_extra_args() {
+    let args = vec![
+        "kea".to_string(),
+        "check".to_string(),
+        "a.kea".to_string(),
+        "b.kea".to_string(),
+    ];
+    let err = parse_cli(&args).expect_err("extra args should be rejected");
+    assert!(
+        err.contains("unexpected arguments for `check`"),
+        "expected extra-args error, got: {err}"
+    );
+}
+
+#[test]
+fn check_file_succeeds_on_valid_source() {
+    let source_path = write_temp_source("fn main() -> Int\n  42\n", "kea-check-valid", "kea");
+    let result = check_file(&source_path).expect("check should succeed on valid source");
+    assert!(!result.has_errors, "valid source should produce no errors");
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn check_file_does_not_execute_the_program() {
+    // A program that returns exit code 99. kea check should succeed (exit 0),
+    // not run the program. We verify by asserting check_file returns Ok and the
+    // result has no errors — not that the exit code is 99.
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  99\n",
+        "kea-check-no-exec",
+        "kea",
+    );
+    let result = check_file(&source_path).expect("check should succeed without executing");
+    assert!(!result.has_errors, "valid source should produce no errors");
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn check_file_accepts_library_without_main() {
+    // Modules without a main function are valid targets for kea check.
+    let source_path = write_temp_source(
+        "pub fn double(x: Int) -> Int\n  x * 2\n",
+        "kea-check-no-main",
+        "kea",
+    );
+    let result = check_file(&source_path).expect("library module should check successfully");
+    assert!(
+        !result.has_errors,
+        "library without main should produce no errors"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn check_file_reports_type_error() {
+    // Type mismatch: main declared to return Int but returns a Bool.
+    // compile_project surfaces type errors as Err(String), so check_file returns Err.
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  true\n",
+        "kea-check-type-error",
+        "kea",
+    );
+    let err = check_file(&source_path).expect_err("type error should cause check_file to return Err");
+    assert!(
+        err.contains("type annotation mismatch") || err.contains("type inference failed"),
+        "error message should describe the type error, got: {err}"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn check_file_reports_parse_error() {
+    // Truncated return type — parse error, not a type error.
+    let source_path = write_temp_source(
+        "fn main() ->\n",
+        "kea-check-parse-error",
+        "kea",
+    );
+    let err = check_file(&source_path).expect_err("parse error should cause check_file to return Err");
+    assert!(
+        err.contains("parsing failed") || err.contains("expected"),
+        "error message should describe the parse error, got: {err}"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn check_file_reports_undefined_variable() {
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  undefined_var\n",
+        "kea-check-undefined-var",
+        "kea",
+    );
+    let err = check_file(&source_path).expect_err("undefined variable should cause check_file to return Err");
+    assert!(
+        err.contains("undefined variable") || err.contains("undefined_var"),
+        "error message should name the undefined variable, got: {err}"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn check_file_resolves_cross_module_imports() {
+    let project_dir = temp_project_dir("kea-check-multi-module");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    std::fs::write(src_dir.join("math.kea"), "pub fn double(x: Int) -> Int\n  x * 2\n")
+        .expect("math module write should succeed");
+    let app_path = src_dir.join("app.kea");
+    std::fs::write(&app_path, "use Math\nfn main() -> Int\n  Math.double(21)\n")
+        .expect("app module write should succeed");
+
+    let result = check_file(&app_path).expect("multi-module check should succeed");
+    assert!(
+        !result.has_errors,
+        "multi-module project with correct types should produce no errors"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn check_file_catches_cross_module_type_error() {
+    let project_dir = temp_project_dir("kea-check-multi-module-type-error");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    std::fs::write(src_dir.join("math.kea"), "pub fn double(x: Int) -> Int\n  x * 2\n")
+        .expect("math module write should succeed");
+    // Pass a Bool where Int is expected
+    let app_path = src_dir.join("app.kea");
+    std::fs::write(&app_path, "use Math\nfn main() -> Int\n  Math.double(true)\n")
+        .expect("app module write should succeed");
+
+    let err = check_file(&app_path)
+        .expect_err("cross-module type error should cause check_file to return Err");
+    assert!(
+        err.contains("type") || err.contains("inference"),
+        "error message should describe a type mismatch, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
 }
 
 fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
