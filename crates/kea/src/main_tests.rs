@@ -38,6 +38,32 @@ fn parse_test_command() {
 }
 
 #[test]
+fn parse_mcp_command() {
+    let args = vec!["kea".to_string(), "mcp".to_string()];
+    let command = parse_cli(&args).expect("cli parse should succeed");
+    assert_eq!(
+        command,
+        Command::Mcp {
+            show_help: false,
+            show_version: false,
+        }
+    );
+}
+
+#[test]
+fn parse_mcp_help_command() {
+    let args = vec!["kea".to_string(), "mcp".to_string(), "--help".to_string()];
+    let command = parse_cli(&args).expect("cli parse should succeed");
+    assert_eq!(
+        command,
+        Command::Mcp {
+            show_help: true,
+            show_version: false,
+        }
+    );
+}
+
+#[test]
 fn discover_package_test_files_finds_tests_and_src_test_suffixes() {
     let project_dir = temp_project_dir("kea-cli-package-test-discovery");
     let src_dir = project_dir.join("src");

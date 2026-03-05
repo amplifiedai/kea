@@ -20,3 +20,6 @@ kea-types.workspace = true
 serde.workspace = true
 toml.workspace = true
 sha2.workspace = true
+rmcp.workspace = true
+tokio.workspace = true
+serde_json.workspace = true

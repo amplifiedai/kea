@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -8,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use kea::{
     DepSpec, PackageCommand, PackageManifest, compile_file, emit_diagnostics, execute_pkg_command,
-    find_manifest, run_file, run_test_file,
+    find_manifest, run_file, run_test_file, serve_mcp_stdio,
 };
 use kea_codegen::CodegenMode;
 
@@ -139,6 +140,33 @@ fn run() -> Result<(), String> {
             println!("{message}");
             Ok(())
         }
+        Command::Mcp {
+            show_help,
+            show_version,
+        } => {
+            if show_help {
+                print_mcp_help();
+                return Ok(());
+            }
+            if show_version {
+                println!("{}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
+            if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
+                return Err(
+                    "kea mcp: refusing interactive TTY mode; start via MCP stdio pipes"
+                        .to_string(),
+                );
+            }
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| format!("failed to initialize tokio runtime: {err}"))?;
+            runtime
+                .block_on(serve_mcp_stdio())
+                .map_err(|err| format!("kea mcp: {err}"))?;
+            Ok(())
+        }
     }
 }
 
@@ -156,6 +184,10 @@ enum Command {
     },
     Pkg {
         command: PackageCommand,
+    },
+    Mcp {
+        show_help: bool,
+        show_version: bool,
     },
 }
 
@@ -212,7 +244,36 @@ fn parse_cli(args: &[String]) -> Result<Command, String> {
             Ok(Command::Test { input })
         }
         "pkg" => parse_pkg_cli(args),
+        "mcp" => parse_mcp_cli(args),
         _ => Err(usage()),
+    }
+}
+
+fn parse_mcp_cli(args: &[String]) -> Result<Command, String> {
+    match args.get(2).map(String::as_str) {
+        None => Ok(Command::Mcp {
+            show_help: false,
+            show_version: false,
+        }),
+        Some("-h") | Some("--help") => {
+            if args.len() > 3 {
+                return Err(format!("unexpected arguments for `mcp`\n{}", usage()));
+            }
+            Ok(Command::Mcp {
+                show_help: true,
+                show_version: false,
+            })
+        }
+        Some("-V") | Some("--version") => {
+            if args.len() > 3 {
+                return Err(format!("unexpected arguments for `mcp`\n{}", usage()));
+            }
+            Ok(Command::Mcp {
+                show_help: false,
+                show_version: true,
+            })
+        }
+        Some(unknown) => Err(format!("unknown argument `{unknown}` for `mcp`\n{}", usage())),
     }
 }
 
@@ -334,7 +395,24 @@ fn parse_pkg_cli(args: &[String]) -> Result<Command, String> {
 }
 
 fn usage() -> String {
-    "usage:\n  kea run [file.kea]\n  kea build [file.kea] [-o output|output.o]\n  kea test [file.kea]\n  kea pkg init\n  kea pkg add <name> (--git <url> [--tag <tag>|--rev <rev>|--branch <branch>] | --path <path>)\n  kea pkg update [dependency-name]".to_string()
+    "usage:\n  kea run [file.kea]\n  kea build [file.kea] [-o output|output.o]\n  kea test [file.kea]\n  kea mcp [--help|--version]\n  kea pkg init\n  kea pkg add <name> (--git <url> [--tag <tag>|--rev <rev>|--branch <branch>] | --path <path>)\n  kea pkg update [dependency-name]".to_string()
+}
+
+fn print_mcp_help() {
+    println!(
+        "\
+kea mcp {}
+
+Run the Kea MCP server over stdio transport.
+This command must be started by an MCP client with stdin/stdout pipes.
+
+Usage:
+  kea mcp
+  kea mcp --help
+  kea mcp --version
+",
+        env!("CARGO_PKG_VERSION")
+    );
 }
 
 fn resolve_command_input(input: Option<PathBuf>) -> Result<PathBuf, String> {

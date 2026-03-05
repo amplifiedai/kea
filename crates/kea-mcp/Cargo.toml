@@ -3,20 +3,9 @@ name = "kea-mcp"
 description = "MCP server for Kea — exposes type checking diagnostics to AI assistants"
 edition.workspace = true
 version.workspace = true
-
-[[bin]]
-name = "kea-mcp"
-path = "src/main.rs"
+autobins = false
 
 [dependencies]
-kea-ast.workspace = true
 kea.workspace = true
-kea-diag.workspace = true
-kea-infer.workspace = true
-kea-syntax.workspace = true
-kea-types.workspace = true
-rmcp.workspace = true
-tokio.workspace = true
-serde_json.workspace = true
 
 [dev-dependencies]
