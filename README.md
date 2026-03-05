@@ -14,13 +14,13 @@ A statically-typed functional programming language with algebraic effects, handl
 
 ## Building
 
-Requires Rust stable (edition 2024) and [mise](https://mise.jdx.dev/) for task running.
+Requires Rust stable (edition 2024) and [`just`](https://github.com/casey/just) for task running.
 
 ```sh
 git clone https://github.com/amplifiedai/kea.git
 cd kea
-mise run check       # lint
-mise run test        # test suite
+just check           # lint
+just test            # test suite
 cargo run -p kea -- run path/to/program.kea
 ```
 

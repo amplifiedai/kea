@@ -42,8 +42,8 @@ enforce_targeted_tests() {
       cat >&2 <<'EOF'
 Refusing broad workspace test run without explicit opt-in.
 Use one of:
-  PKG=<crate> mise run test-pkg
-  PKG=<crate> mise run test-pkg-integration
+  PKG=<crate> just test-pkg
+  PKG=<crate> just test-pkg-integration
 Or rerun with:
   KEA_ALLOW_WORKSPACE_TESTS=1
 EOF
@@ -60,7 +60,7 @@ EOF
   if [ "$cwd" = "$ROOT_DIR" ]; then
     cat >&2 <<'EOF'
 Refusing unscoped root-level test run.
-Pass -p <crate> or --manifest-path <path>, or use a mise test task.
+Pass -p <crate> or --manifest-path <path>, or use a just test task.
 EOF
     exit 2
   fi
@@ -78,11 +78,18 @@ case "${1:-}" in
 esac
 
 agent_slot="${KEA_AGENT_SLOT:-${AGENT_ID:-${CODEX_AGENT_ID:-${CODEX_THREAD_ID:-}}}}"
+if [ -z "${agent_slot:-}" ] && [ -n "${__JUST_SESSION:-}" ]; then
+  if command -v shasum >/dev/null 2>&1; then
+    agent_slot="just-$(printf '%s' "$__JUST_SESSION" | shasum | awk '{print substr($1,1,16)}')"
+  else
+    agent_slot="just-$(printf '%s' "$__JUST_SESSION" | cksum | awk '{print $1}')"
+  fi
+fi
 if [ -z "${agent_slot:-}" ] && [ -n "${__MISE_SESSION:-}" ]; then
   if command -v shasum >/dev/null 2>&1; then
-    agent_slot="mise-$(printf '%s' "$__MISE_SESSION" | shasum | awk '{print substr($1,1,16)}')"
+    agent_slot="session-$(printf '%s' "$__MISE_SESSION" | shasum | awk '{print substr($1,1,16)}')"
   else
-    agent_slot="mise-$(printf '%s' "$__MISE_SESSION" | cksum | awk '{print $1}')"
+    agent_slot="session-$(printf '%s' "$__MISE_SESSION" | cksum | awk '{print $1}')"
   fi
 fi
 if [ -z "${agent_slot:-}" ]; then

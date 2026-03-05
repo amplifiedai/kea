@@ -12,7 +12,7 @@ changed_files="$(
 )"
 
 workspace_fallback=0
-if printf '%s\n' "$changed_files" | rg -q '^(Cargo\.toml|Cargo\.lock|mise\.toml|scripts/)'; then
+if printf '%s\n' "$changed_files" | rg -q '^(Cargo\.toml|Cargo\.lock|Justfile|rust-toolchain\.toml|scripts/)'; then
   workspace_fallback=1
 fi
 
