@@ -1,0 +1,238 @@
+doc
+  Fixed-capacity circular buffer (ring buffer / deque) backed by a raw Ptr.
+
+  Uses power-of-two capacity so that index wrapping is a single `bit_and`
+  instead of a modulo. `new(n)` rounds the requested capacity up to the
+  next power of two.
+
+  Ownership convention: all mutating functions consume the ring buffer and
+  return a new one (same backing pointer, updated bookkeeping fields).
+  Call `free` exactly once when done.
+
+  O(1) push and pop.
+
+use Test
+
+doc
+  A fixed-capacity circular buffer.
+  `cap` is always a power of two; head and tail indices are masked with
+  `cap - 1` on each step to achieve O(1) wrap-around.
+struct RingBuffer(a)
+  ptr:  Ptr a
+  cap:  Int   -- allocated capacity; always a power of two
+  head: Int   -- index of the next element to pop
+  tail: Int   -- index of the next slot to push into
+  size: Int   -- number of elements currently stored
+
+-- -----------------------------------------------------------------------
+-- Internal helpers
+-- -----------------------------------------------------------------------
+
+-- Smallest power of two >= n (minimum 1).
+fn next_pow2(n: Int) -> Int
+  next_pow2_step(n, 1)
+
+fn next_pow2_step(n: Int, acc: Int) -> Int
+  if acc >= n
+    acc
+  else
+    next_pow2_step(n, acc * 2)
+
+-- -----------------------------------------------------------------------
+-- Construction / destruction
+-- -----------------------------------------------------------------------
+
+doc
+  Create an empty ring buffer with capacity rounded up to the next power of
+  two (minimum capacity: 1).
+
+    let rb = new(6)   -- actual capacity is 8
+fn new(n: Int) -> RingBuffer a
+  let cap = if n <= 0
+    1
+  else
+    next_pow2(n)
+  let p = unsafe Ptr.alloc(cap)
+  RingBuffer { ptr: p, cap: cap, head: 0, tail: 0, size: 0 }
+
+doc
+  Release the backing storage.
+  Call exactly once when the ring buffer is no longer needed.
+fn free(rb: RingBuffer a) -> Unit
+  if rb.cap > 0
+    unsafe Ptr.free(rb.ptr)
+  else
+    ()
+
+-- -----------------------------------------------------------------------
+-- Queries
+-- -----------------------------------------------------------------------
+
+doc
+  Number of elements currently stored.
+fn size(rb: RingBuffer a) -> Int
+  rb.size
+
+doc
+  Allocated capacity (always a power of two).
+fn capacity(rb: RingBuffer a) -> Int
+  rb.cap
+
+doc
+  True when the buffer contains no elements.
+fn is_empty(rb: RingBuffer a) -> Bool
+  rb.size == 0
+
+doc
+  True when the buffer is at full capacity.
+fn is_full(rb: RingBuffer a) -> Bool
+  rb.size == rb.cap
+
+-- -----------------------------------------------------------------------
+-- Push / pop
+-- -----------------------------------------------------------------------
+
+doc
+  Add `x` to the tail.  Returns the unchanged buffer when full.
+
+    let rb2 = push(rb, 42)
+fn push(rb: RingBuffer a, x: a) -> RingBuffer a
+  if rb.size == rb.cap
+    rb
+  else
+    unsafe
+      Ptr.write(Ptr.offset(rb.ptr, rb.tail), x)
+      let new_tail = (rb.tail + 1).bit_and(rb.cap - 1)
+      rb~{ tail: new_tail, size: rb.size + 1 }
+
+doc
+  Remove and return the element at the head.
+  Returns `(rb, None)` when the buffer is empty.
+
+    let (rb2, v) = pop(rb)
+fn pop(rb: RingBuffer a) -> (RingBuffer a, Option a)
+  if rb.size == 0
+    (rb, None)
+  else
+    unsafe
+      let x = Ptr.read(Ptr.offset(rb.ptr, rb.head))
+      let new_head = (rb.head + 1).bit_and(rb.cap - 1)
+      (rb~{ head: new_head, size: rb.size - 1 }, Some(x))
+
+-- -----------------------------------------------------------------------
+-- Test helpers (avoid Option Eq constraint on the element type)
+-- -----------------------------------------------------------------------
+
+fn is_none_int(o: Option Int) -> Bool
+  case o
+    None    -> true
+    Some(_) -> false
+
+fn unwrap_int(o: Option Int) -> Int
+  case o
+    None    -> -999999
+    Some(x) -> x
+
+-- -----------------------------------------------------------------------
+-- Tests
+-- -----------------------------------------------------------------------
+
+test "ring buffer new is empty"
+  let rb = new(4)
+  Test.assert(is_empty(rb))
+  Test.assert(size(rb) == 0)
+  Test.assert(capacity(rb) == 4)
+  free(rb)
+
+test "ring buffer pop empty returns None"
+  let rb = new(4)
+  let r  = pop(rb)
+  Test.assert(is_none_int(r.1))
+  free(r.0)
+
+test "ring buffer push and pop single element"
+  let rb  = new(4)
+  let rb2 = push(rb, 42)
+  Test.assert(size(rb2) == 1)
+  let r = pop(rb2)
+  Test.assert(unwrap_int(r.1) == 42)
+  Test.assert(size(r.0) == 0)
+  free(r.0)
+
+test "ring buffer push when full is no-op"
+  let rb  = new(2)
+  let rb2 = push(rb, 1)
+  let rb3 = push(rb2, 2)
+  Test.assert(is_full(rb3))
+  let rb4 = push(rb3, 99)
+  Test.assert(size(rb4) == 2)
+  Test.assert(is_full(rb4))
+  free(rb4)
+
+test "ring buffer fill and drain"
+  let rb  = new(4)
+  let rb2 = push(rb, 10)
+  let rb3 = push(rb2, 20)
+  let rb4 = push(rb3, 30)
+  let rb5 = push(rb4, 40)
+  Test.assert(is_full(rb5))
+  let r1 = pop(rb5)
+  let r2 = pop(r1.0)
+  let r3 = pop(r2.0)
+  let r4 = pop(r3.0)
+  Test.assert(unwrap_int(r1.1) == 10)
+  Test.assert(unwrap_int(r2.1) == 20)
+  Test.assert(unwrap_int(r3.1) == 30)
+  Test.assert(unwrap_int(r4.1) == 40)
+  Test.assert(is_empty(r4.0))
+  free(r4.0)
+
+test "ring buffer wrap-around"
+  -- Push 3, pop 2, push 3 more: exercises the index wrap-around path.
+  let rb = new(4)
+  let rb2 = push(rb,  1)
+  let rb3 = push(rb2, 2)
+  let rb4 = push(rb3, 3)
+  let r1 = pop(rb4)    -- pops 1, head advances to 1
+  let r2 = pop(r1.0)   -- pops 2, head advances to 2
+  let rb5 = push(r2.0, 10)   -- writes to tail=3
+  let rb6 = push(rb5,  20)   -- writes to tail=0 (wrapped)
+  let rb7 = push(rb6,  30)   -- writes to tail=1 (wrapped)
+  -- Buffer layout: [20, 30, 3, 10]; head=2, tail=2, size=4
+  let r3 = pop(rb7)    -- pops slot 2 = 3
+  let r4 = pop(r3.0)   -- pops slot 3 = 10
+  let r5 = pop(r4.0)   -- pops slot 0 = 20 (wrapped)
+  let r6 = pop(r5.0)   -- pops slot 1 = 30 (wrapped)
+  Test.assert(unwrap_int(r1.1) == 1)
+  Test.assert(unwrap_int(r2.1) == 2)
+  Test.assert(unwrap_int(r3.1) == 3)
+  Test.assert(unwrap_int(r4.1) == 10)
+  Test.assert(unwrap_int(r5.1) == 20)
+  Test.assert(unwrap_int(r6.1) == 30)
+  Test.assert(is_empty(r6.0))
+  free(r6.0)
+
+test "ring buffer capacity rounds to power of two"
+  let rb  = new(3)
+  let rb2 = new(5)
+  let rb3 = new(8)
+  Test.assert(capacity(rb)  == 4)
+  Test.assert(capacity(rb2) == 8)
+  Test.assert(capacity(rb3) == 8)
+  free(rb)
+  free(rb2)
+  free(rb3)
+
+test "ring buffer fifo ordering"
+  let rb  = new(8)
+  let rb2 = push(rb,  100)
+  let rb3 = push(rb2, 200)
+  let rb4 = push(rb3, 300)
+  let r1 = pop(rb4)
+  let r2 = pop(r1.0)
+  let r3 = pop(r2.0)
+  Test.assert(unwrap_int(r1.1) == 100)
+  Test.assert(unwrap_int(r2.1) == 200)
+  Test.assert(unwrap_int(r3.1) == 300)
+  Test.assert(is_empty(r3.0))
+  free(r3.0)

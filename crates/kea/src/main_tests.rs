@@ -597,6 +597,16 @@ fn run_algorithm_gallery_dot_product() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
+fn run_algorithm_gallery_ring_buffer() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/ring_buffer.kea");
+    let run = run_test_file(&path).expect("ring_buffer.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "ring_buffer failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in ring_buffer.kea");
+}
+
+#[test]
 fn run_algorithm_gallery_with_kea_test_runner() {
     let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms");
     let supported = [
@@ -606,6 +616,7 @@ fn run_algorithm_gallery_with_kea_test_runner() {
         "insertion_sort.kea",
         "merge_sort.kea",
         "quicksort.kea",
+        "ring_buffer.kea",
         "welford.kea",
     ];
     let mut case_files = std::fs::read_dir(&cases_dir)

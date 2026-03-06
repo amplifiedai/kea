@@ -5045,6 +5045,10 @@ struct FunctionLoweringCtx {
     lambda_factories: BTreeMap<String, LambdaFactoryTemplate>,
     var_record_types: BTreeMap<String, String>,
     record_value_types: BTreeMap<MirValueId, String>,
+    /// Maps a MirValueId to the element types of a tuple it holds.
+    /// Used to recover correct field types when `RecordFieldLoad` is applied to
+    /// a tuple whose static HIR type annotation was erased to Dynamic.
+    tuple_value_types: BTreeMap<MirValueId, Vec<Type>>,
     sum_value_types: BTreeMap<MirValueId, String>,
     sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>>,
     lifted_functions: Vec<MirFunction>,
@@ -5189,6 +5193,7 @@ impl FunctionLoweringCtx {
             lambda_factories: lambda_factories.clone(),
             var_record_types: BTreeMap::new(),
             record_value_types: BTreeMap::new(),
+            tuple_value_types: BTreeMap::new(),
             sum_value_types: BTreeMap::new(),
             sum_ctor_candidates,
             lifted_functions: Vec::new(),
@@ -6752,13 +6757,42 @@ impl FunctionLoweringCtx {
                         _ => self.record_value_types.get(&record).cloned(),
                     },
                 }?;
+                // For tuple field accesses, recover the actual element type from
+                // the tuple's type information rather than relying on expr.ty, which
+                // may be Type::Dynamic when type inference did not propagate through
+                // the field projection.  Without the correct type, RecordFieldLoad
+                // in codegen cannot emit the necessary Retain for heap-managed fields,
+                // leading to use-after-free when the same field is accessed twice.
+                //
+                // Priority order for resolving the element type:
+                //  1. `base.ty` is `Type::Tuple(items)` — directly available.
+                //  2. `tuple_value_types[record]` — populated when the tuple was
+                //     produced by a call whose return type was a concrete Tuple (even
+                //     when the HIR Var expression that binds the result carries Dynamic).
+                let field_ty = if let Type::Tuple(items) = &base.ty {
+                    field
+                        .parse::<usize>()
+                        .ok()
+                        .and_then(|idx| items.get(idx))
+                        .cloned()
+                        .unwrap_or_else(|| expr.ty.clone())
+                } else if let Some(items) = self.tuple_value_types.get(&record) {
+                    field
+                        .parse::<usize>()
+                        .ok()
+                        .and_then(|idx| items.get(idx))
+                        .cloned()
+                        .unwrap_or_else(|| expr.ty.clone())
+                } else {
+                    expr.ty.clone()
+                };
                 let dest = self.new_value();
                 self.emit_inst(MirInst::RecordFieldLoad {
                     dest: dest.clone(),
                     record,
                     record_type,
                     field: field.clone(),
-                    field_ty: expr.ty.clone(),
+                    field_ty,
                 });
                 Some(dest)
             }
@@ -7902,6 +7936,11 @@ impl FunctionLoweringCtx {
             && let Some(record_type) = self.infer_record_type_from_type(&call_ret_type)
         {
             self.record_value_types.insert(dest.clone(), record_type);
+        }
+        if let Some(dest) = &result
+            && let Type::Tuple(items) = &call_ret_type
+        {
+            self.tuple_value_types.insert(dest.clone(), items.clone());
         }
         result
     }

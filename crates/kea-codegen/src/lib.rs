@@ -2884,7 +2884,16 @@ fn declare_retain_functions<M: Module>(
                 .iter()
                 .any(|ft| is_managed_heap_type(ft, layout_plan))
         });
-        if !has_managed {
+        // Also register a typed retain for mixed sums — sums that have both
+        // zero-field (immediate) variants like `None` and non-zero-field (heap-
+        // pointer) variants like `Some`.  Without a typed retain, emit_typed_retain
+        // falls through to raw emit_retain, which is unsafe for the immediate
+        // variant (e.g. None = 0 would be treated as a pointer, causing a crash).
+        // define_sum_retain_function already handles this case correctly.
+        let has_immediate_variant = layout.variant_field_counts.values().any(|count| *count == 0);
+        let has_payload_variant = layout.variant_field_counts.values().any(|count| *count > 0);
+        let is_mixed = has_immediate_variant && has_payload_variant;
+        if !has_managed && !is_mixed {
             continue;
         }
         let symbol = mangle_drop_symbol("__kea_deep_retain_sum", sum_name);
