@@ -63,6 +63,9 @@ test "insertion sort already sorted"
   let v  = Vector.from_list([1, 2, 3, 4, 5])
   let v2 = insertion_sort(v)
   Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 1) == Some(2))
+  Test.assert(Vector.get(v2, 2) == Some(3))
+  Test.assert(Vector.get(v2, 3) == Some(4))
   Test.assert(Vector.get(v2, 4) == Some(5))
   Vector.free(v2)
 
@@ -77,13 +80,41 @@ test "insertion sort reverse sorted"
   Vector.free(v2)
 
 test "insertion sort with duplicates"
+  -- [3,1,4,1,5,9,2,6,5] → [1,1,2,3,4,5,5,6,9]. All 9 positions checked.
   let v  = Vector.from_list([3, 1, 4, 1, 5, 9, 2, 6, 5])
   let v2 = insertion_sort(v)
   Test.assert(Vector.get(v2, 0) == Some(1))
   Test.assert(Vector.get(v2, 1) == Some(1))
   Test.assert(Vector.get(v2, 2) == Some(2))
   Test.assert(Vector.get(v2, 3) == Some(3))
+  Test.assert(Vector.get(v2, 4) == Some(4))
+  Test.assert(Vector.get(v2, 5) == Some(5))
+  Test.assert(Vector.get(v2, 6) == Some(5))
+  Test.assert(Vector.get(v2, 7) == Some(6))
   Test.assert(Vector.get(v2, 8) == Some(9))
+  Vector.free(v2)
+
+test "insertion sort all equal elements"
+  -- All-equal input: inner loop must not infinitely shift equal elements.
+  -- Tests that the comparison is strict (r < l) not r <= l.
+  let v  = Vector.from_list([7, 7, 7, 7])
+  let v2 = insertion_sort(v)
+  Test.assert(Vector.length(v2) == 4)
+  Test.assert(Vector.get(v2, 0) == Some(7))
+  Test.assert(Vector.get(v2, 1) == Some(7))
+  Test.assert(Vector.get(v2, 2) == Some(7))
+  Test.assert(Vector.get(v2, 3) == Some(7))
+  Vector.free(v2)
+
+test "insertion sort multi-step shift"
+  -- [4, 3, 2, 1]: every insertion requires shifting all prior elements.
+  -- A one-step inner loop would leave 4 in the wrong position.
+  let v  = Vector.from_list([4, 3, 2, 1])
+  let v2 = insertion_sort(v)
+  Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 1) == Some(2))
+  Test.assert(Vector.get(v2, 2) == Some(3))
+  Test.assert(Vector.get(v2, 3) == Some(4))
   Vector.free(v2)
 
 test "insertion sort two elements swapped"

@@ -77,6 +77,9 @@ test "quicksort already sorted"
   let v  = Vector.from_list([1, 2, 3, 4, 5])
   let v2 = quicksort(v)
   Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 1) == Some(2))
+  Test.assert(Vector.get(v2, 2) == Some(3))
+  Test.assert(Vector.get(v2, 3) == Some(4))
   Test.assert(Vector.get(v2, 4) == Some(5))
   Vector.free(v2)
 
@@ -91,13 +94,28 @@ test "quicksort reverse sorted"
   Vector.free(v2)
 
 test "quicksort with duplicates"
+  -- [3,1,4,1,5,9,2,6,5] → [1,1,2,3,4,5,5,6,9]. All 9 positions checked.
   let v  = Vector.from_list([3, 1, 4, 1, 5, 9, 2, 6, 5])
   let v2 = quicksort(v)
   Test.assert(Vector.get(v2, 0) == Some(1))
   Test.assert(Vector.get(v2, 1) == Some(1))
   Test.assert(Vector.get(v2, 2) == Some(2))
   Test.assert(Vector.get(v2, 3) == Some(3))
+  Test.assert(Vector.get(v2, 4) == Some(4))
+  Test.assert(Vector.get(v2, 5) == Some(5))
+  Test.assert(Vector.get(v2, 6) == Some(5))
+  Test.assert(Vector.get(v2, 7) == Some(6))
   Test.assert(Vector.get(v2, 8) == Some(9))
+  Vector.free(v2)
+
+test "quicksort all equal elements"
+  -- Degenerate Lomuto: every element equals the pivot. Partition must
+  -- still terminate and place all elements in the single bucket.
+  let v  = Vector.from_list([5, 5, 5, 5, 5])
+  let v2 = quicksort(v)
+  Test.assert(Vector.length(v2) == 5)
+  Test.assert(Vector.get(v2, 0) == Some(5))
+  Test.assert(Vector.get(v2, 4) == Some(5))
   Vector.free(v2)
 
 test "quicksort two elements swapped"
@@ -108,8 +126,15 @@ test "quicksort two elements swapped"
   Vector.free(v2)
 
 test "quicksort larger input"
+  -- All 8 positions verified; catches bugs that only touch boundaries.
   let v  = Vector.from_list([8, 3, 7, 1, 5, 4, 6, 2])
   let v2 = quicksort(v)
   Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 1) == Some(2))
+  Test.assert(Vector.get(v2, 2) == Some(3))
+  Test.assert(Vector.get(v2, 3) == Some(4))
+  Test.assert(Vector.get(v2, 4) == Some(5))
+  Test.assert(Vector.get(v2, 5) == Some(6))
+  Test.assert(Vector.get(v2, 6) == Some(7))
   Test.assert(Vector.get(v2, 7) == Some(8))
   Vector.free(v2)

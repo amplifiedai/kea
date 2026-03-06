@@ -197,3 +197,61 @@ test "pq duplicate elements"
   let r4 = pq_pop(r3.0)
   Test.assert(unwrap_int(r4.1) == 3)
   Vector.free(r4.0)
+
+test "pq deep heap requires multi-level sift-down"
+  -- 7 elements fill 3 complete levels of the heap tree.
+  -- Inserted in adversarial order so sift-up must climb multiple levels.
+  -- After all pops the output must be exactly sorted ascending.
+  -- A sift-down bug that only fixes one level would mis-order elements.
+  let v  = Vector.from_list([])
+  let v2 = pq_push(v,  7)
+  let v3 = pq_push(v2, 3)
+  let v4 = pq_push(v3, 5)
+  let v5 = pq_push(v4, 1)
+  let v6 = pq_push(v5, 6)
+  let v7 = pq_push(v6, 2)
+  let v8 = pq_push(v7, 4)
+  let r1 = pq_pop(v8)
+  let r2 = pq_pop(r1.0)
+  let r3 = pq_pop(r2.0)
+  let r4 = pq_pop(r3.0)
+  let r5 = pq_pop(r4.0)
+  let r6 = pq_pop(r5.0)
+  let r7 = pq_pop(r6.0)
+  Test.assert(unwrap_int(r1.1) == 1)
+  Test.assert(unwrap_int(r2.1) == 2)
+  Test.assert(unwrap_int(r3.1) == 3)
+  Test.assert(unwrap_int(r4.1) == 4)
+  Test.assert(unwrap_int(r5.1) == 5)
+  Test.assert(unwrap_int(r6.1) == 6)
+  Test.assert(unwrap_int(r7.1) == 7)
+  Vector.free(r7.0)
+
+test "pq push after partial pop preserves heap property"
+  -- Push 5 elements, pop the minimum, then push 2 more and pop all.
+  -- Verifies the heap is not corrupted by a partial drain followed by
+  -- new insertions — a common bug in sift-down implementations.
+  let v  = Vector.from_list([])
+  let v2 = pq_push(v,  10)
+  let v3 = pq_push(v2, 30)
+  let v4 = pq_push(v3, 20)
+  let v5 = pq_push(v4, 50)
+  let v6 = pq_push(v5, 40)
+  let r1 = pq_pop(v6)
+  Test.assert(unwrap_int(r1.1) == 10)
+  -- heap now contains {20,30,40,50}; push 5 and 35
+  let v7 = pq_push(r1.0, 5)
+  let v8 = pq_push(v7, 35)
+  let r2 = pq_pop(v8)
+  let r3 = pq_pop(r2.0)
+  let r4 = pq_pop(r3.0)
+  let r5 = pq_pop(r4.0)
+  let r6 = pq_pop(r5.0)
+  let r7 = pq_pop(r6.0)
+  Test.assert(unwrap_int(r2.1) == 5)
+  Test.assert(unwrap_int(r3.1) == 20)
+  Test.assert(unwrap_int(r4.1) == 30)
+  Test.assert(unwrap_int(r5.1) == 35)
+  Test.assert(unwrap_int(r6.1) == 40)
+  Test.assert(unwrap_int(r7.1) == 50)
+  Vector.free(r7.0)
