@@ -1,0 +1,181 @@
+doc
+  Dense matrix multiplication using row-major `Vector Float` storage.
+
+  A matrix with `rows` rows and `cols` columns is stored as a flat vector
+  of length `rows * cols`. Element (r, c) is at index `r * cols + c`.
+
+  `mat_mul(a, b, rows_a, cols_a, cols_b)` computes C = A × B where:
+    A is (rows_a × cols_a), B is (cols_a × cols_b), C is (rows_a × cols_b).
+
+  The inner product for each output cell is computed by a tail-recursive
+  accumulator; TCO eliminates the stack growth automatically.
+
+  O(rows_a × cols_a × cols_b) time.  O(rows_a × cols_b) extra space for C.
+
+use Vector
+use Test
+use Float
+
+-- -----------------------------------------------------------------------
+-- Matrix element access
+-- -----------------------------------------------------------------------
+
+doc
+  Read element at row `r`, column `c` from a matrix with `cols` columns.
+  Returns 0.0 for any out-of-bounds index.
+fn mat_get(m: Vector Float, cols: Int, r: Int, c: Int) -> Float
+  let idx = r * cols + c
+  case Vector.get(m, idx)
+    None    -> 0.0
+    Some(x) -> x
+
+-- -----------------------------------------------------------------------
+-- Matrix construction helpers
+-- -----------------------------------------------------------------------
+
+doc
+  Build a zero-filled matrix with `rows` rows and `cols` columns.
+fn mat_zeros(rows: Int, cols: Int) -> Vector Float
+  fill_zeros(Vector.from_list([]), rows * cols)
+
+fn fill_zeros(v: Vector Float, remaining: Int) -> Vector Float
+  if remaining <= 0
+    v
+  else
+    fill_zeros(Vector.push(v, 0.0), remaining - 1)
+
+doc
+  Build a matrix from a flat list of Floats (row-major order).
+fn mat_from_list(xs: List Float) -> Vector Float
+  Vector.from_list(xs)
+
+-- -----------------------------------------------------------------------
+-- Matrix multiply: C = A × B
+-- -----------------------------------------------------------------------
+
+doc
+  Multiply matrix A (rows_a × cols_a) by matrix B (cols_a × cols_b).
+  Returns matrix C (rows_a × cols_b) in row-major layout.
+  The caller owns the returned vector and must call `Vector.free`.
+fn mat_mul(a: Vector Float, b: Vector Float, rows_a: Int, cols_a: Int, cols_b: Int) -> Vector Float
+  let c = mat_zeros(rows_a, cols_b)
+  mat_mul_rows(a, b, c, rows_a, cols_a, cols_b, 0)
+
+-- Iterate over rows of A.
+fn mat_mul_rows(a: Vector Float, b: Vector Float, c: Vector Float, rows_a: Int, cols_a: Int, cols_b: Int, r: Int) -> Vector Float
+  if r >= rows_a
+    c
+  else
+    let c2 = mat_mul_cols(a, b, c, cols_a, cols_b, r, 0)
+    mat_mul_rows(a, b, c2, rows_a, cols_a, cols_b, r + 1)
+
+-- Iterate over columns of B for a fixed row r.
+fn mat_mul_cols(a: Vector Float, b: Vector Float, c: Vector Float, cols_a: Int, cols_b: Int, r: Int, col: Int) -> Vector Float
+  if col >= cols_b
+    c
+  else
+    let dot = inner_product(a, b, cols_a, cols_b, r, col, 0, 0.0)
+    let idx = r * cols_b + col
+    let c2  = Vector.set(c, idx, dot)
+    mat_mul_cols(a, b, c2, cols_a, cols_b, r, col + 1)
+
+-- Compute the dot product of row r of A with column col of B.
+fn inner_product(a: Vector Float, b: Vector Float, cols_a: Int, cols_b: Int, r: Int, col: Int, k: Int, acc: Float) -> Float
+  if k >= cols_a
+    acc
+  else
+    let av = mat_get(a, cols_a, r, k)
+    let bv = mat_get(b, cols_b, k, col)
+    inner_product(a, b, cols_a, cols_b, r, col, k + 1, acc + av * bv)
+
+-- -----------------------------------------------------------------------
+-- Float helpers (avoid Eq constraint on Float)
+-- -----------------------------------------------------------------------
+
+fn approx_eq(x: Float, y: Float) -> Bool
+  let diff = x - y
+  diff > -0.0001 and diff < 0.0001
+
+-- -----------------------------------------------------------------------
+-- Tests
+-- -----------------------------------------------------------------------
+
+test "mat_mul 1x1 * 1x1"
+  -- [3] * [4] = [12]
+  let a = mat_from_list([3.0])
+  let b = mat_from_list([4.0])
+  let c = mat_mul(a, b, 1, 1, 1)
+  Test.assert(approx_eq(mat_get(c, 1, 0, 0), 12.0))
+  Vector.free(a)
+  Vector.free(b)
+  Vector.free(c)
+
+test "mat_mul 2x2 known result"
+  -- A = [[1,2],[3,4]]  B = [[5,6],[7,8]]
+  -- C = [[1*5+2*7, 1*6+2*8],[3*5+4*7, 3*6+4*8]]
+  --   = [[19, 22],[43, 50]]
+  let a = mat_from_list([1.0, 2.0, 3.0, 4.0])
+  let b = mat_from_list([5.0, 6.0, 7.0, 8.0])
+  let c = mat_mul(a, b, 2, 2, 2)
+  Test.assert(approx_eq(mat_get(c, 2, 0, 0), 19.0))
+  Test.assert(approx_eq(mat_get(c, 2, 0, 1), 22.0))
+  Test.assert(approx_eq(mat_get(c, 2, 1, 0), 43.0))
+  Test.assert(approx_eq(mat_get(c, 2, 1, 1), 50.0))
+  Vector.free(a)
+  Vector.free(b)
+  Vector.free(c)
+
+test "mat_mul identity matrix"
+  -- I * A = A for 2x2 identity
+  let i = mat_from_list([1.0, 0.0, 0.0, 1.0])
+  let a = mat_from_list([3.0, 7.0, 2.0, 5.0])
+  let c = mat_mul(i, a, 2, 2, 2)
+  Test.assert(approx_eq(mat_get(c, 2, 0, 0), 3.0))
+  Test.assert(approx_eq(mat_get(c, 2, 0, 1), 7.0))
+  Test.assert(approx_eq(mat_get(c, 2, 1, 0), 2.0))
+  Test.assert(approx_eq(mat_get(c, 2, 1, 1), 5.0))
+  Vector.free(i)
+  Vector.free(a)
+  Vector.free(c)
+
+test "mat_mul non-square 2x3 * 3x2"
+  -- A (2x3) = [[1,2,3],[4,5,6]]
+  -- B (3x2) = [[7,8],[9,10],[11,12]]
+  -- C (2x2):
+  --   C[0,0] = 1*7+2*9+3*11 = 7+18+33 = 58
+  --   C[0,1] = 1*8+2*10+3*12 = 8+20+36 = 64
+  --   C[1,0] = 4*7+5*9+6*11 = 28+45+66 = 139
+  --   C[1,1] = 4*8+5*10+6*12 = 32+50+72 = 154
+  let a = mat_from_list([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+  let b = mat_from_list([7.0, 8.0, 9.0, 10.0, 11.0, 12.0])
+  let c = mat_mul(a, b, 2, 3, 2)
+  Test.assert(approx_eq(mat_get(c, 2, 0, 0), 58.0))
+  Test.assert(approx_eq(mat_get(c, 2, 0, 1), 64.0))
+  Test.assert(approx_eq(mat_get(c, 2, 1, 0), 139.0))
+  Test.assert(approx_eq(mat_get(c, 2, 1, 1), 154.0))
+  Vector.free(a)
+  Vector.free(b)
+  Vector.free(c)
+
+test "mat_mul zero matrix"
+  -- Zero * A = Zero
+  let z = mat_from_list([0.0, 0.0, 0.0, 0.0])
+  let a = mat_from_list([9.0, 8.0, 7.0, 6.0])
+  let c = mat_mul(z, a, 2, 2, 2)
+  Test.assert(approx_eq(mat_get(c, 2, 0, 0), 0.0))
+  Test.assert(approx_eq(mat_get(c, 2, 0, 1), 0.0))
+  Test.assert(approx_eq(mat_get(c, 2, 1, 0), 0.0))
+  Test.assert(approx_eq(mat_get(c, 2, 1, 1), 0.0))
+  Vector.free(z)
+  Vector.free(a)
+  Vector.free(c)
+
+test "mat_mul 1x3 * 3x1 (dot product)"
+  -- Row vector [1,2,3] * column vector [[4],[5],[6]] = [[32]]
+  let a = mat_from_list([1.0, 2.0, 3.0])
+  let b = mat_from_list([4.0, 5.0, 6.0])
+  let c = mat_mul(a, b, 1, 3, 1)
+  Test.assert(approx_eq(mat_get(c, 1, 0, 0), 32.0))
+  Vector.free(a)
+  Vector.free(b)
+  Vector.free(c)

@@ -617,6 +617,16 @@ fn run_algorithm_gallery_priority_queue() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
+fn run_algorithm_gallery_matrix_multiply() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/matrix_multiply.kea");
+    let run = run_test_file(&path).expect("matrix_multiply.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "matrix_multiply failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in matrix_multiply.kea");
+}
+
+#[test]
 fn run_algorithm_gallery_with_kea_test_runner() {
     let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms");
     let supported = [
@@ -624,6 +634,7 @@ fn run_algorithm_gallery_with_kea_test_runner() {
         "dot_product.kea",
         "fnv1a.kea",
         "insertion_sort.kea",
+        "matrix_multiply.kea",
         "merge_sort.kea",
         "quicksort.kea",
         "priority_queue.kea",
