@@ -1,24 +1,135 @@
 doc
-  Clock provides time-related capabilities.
+  Wall-clock and monotonic time — separate from `IO` by design.
 
-  Use `Clock.now()` for wall-clock timestamps and
-  `Clock.monotonic()` for elapsed-time measurements.
+  `Clock` is its own effect rather than part of `IO`. This is a load-bearing
+  design decision with a concrete consequence: a function with `-[Clock]>` in
+  its signature can read the time but *cannot* touch the filesystem, network,
+  or any other `IO` operation. The type says exactly what the function does.
+
+  More importantly: in tests, the `Clock` handler can return a fixed or
+  controlled time value. Time-dependent code becomes fully deterministic
+  without mocking a broad `IO` surface or introducing abstraction layers.
+
+  ## Testing time-dependent code
+
+  ```kea
+  fn is_expired(_ entry: CacheEntry) -[Clock]> Bool
+    Clock.now() > entry.expires_at
+
+  -- Test: intercept Clock, return a fixed timestamp
+  test "entry is expired when clock is past expires_at"
+    let entry = CacheEntry { expires_at: 1_000_000 }
+    let result = handle is_expired(entry)
+      Clock.now() -> resume 2_000_000
+    check result == true
+
+  test "entry is not expired when clock is before expires_at"
+    let entry = CacheEntry { expires_at: 1_000_000 }
+    let result = handle is_expired(entry)
+      Clock.now() -> resume 500_000
+    check result == false
+  ```
+
+  No mock framework, no `FakeClock` class, no dependency injection. The
+  handler *is* the test double. The function `is_expired` is unchanged.
+
+  ## `now` vs `monotonic`
+
+  | Operation | Clock type | Use for |
+  |---|---|---|
+  | `Clock.now()` | Wall clock (epoch seconds) | Timestamps, expiry, "happened at" |
+  | `Clock.monotonic()` | Monotonic counter | Elapsed time, duration measurement |
+
+  Wall clock time can jump forward or backward (NTP, DST, manual adjustment).
+  The monotonic clock only moves forward and is not affected by clock changes.
+  Always use `monotonic` for measuring elapsed time:
+
+  ```kea
+  fn timed_query(_ sql: String) -[DB, Clock, Log]> Rows
+    let start = Clock.monotonic()
+    let rows = DB.query(sql)
+    let elapsed = Clock.elapsed_since(start)
+    Log.debug("query took {elapsed}ms")
+    rows
+  ```
+
+  > **Note:** `Clock.now()` returns seconds since the Unix epoch as an `Int`.
+  > `Clock.monotonic()` returns an opaque counter value — the unit is
+  > platform-defined. Use `Clock.elapsed_since` to compute differences.
+
+  ## See also
+
+  - `Rand` — the same design applied to randomness: separate effect,
+    deterministic in tests via handler
+  - `IO` — for filesystem and network effects; `Clock` is *not* part of `IO`
+
+doc
+  The clock effect. Declare `-[Clock]>` in a function's signature to indicate
+  it reads the current time. Intercept with a handler in tests to supply
+  fixed or controlled timestamps.
 effect Clock
   doc
-    Return wall-clock epoch seconds.
+    Return the current wall-clock time as seconds since the Unix epoch.
 
-      Clock.now()   -- => 1700000000 (example)
+    Use for timestamps, expiry checks, and "what time did this happen"
+    queries. Do not use for measuring elapsed time — wall clock time can
+    jump. Use `Clock.monotonic()` for elapsed time.
+
+    ```kea
+    let now = Clock.now()
+    let expires = now + 3600   -- one hour from now
+    ```
+
+    In tests, intercept `Clock.now()` to return a fixed timestamp:
+
+    ```kea doctest
+    handle (Clock.now() > 1_000_000)
+      Clock.now() -> resume 2_000_000
+    -- => true
+    ```
   fn now() -[Clock]> Int
-  doc
-    Return a monotonic time reading.
 
-      Clock.monotonic()   -- => 123456789 (example)
+  doc
+    Return a monotonically increasing time reading.
+
+    The value is platform-defined — it is only meaningful relative to
+    other `monotonic()` readings from the same process. Use
+    `Clock.elapsed_since(start)` to compute a difference.
+
+    ```kea
+    let t0 = Clock.monotonic()
+    do_work()
+    let t1 = Clock.monotonic()
+    let elapsed = t1 - t0
+    ```
+
+    In tests, supply controlled readings to verify elapsed-time logic.
+    See `Clock.elapsed_since` for a worked doctest example.
   fn monotonic() -[Clock]> Int
 
 doc
-  Measure elapsed monotonic ticks since `start`.
+  Return the elapsed time since `start`, in the same units as
+  `Clock.monotonic()`.
 
-    let start = Clock.monotonic()
-    Clock.elapsed_since(start)   -- => 0 or greater
+  ```kea
+  let start = Clock.monotonic()
+  expensive_operation()
+  let elapsed = Clock.elapsed_since(start)
+  Log.debug("operation took {elapsed} ticks")
+  ```
+
+  With controlled clock readings in tests:
+
+  ```kea doctest
+  handle Clock.elapsed_since(
+    handle Clock.monotonic()
+      Clock.monotonic() -> resume 100
+  )
+    Clock.monotonic() -> resume 350
+  -- => 250
+  ```
+
+  This is equivalent to `Clock.monotonic() - start`. It exists as a
+  named function for readability and to make the intent explicit in code.
 fn elapsed_since(start: Int) -[Clock]> Int
   Clock.monotonic() - start

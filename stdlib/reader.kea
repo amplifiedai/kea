@@ -1,26 +1,176 @@
 doc
-  Reader provides read-only environment passing via effects.
+  Read-only ambient context — dependency injection without a framework.
 
-  Use `Reader.with_reader` at boundaries and `Reader.ask`/`asks`
-  in business logic that depends on shared context.
+  `Reader R` is an algebraic effect for passing a read-only value through a
+  call tree without threading it through every function signature. A handler
+  at the boundary provides the value; every function in the tree reads it
+  with `Reader.ask()` without it appearing in intermediate signatures.
+
+  ## The core pattern
+
+  ```kea
+  -- Business logic declares what it reads:
+  fn send_welcome(_ user: User) -[Net, Reader SmtpConfig]> Unit
+    let config = Reader.ask()
+    Net.connect(config.host, config.port)
+    -- ...
+
+  -- Entry point provides the value:
+  fn main() -[IO, Net]> Unit
+    let config = SmtpConfig { host: "mail.example.com", port: 587 }
+    Reader.with_reader(config, || send_welcome(new_user))
+
+  -- Test provides a different value with no code changes:
+  test "welcome email is sent to correct host"
+    let test_config = SmtpConfig { host: "localhost", port: 25 }
+    handle Reader.with_reader(test_config, || send_welcome(test_user))
+      Net.connect(host, port) ->
+        check host == "localhost"
+        resume mock_conn
+  ```
+
+  ## What this replaces
+
+  **Dependency injection containers.** `@Inject`, service locators, and DI
+  frameworks exist to solve exactly this problem: make a value available deep
+  in a call tree without passing it everywhere. `Reader` does it with three
+  lines of language — an effect declaration, an operation, and a handler.
+  No annotations, no container, no runtime reflection.
+
+  **`ctx` / context parameter threading.** A common workaround is to add a
+  `ctx` parameter to every function that needs ambient state. This works but
+  pollutes every signature and is infectious — adding a new context field
+  requires updating every function in the chain. `Reader` avoids this: only
+  the functions that *use* the value declare the effect.
+
+  **Global configuration.** Instead of a global `Config` object, use
+  `Reader Config`. The configuration is explicitly declared in the type,
+  the handler provides it at the call boundary, and tests substitute a
+  test configuration without any global mutation.
+
+  ## Reader vs State
+
+  `Reader R` is read-only — the value cannot change within the handler scope.
+  There is no `put` operation. Use `Reader` for values that are fixed for
+  the duration of a computation:
+
+  - Application configuration
+  - Database connection pool handles
+  - Logger instances or log level thresholds
+  - Feature flag sets
+  - Request metadata (user identity, request ID, locale)
+
+  Use `State S` when the value needs to change — counters, caches built up
+  during a computation, accumulation of results.
+
+  > **Tip:** If you find yourself wanting `Reader` plus mutation, the right
+  > answer is usually `State`. If you want `Reader` for a value that is
+  > cheap to pass explicitly, just pass it explicitly — `Reader` pays off
+  > when the value needs to cross many function boundaries invisibly.
+
+  ## Stacking multiple Reader effects
+
+  Each `Reader R` effect is parameterised by its type. Multiple independent
+  ambient values use multiple effects:
+
+  ```kea
+  fn handle_request(_ req: Request)
+      -[DB, Reader AppConfig, Reader TraceContext]> Response
+    let config = Reader.ask() : AppConfig
+    let trace = Reader.ask() : TraceContext
+    -- ...
+  ```
+
+  Each `with_reader` handles exactly one type. Stack them at the boundary:
+
+  ```kea
+  Reader.with_reader(config,
+    || Reader.with_reader(trace_ctx,
+      || handle_request(req)))
+  ```
+
+  ## See also
+
+  - `State` — read-write scoped state; use when the value needs to change
+  - `Log` — a concrete example of the handler-as-configuration pattern;
+    `with_stdout_logger` is structurally a `Reader` over a log sink
+
+doc
+  The reader effect, parameterised by the environment type `R`. Declare
+  `-[Reader R]>` in a function's signature to indicate it reads an ambient
+  value of type `R`. Provide the value with `with_reader`.
 effect Reader R
   doc
     Read the current environment value.
 
-      Reader.ask()
+    This is the only operation on `Reader R`. There is no write operation
+    by design — `Reader` is read-only. Use `State` if you need mutation.
+
+    ```kea doctest
+    Reader.with_reader(42, || Reader.ask())
+    -- => 42
+    ```
+
+    With multiple `Reader` effects in scope, a type annotation
+    disambiguates which value to read:
+
+    ```kea
+    let config = Reader.ask() : AppConfig
+    let host = config.database.host
+    ```
+
+    The type annotation (`: AppConfig`) is required when multiple `Reader`
+    effects are in scope at the same time, to disambiguate which value to read.
+    In the common case of a single `Reader` type, the annotation can be omitted.
   fn ask() -> R
 
 doc
-  Run `f` with `Reader.ask()` bound to `env`.
+  Run `f` with `Reader.ask()` returning `env` throughout the call tree.
 
-    Reader.with_reader(41, || Reader.ask() + 1)   -- => 42
+  The `Reader R` effect is fully consumed by this handler — it does not
+  appear in the outer effect signature. Any other effects in `f`'s row
+  pass through unchanged.
+
+  ```kea doctest
+  Reader.with_reader("hello", || Reader.ask())
+  -- => "hello"
+  ```
+
+  Handlers compose — stack `with_reader` calls to provide multiple
+  independent ambient values:
+
+  ```kea doctest
+  Reader.with_reader(1,
+    || Reader.with_reader("inner",
+    || Reader.ask() : String))
+  -- => "inner"
+  ```
+
+  > **Note:** `with_reader` binds a *value*, not a reference. If `env` is
+  > a struct, every `Reader.ask()` call in `f` returns the same struct.
+  > There is no way to update the value from inside `f` — that is the
+  > point. Use `State` if you need mutation.
 fn with_reader(env: R, f: fn() -[Reader R, e]> T) -[e]> T
   handle f()
     Reader.ask() -> resume env
 
 doc
-  Read the environment and transform it with `f`.
+  Read the environment and transform it with `f`. A convenience over
+  `Reader.ask()` when you only need a field or derived value.
 
-    Reader.with_reader(41, || Reader.asks(|x| x + 1))   -- => 42
+  ```kea doctest
+  Reader.with_reader("hello", || Reader.asks(|s| Text.length(s)))
+  -- => 5
+  ```
+
+  `asks` is equivalent to `f(Reader.ask())`. For a struct environment,
+  use it to read a single field without binding the whole value:
+
+  ```kea
+  let host = Reader.asks(|c| c.database.host)
+  ```
+
+  `asks` does not add a new effect — it uses the same `Reader R` effect
+  that `ask` uses.
 fn asks(f: fn(R) -> T) -[Reader R]> T
   f(Reader.ask())

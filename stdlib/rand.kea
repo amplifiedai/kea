@@ -1,26 +1,106 @@
 doc
-  Rand provides pseudo-random number operations.
+  Pseudo-random number generation — separate from `IO` by design.
 
-  Use `Rand.seed` to initialize deterministic runs in tests
-  and `Rand.int_between` for bounded integer sampling.
+  `Rand` is its own effect rather than part of `IO`. A function with
+  `-[Rand]>` in its signature uses randomness, and nothing else. It cannot
+  touch the filesystem, network, or any other `IO` operation.
+
+  More importantly: in tests, the `Rand` handler can use a fixed seed or
+  return specific values. Random algorithms become fully deterministic and
+  reproducible without any mocking infrastructure.
+
+  ## Testing random code
+
+  ```kea
+  fn pick_shard(_ key: String) -[Rand]> Int
+    Rand.int_between(0, SHARD_COUNT - 1)
+
+  -- Test: intercept Rand, verify the result is in bounds
+  test "shard index is always valid"
+    let shard = handle pick_shard("user:42")
+      Rand.int() -> resume 99999
+    check shard >= 0
+    check shard < SHARD_COUNT
+  ```
+
+  For property tests, the `Gen` effect (Tier 3) builds on `Rand` with
+  seeded generation and automatic shrinking. Any failing property test
+  records its seed so the exact failure can be replayed with
+  `kea test --replay <seed>`.
+
+  ## Determinism and reproducibility
+
+  Two calls to `Rand.seed(n)` with the same `n` will produce the same
+  sequence of values from subsequent `Rand.int()` calls. This is the basis
+  for reproducible property test failures.
+
+  > **Note:** The current bootstrap implementation uses the system RNG.
+  > Seeded deterministic generation is the target behaviour; the `Rand.seed`
+  > operation exists to document and test against the intended interface.
+
+  ## See also
+
+  - `Clock` — the same design applied to time: separate effect, deterministic
+    in tests via handler
+  - `Gen` (Tier 3) — property-based testing built on top of `Rand`, with
+    seeded generation, shrinking, and `@derive(Arbitrary)`
+
+doc
+  The randomness effect. Declare `-[Rand]>` in a function's signature to
+  indicate it generates random values. Intercept with a handler in tests
+  to supply fixed or seeded values for deterministic behaviour.
 effect Rand
   doc
-    Seed the random number generator.
+    Seed the random number generator with `seed`. Two runs with the same
+    seed will produce the same sequence of values from subsequent `Rand.int()`
+    calls.
 
-      Rand.seed(1234)
+    Call `Rand.seed` at program startup to get a reproducible run, or
+    record the seed used in a test to replay failures:
+
+    ```kea
+    Rand.seed(0xDEADBEEF)
+    let x = Rand.int()   -- same value every time after this seed
+    ```
   fn seed(seed: Int) -[Rand]> Unit
-  doc
-    Generate a random integer.
 
-      Rand.int()   -- => implementation-defined
+  doc
+    Generate a random integer. The range is the full signed 64-bit integer
+    range. The distribution is uniform.
+
+    Prefer `Rand.int_between` when you need a value in a specific range —
+    it handles the modulo arithmetic correctly and guards against degenerate
+    inputs.
+
+    ```kea
+    let raw = Rand.int()
+    ```
   fn int() -[Rand]> Int
 
 doc
   Generate a random integer in the inclusive range `[lo, hi]`.
 
-  If `hi <= lo`, this returns `lo`.
+  The distribution is approximately uniform. The result is always
+  in `[lo, hi]`, including both endpoints.
 
-    Rand.int_between(10, 20)   -- => 10..20
+  ```kea doctest
+  handle Rand.int_between(0, 9)
+    Rand.int() -> resume 0
+  -- => 0
+
+  handle Rand.int_between(0, 9)
+    Rand.int() -> resume 99
+  -- => 9
+
+  handle Rand.int_between(5, 5)
+    Rand.int() -> resume 12345
+  -- => 5
+  ```
+
+  > **Note:** If `hi <= lo`, this function returns `lo`. It does not fail.
+  > This is a deliberate choice: degenerate ranges (`lo == hi`) have an
+  > obvious result, and inverted ranges (`lo > hi`) are treated as empty
+  > with the floor returned.
 fn int_between(lo: Int, hi: Int) -[Rand]> Int
   if hi <= lo
     lo

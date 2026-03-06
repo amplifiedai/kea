@@ -1,3 +1,80 @@
+doc
+  Structured logging as an effect — one interface, swappable behaviour.
+
+  `Log` is an algebraic effect. The code that emits log events doesn't decide
+  what happens to them — the *caller* does, by installing a handler. The same
+  business logic that logs to stdout in production captures events in tests and
+  runs silently in benchmarks, with zero changes to the function itself.
+
+  ## Handlers
+
+  The stdlib ships three canonical handlers:
+
+  | Handler | What it does | Effect produced |
+  |---|---|---|
+  | `with_stdout_logger` | Routes all levels to stdout via `IO.stdout` | `-[IO, e]>` |
+  | `with_collected_logs` | Captures events as `(result, List String)` | `-[e]>` |
+  | `with_silent_logger` | Discards all events, no side effects | `-[e]>` (TODO) |
+
+  Choose the handler at the boundary — entry point, test, or benchmark — not
+  inside the function doing the work.
+
+  ## Basic usage
+
+  ```kea
+  fn process_order(_ order: Order) -[Log, DB]> Receipt
+    Log.info("processing order {order.id}")
+    let receipt = DB.insert_order(order)
+    Log.info("order {order.id} committed")
+    receipt
+  ```
+
+  In production, wrap with `with_stdout_logger`. In tests, use
+  `with_collected_logs` — it handles all `Log` effects and returns
+  pure data, making the result directly assertable:
+
+  ```kea doctest
+  Log.with_collected_logs(||
+    Log.info("a")
+    Log.info("b")
+  )
+  -- => ((), ["a", "b"])
+  ```
+
+  > **Note:** `with_collected_logs` requires no `IO` and produces no side
+  > effects. The `DB` effect still needs its own handler — effects compose
+  > independently.
+
+  ## Why effects beat frameworks
+
+  Every logging framework in every language is trying to solve the same problem:
+  make logging pluggable without changing business logic. They do it with
+  interfaces, singletons, configuration files, or dependency injection.
+
+  Kea solves it structurally. The `Log` effect in a function's signature is a
+  *compile-time declaration* that the function logs. The handler is the
+  *implementation* — swappable at any call boundary, testable in isolation,
+  composable with other effects without any special integration code.
+
+  There is no logging framework. The language already has everything required.
+
+  ## Levels
+
+  Log levels are conventions, not enforced semantics. All four operations
+  (`debug`, `info`, `warn`, `error`) emit the message to the current handler.
+  The handler decides what to do with the level. The stdlib handlers currently
+  treat all levels identically — routing to the same output. Future handlers
+  can filter by level.
+
+  ## See also
+
+  - `IO` — for direct, unconditional output when you don't need handler
+    swappability
+  - `State` — `with_collected_logs` is implemented using `State LogList`
+    internally; understanding `State` explains the accumulation pattern
+  - `Reader` — for injecting a logger *configuration* (e.g. minimum level,
+    log format) as ambient context
+
 use IO
 use List
 use State
@@ -5,42 +82,72 @@ use State
 alias LogList = List String
 
 doc
-  Log defines structured logging operations and handlers.
-
-  Use `Log.with_stdout_logger` to route logs to console output,
-  or `Log.with_collected_logs` to capture logs as pure data.
+  The logging effect. Declare `-[Log]>` in a function's signature to indicate
+  it emits log events. Install a handler at the call boundary —
+  `with_stdout_logger`, `with_collected_logs`, or a custom handler — to
+  decide what happens to those events.
 effect Log
   doc
-    Emit a debug-level message.
+    Emit a debug-level message. Use for development noise: variable values,
+    branch taken, retry attempt number. Typically filtered out in production
+    handlers.
 
-      Log.debug("starting")
+    ```kea doctest
+    Log.with_collected_logs(|| Log.debug("hello"))
+    -- => ((), ["hello"])
+    ```
   fn debug(msg: String) -> Unit
 
   doc
-    Emit an info-level message.
+    Emit an info-level message. Use for normal operational events: request
+    received, record committed, job complete.
 
-      Log.info("ready")
+    ```kea doctest
+    Log.with_collected_logs(|| Log.info("ready"))
+    -- => ((), ["ready"])
+    ```
   fn info(msg: String) -> Unit
 
   doc
-    Emit a warning-level message.
+    Emit a warning-level message. Use for unexpected but recoverable
+    situations: retry triggered, config value missing with fallback applied,
+    deprecated API called.
 
-      Log.warn("retrying")
+    ```kea doctest
+    Log.with_collected_logs(|| Log.warn("careful"))
+    -- => ((), ["careful"])
+    ```
   fn warn(msg: String) -> Unit
 
   doc
-    Emit an error-level message.
+    Emit an error-level message. Use for failures that the caller cannot
+    recover from automatically.
 
-      Log.error("failed")
+    ```kea doctest
+    Log.with_collected_logs(|| Log.error("boom"))
+    -- => ((), ["boom"])
+    ```
   fn error(msg: String) -> Unit
 
 doc
-  Run `f` with `Log.*` routed to stdout.
+  Run `f` with all `Log.*` calls routed to stdout via `IO.stdout`.
 
+  Each message is printed as-is. All four log levels are treated
+  identically — the message string is emitted unconditionally.
+
+  This is the production-default handler. Wrap your entry point with
+  `with_stdout_logger` and the rest of the call tree works without changes.
+
+  ```kea
+  fn main() -[IO]> Unit
     Log.with_stdout_logger(||
-      Log.info("ready")
-      7
-    )   -- => 7
+      run_server(config)
+    )
+  ```
+
+  The produced effect is `-[IO, e]>` — the `IO` comes from `with_stdout_logger`
+  itself calling `IO.stdout`. The `Log` effect is consumed by this handler and
+  does not appear in the outer signature.
 fn with_stdout_logger(f: fn() -[Log, e]> T) -[IO, e]> T
   handle f()
     Log.debug(msg) ->
@@ -57,10 +164,7 @@ fn with_stdout_logger(f: fn() -[Log, e]> T) -[IO, e]> T
       resume ()
 
 doc
-  Reverse `xs` into `acc`.
-
-    Log.reverse_logs_into(Cons("a", Nil), Nil)   -- => Cons("a", Nil)
-    Log.reverse_logs_into(Nil, Cons("z", Nil))   -- => Cons("z", Nil)
+  Reverse `xs` into `acc`. Internal helper for `with_collected_logs`.
 fn reverse_logs_into(xs: LogList, acc: LogList) -> LogList
   case xs
     Nil -> acc
@@ -68,20 +172,14 @@ fn reverse_logs_into(xs: LogList, acc: LogList) -> LogList
       reverse_logs_into(rest, Cons(x, acc))
 
 doc
-  Reverse a log list while preserving all messages.
-
-    Log.reverse_logs(Cons("a", Cons("b", Nil)))   -- => Cons("b", Cons("a", Nil))
-    Log.reverse_logs(Nil)                          -- => Nil
+  Reverse a log list, preserving all messages. Internal helper.
 fn reverse_logs(xs: LogList) -> LogList
   reverse_logs_into(xs, Nil)
 
 doc
-  Run `f` while collecting emitted `Log.*` messages in reverse order.
-
-    Log.collect_logs(||
-      Log.info("ready")
-      1
-    )
+  Internal: collect log messages into a `State LogList` accumulator.
+  Messages are accumulated in reverse order for efficiency;
+  `with_collected_logs` reverses before returning.
 fn collect_logs(f: fn() -[Log]> T) -[State LogList]> T
   handle f()
     Log.debug(msg) ->
@@ -98,14 +196,43 @@ fn collect_logs(f: fn() -[Log]> T) -[State LogList]> T
       resume ()
 
 doc
-  Run `f` and collect all emitted logs.
+  Run `f` and return its result alongside all emitted log messages,
+  in emission order.
 
-  Returns `(result, logs)` where `logs` preserves emission order.
+  Produces no side effects — no `IO`, no stdout, no files. The log
+  events are returned as pure data, making this the canonical handler
+  for tests: assert on the event list directly rather than parsing
+  stdout strings.
 
-    Log.with_collected_logs(||
-      Log.info("ready")
-      7
-    )   -- => (7, Cons("ready", Nil))
+  All four log levels appear in the list, in emission order:
+
+  ```kea doctest
+  Log.with_collected_logs(||
+    Log.debug("d")
+    Log.info("i")
+    Log.warn("w")
+    Log.error("e")
+  )
+  -- => ((), ["d", "i", "w", "e"])
+  ```
+
+  > **Note:** The function `f` must not use `IO` or other effects unless
+  > those effects are also handled at the call site. `Log` is consumed
+  > by this handler; other effects in `f`'s row must be handled by an
+  > outer scope.
+
+  Testing a function that uses `Log` alongside other effects requires
+  handling each effect separately:
+
+  ```kea
+  test "order processing logs both steps"
+    let (receipt, events) = handle Log.with_collected_logs(||
+      process_order(test_order)
+    )
+      DB.query(sql, params) -> resume mock_rows
+    check events.List.length() == 2
+    check events.List.any(|e| Text.contains(e, "committed"))
+  ```
 fn with_collected_logs(f: fn() -[Log]> T) -> (T, LogList)
   let pair = State.with_state(Nil, ||
     collect_logs(f)

@@ -1,105 +1,304 @@
 doc
-  Result is Fail's data representation.
+  Fallible outcomes as data — the complement of `Fail`.
 
-  Prefer `-[Fail E]> T` for fallible control flow.
-  Use `Result(T, E)` when outcomes must be stored as data.
+  `Result(T, E)` is a value that is either `Ok(value)` or `Err(error)`.
+  It is a plain data type: store it in a collection, return it from a pure
+  function, pattern-match it freely. It does not perform control flow by
+  itself.
 
-    let results = items.map(|item| catch validate(item))
-    let config = Result.unwrap_or(catch load_config(), defaults)
-    let value = some_result?
+  `Fail E` is the control flow counterpart — an effect that exits the current
+  computation early. The two work together via `?` and `catch`:
+
+  | Direction | Syntax | What it does |
+  |---|---|---|
+  | `Result` → `Fail` | `result?` | Unwraps `Ok`, or fails with the `Err` value |
+  | `Fail` → `Result` | `catch expr` | Runs `expr`, catches any `Fail E` into `Err(e)` |
+
+  ## When to use each
+
+  **Use `Fail E` when a function either succeeds or gives up entirely:**
+
+  ```kea
+  fn load_config(_ path: String) -[IO, Fail ConfigError]> Config
+  fn connect(_ addr: String) -[Net, Fail IoError]> Connection
+  fn parse_int(_ s: String) -[Fail ParseError]> Int
+  ```
+
+  The function returns the value on success. If anything goes wrong, it
+  fails immediately — there is nothing useful to return.
+
+  **Use `Result(T, E)` when failure is a value to be stored or inspected:**
+
+  ```kea
+  fn validate(_ form: Form) -> Result(ValidForm, List ValidationError)
+  fn try_parse(_ s: String) -> Result(Int, ParseError)
+  fn items.List.map(|item| catch validate(item)) -> List (Result ValidItem Error)
+  ```
+
+  The result is data. You might collect a list of results, count the
+  failures, or inspect the error before deciding what to do.
+
+  ## Composing Result and Fail
+
+  The two modes compose naturally. `?` converts `Result Err` into `Fail Err`,
+  so you can write sequential fallible code without nested case expressions:
+
+  ```kea
+  fn process(_ input: String) -[IO, Fail AppError]> Output
+    let n = parse_int(input)?          -- Fail ParseError on bad input
+    let record = DB.fetch(n)?          -- Fail DbError if not found
+    let result = transform(record)?    -- Fail TransformError if invalid
+    Output.from(result)
+  ```
+
+  `catch` converts `Fail` back into `Result`, letting you handle failure
+  at a boundary or accumulate multiple results:
+
+  ```kea
+  -- Validate every item, collecting Ok and Err separately:
+  let results = items.List.map(|item| catch validate(item))
+  let valid = results.List.filter(Result.is_ok)
+  let errors = results.List.filter(Result.is_err)
+  ```
+
+  ## Pattern matching
+
+  Pattern matching on `Result` is always explicit and exhaustive — the
+  compiler requires you to handle both variants:
+
+  ```kea
+  case parse_result
+    Ok(value) -> use_value(value)
+    Err(err)  -> handle_error(err)
+  ```
+
+  ## See also
+
+  - `Fail` — the effect-based control flow counterpart; defined in this module
+  - `Option` — the same pattern without an error value; use when absence
+    carries no information about *why* something is absent
+  - `List.map` — combining `catch` with `map` is the standard way to run a
+    fallible function over a collection
 
 use Eq
 use Show
 use Ord
 use Order
 
+doc
+  A value that is either `Ok(value)` on success or `Err(error)` on failure.
+  Plain data — pattern-match it, store it in a list, return it from pure
+  functions. For control flow (early exit on failure), see `Fail`.
 @derive(Eq, Show, Ord)
 enum Result a e
   Ok(a)
   Err(e)
 
+doc
+  The failure effect, parameterised by the error type `E`. A function
+  with `-[Fail E]>` in its signature may abort with an error value of
+  type `E`. Caught by `catch expr`, which produces `Result(T, E)`.
 effect Fail E
   doc
-    Abort the current computation with an error payload.
+    Abort the current computation with an error payload, unwinding to the
+    nearest `catch` boundary or explicit `Fail` handler.
 
-      Fail.fail("boom")
+    `Fail.fail` is rarely called directly. Use `?` to propagate a `Result`'s
+    `Err` case, or let the compiler insert the call when a fallible operation
+    fails. Call `Fail.fail` directly when you need to abort with a
+    constructed error:
+
+    ```kea
+    if config.port < 1 || config.port > 65535
+      Fail.fail(ConfigError.invalid_port(config.port))
+    ```
+
+    > **Note:** The return type is `Never` — the function does not return.
+    > Any code after `Fail.fail(...)` in the same block is unreachable and
+    > will produce a warning.
   fn fail(error: E) -> Never
 
 doc
-  Convert an Option into a Result with a provided error value.
+  Convert an `Option` into a `Result`, supplying the error value for `None`.
 
-    Result.from_option(Some(2), "missing")   -- => Ok(2)
-    Result.from_option(None, "missing")      -- => Err("missing")
+  Use this when you have an optional value and need to treat its absence
+  as a typed failure.
+
+  ```kea doctest
+  Result.from_option(Some(42), "not found")
+  -- => Ok(42)
+  Result.from_option(None, "not found")
+  -- => Err("not found")
+  ```
+
+  The error value is evaluated eagerly. If constructing it is expensive,
+  use a case expression directly.
 fn from_option(opt: Option a, err: e) -> Result(a, e)
   case opt
     Some(value) -> Ok(value)
     None -> Err(err)
 
 doc
-  Return the Ok value, or a fallback for Err.
+  Return the `Ok` value, or `fallback` if the result is `Err`.
 
-    Result.unwrap_or(Ok(5), 0)     -- => 5
-    Result.unwrap_or(Err(5), 0)    -- => 0
+  The fallback is evaluated eagerly. If evaluating it is expensive or has
+  side effects, use a case expression:
+
+  ```kea
+  -- Eager (fallback always computed):
+  Result.unwrap_or(parse_result, default_value)
+
+  -- Lazy (fallback only computed on Err):
+  case parse_result
+    Ok(value) -> value
+    Err(_) -> expensive_default()
+  ```
+
+  ```kea doctest
+  Result.unwrap_or(Ok(5), 0)
+  -- => 5
+  Result.unwrap_or(Err("!"), 0)
+  -- => 0
+  ```
 fn unwrap_or(res: Result(a, e), fallback: a) -> a
   case res
     Ok(value) -> value
     Err(_) -> fallback
 
 doc
-  Transform the Ok value with a mapping function.
+  Transform the `Ok` value with `f`. If the result is `Err`, return it
+  unchanged. `f` is not called for `Err` values.
 
-    Result.map(Ok(5), |x| x + 1)     -- => Ok(6)
-    Result.map(Err("boom"), |x| x + 1)  -- => Err("boom")
+  Use `map` to transform a success value without changing the error type.
+  Chain multiple `map` calls to build a transformation pipeline:
+
+  ```kea
+  parse_result
+    .Result.map(|n| n * 2)
+    .Result.map(Int.to_string)
+  ```
+
+  ```kea doctest
+  Result.map(Ok(5), |x| x + 1)
+  -- => Ok(6)
+  Result.map(Err("bad"), |x| x + 1)
+  -- => Err("bad")
+  ```
 fn map(res: Result(a, e), f: fn(a) -> b) -> Result(b, e)
   case res
     Ok(value) -> Ok(f(value))
     Err(err) -> Err(err)
 
 doc
-  Transform the Err value with a mapping function.
+  Transform the `Err` value with `f`. If the result is `Ok`, return it
+  unchanged. `f` is not called for `Ok` values.
 
-    Result.map_err(Err("boom"), |e| e ++ "!")   -- => Err("boom!")
-    Result.map_err(Ok(5), |e| e ++ "!")         -- => Ok(5)
+  Use `map_err` to convert between error types — for example, when
+  wrapping a lower-level error in a domain error:
+
+  ```kea
+  DB.fetch(id)
+    .Result.map_err(|db_err| AppError.database(db_err))
+  ```
+
+  ```kea doctest
+  Result.map_err(Err("bad"), |e| e ++ "!")
+  -- => Err("bad!")
+  Result.map_err(Ok(5), |e| e ++ "!")
+  -- => Ok(5)
+  ```
 fn map_err(res: Result(a, e), f: fn(e) -> f) -> Result(a, f)
   case res
     Ok(value) -> Ok(value)
     Err(err) -> Err(f(err))
 
 doc
-  Chain Result-producing computations.
+  Chain a `Result`-producing computation onto a previous `Result`.
+  If the result is `Ok(v)`, calls `f(v)` and returns its result.
+  If the result is `Err`, returns the error without calling `f`.
 
-    Result.and_then(Ok(5), |x| Ok(x + 1))    -- => Ok(6)
-    Result.and_then(Err("boom"), |x| Ok(x))   -- => Err("boom")
+  Use `and_then` to sequence fallible operations where each step depends
+  on the previous one:
+
+  ```kea
+  parse_int(s)
+    .Result.and_then(|n| if n > 0 then Ok(n) else Err("must be positive"))
+    .Result.and_then(|n| DB.fetch(n))
+  ```
+
+  This is equivalent to using `?` inside a function body, but works
+  directly on `Result` values without needing a `Fail` effect.
+
+  ```kea doctest
+  Result.and_then(Ok(5), |x| Ok(x + 1))
+  -- => Ok(6)
+  Result.and_then(Err("!"), |x| Ok(x))
+  -- => Err("!")
+  ```
 fn and_then(res: Result(a, e), f: fn(a) -> Result(b, e)) -> Result(b, e)
   case res
     Ok(value) -> f(value)
     Err(err) -> Err(err)
 
 doc
-  Extract the Ok value or fail when Err.
+  Extract the `Ok` value, or fail with the `Err` value if the result
+  is `Err`. Converts a `Result` into the `Fail` effect.
 
-    catch Result.unwrap(Ok(7))    -- => Ok(7)
-    catch Result.unwrap(Err(5))   -- => Err(5)
+  Use `unwrap` (or equivalently, `result?`) when you are inside a
+  function that already has `Fail E` in its effect row and want to
+  propagate errors upward:
+
+  ```kea
+  fn process(_ input: String) -[Fail ParseError]> Int
+    let n = Result.unwrap(parse_int(input))   -- or: parse_int(input)?
+    n * 2
+  ```
+
+  > **Warning:** Do not use `unwrap` at a top-level boundary where there
+  > is no `Fail` handler. Wrap the call in `catch` or handle `Fail`
+  > explicitly if you want to convert errors into another form.
+
+  ```kea doctest
+  catch Result.unwrap(Ok(7))
+  -- => Ok(7)
+  catch Result.unwrap(Err(5))
+  -- => Err(5)
+  ```
 fn unwrap(res: Result(a, e)) -[Fail e]> a
   case res
     Ok(value) -> value
     Err(err) -> Fail.fail(err)
 
 doc
-  Return true when a result is Ok.
+  Return `true` if the result is `Ok`, `false` if it is `Err`.
 
-    Result.is_ok(Ok(1))    -- => true
-    Result.is_ok(Err(1))   -- => false
+  Prefer pattern matching when you need the value. Use `is_ok` only
+  when checking the tag without extracting the value — for example,
+  counting successes in a list of results.
+
+  ```kea doctest
+  Result.is_ok(Ok(1))
+  -- => true
+  Result.is_ok(Err(1))
+  -- => false
+  ```
 fn is_ok(res: Result(a, e)) -> Bool
   case res
     Err(_) -> false
     _ -> true
 
 doc
-  Return true when a result is Err.
+  Return `true` if the result is `Err`, `false` if it is `Ok`.
 
-    Result.is_err(Ok(1))    -- => false
-    Result.is_err(Err(1))   -- => true
+  Prefer pattern matching when you need the error value. Use `is_err`
+  only when checking the tag without extracting the value.
+
+  ```kea doctest
+  Result.is_err(Ok(1))
+  -- => false
+  Result.is_err(Err(1))
+  -- => true
+  ```
 fn is_err(res: Result(a, e)) -> Bool
   case res
     Err(_) -> true

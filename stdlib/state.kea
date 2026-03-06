@@ -1,31 +1,160 @@
 doc
-  State provides scoped mutable state via handlers.
+  Scoped mutable state without globals, singletons, or shared memory.
 
-  Use `State.with_state` to isolate mutation and return
-  deterministic `(result, final_state)` values.
+  `State S` is an algebraic effect. A function that reads or writes state
+  of type `S` declares `-[State S]>` in its signature. The caller provides
+  the initial value via a handler — nothing is global, nothing is ambient,
+  nothing leaks between calls.
+
+  ## The core pattern
+
+  ```kea
+  fn count_matches(_ xs: List Int, _ pred: fn(Int) -> Bool) -[State Int]> Unit
+    for x in xs
+      if pred(x)
+        State.put(State.get() + 1)
+  ```
+
+  ```kea doctest
+  State.with_state(0, ||
+    count_matches([1, 2, 3, 4, 5], |x| x > 2)
+  )
+  -- => ((), 3)
+  ```
+
+  `with_state` returns `(result, final_state)`. The state is fully contained
+  within the handler scope — it cannot be observed or modified from outside it.
+
+  ## What this replaces
+
+  **Global mutable variables.** Instead of a global counter or config object,
+  a function declares what state it needs in its type. Callers provide it.
+  Tests provide a different value. Nothing is shared unless you explicitly share it.
+
+  ```kea
+  -- Instead of a global AppConfig:
+  fn feature_enabled(_ name: String) -[State AppConfig]> Bool
+    State.get().features.Map.get(name).Option.unwrap_or(false)
+
+  -- Test swaps the config trivially:
+  test "dark_mode feature flag is read from config"
+    let cfg = AppConfig { features: Map.from([("dark_mode", true)]) }
+    let (result, _) = State.with_state(cfg, || feature_enabled("dark_mode"))
+    check result == true
+  ```
+
+  **Accumulator patterns.** Building up a list, summing values, counting
+  occurrences — all `-[State S]>`. The accumulated value is returned alongside
+  the result when the handler scope exits.
+
+  **Thread-local / request-scoped context.** Request IDs, per-request caches,
+  trace contexts — each request gets its own `with_state` scope. The state
+  is local to that scope with no risk of cross-request contamination.
+
+  ## Nested scopes
+
+  `State.get()` and `State.put()` operate on the *current* handler scope, not
+  a global cell. Nested `with_state` calls create independent scopes:
+
+  ```kea doctest
+  State.with_state(0, ||
+    State.put(1)
+    let (inner, inner_final) = State.with_state(100, ||
+      State.put(200)
+      State.get()
+    )
+    -- inner_final == 200, outer unaffected
+    State.get()
+  )
+  -- => (1, 1)
+  ```
+
+  ## State vs Reader
+
+  Use `State S` when the value can change during the computation — counters,
+  caches, accumulating results, anything that updates via `State.put`.
+
+  Use `Reader R` when the value is fixed for the duration of the call —
+  configuration, database pool handles, logger instances. `Reader` is read-only
+  by construction; there is no `put` operation.
+
+  ## See also
+
+  - `Reader` — read-only ambient context; the right choice when `put` is never needed
+  - `Log` — `with_collected_logs` is built on top of `State (List String)`;
+    see that module for a worked example of the accumulation pattern
+
+doc
+  The state effect, parameterised by the state type `S`. Declare
+  `-[State S]>` in a function's signature to indicate it reads or writes
+  mutable state of type `S`. Provide the initial value with `with_state`.
 effect State S
   doc
     Return the current state value.
 
-      State.get()
+    ```kea doctest
+    State.with_state(0, || { State.put(State.get() + 1); State.get() })
+    -- => (1, 1)
+    ```
   fn get() -> S
 
   doc
-    Replace the current state value.
+    Replace the current state value with `next`. The previous value is
+    discarded. Use `State.get()` first if you need to compute the new
+    value from the old one.
 
-      State.put(42)
+    ```kea
+    -- increment
+    State.put(State.get() + 1)
+    -- reset a list accumulator
+    State.put(Nil)
+    ```
   fn put(next: S) -> Unit
 
 doc
-  Run `f` with mutable state initialized to `initial`.
+  Run `f` with mutable state initialised to `initial`, returning
+  `(result, final_state)` when `f` completes.
 
-  Returns `(result, final_state)` when `f` completes.
+  The state is fully scoped to this call — it cannot be observed or
+  modified from outside the handler boundary. Every call to `with_state`
+  creates an independent state cell.
 
-    State.with_state(0, ||
-      let n = State.get()
-      State.put(n + 1)
-      State.get()
-    )   -- => (1, 1)
+  ```kea doctest
+  State.with_state(0, ||
+    State.put(State.get() + 1)
+    State.put(State.get() + 1)
+    State.put(State.get() + 1)
+  )
+  -- => ((), 3)
+  ```
+
+  For accumulation, the final state holds the collected value:
+
+  ```kea doctest
+  State.with_state([], ||
+    State.put(Cons(1, State.get()))
+    State.put(Cons(2, State.get()))
+    State.put(Cons(3, State.get()))
+  )
+  -- => ((), [3, 2, 1])
+  ```
+
+  > **Note:** The result tuple is `(T, S)` — the first element is the value
+  > returned by `f`, the second is the state at the moment `f` completed.
+  > If `f` never calls `State.put`, the final state equals `initial`.
+
+  The `e` in the signature is a row variable — `with_state` is
+  effect-polymorphic. It handles `State S` and passes through any other
+  effects `f` may have:
+
+  ```kea
+  -- f uses both State and Log — with_state handles State, Log passes through:
+  let (result, final) = State.with_state(initial, ||
+    Log.info("starting")         -- Log effect passes through
+    State.put(State.get() + 1)   -- State effect handled here
+    compute()
+  )
+  ```
 fn with_state(initial: S, f: fn() -[State S, e]> T) -[e]> (T, S)
   let result = handle f()
     State.get() -> resume initial
