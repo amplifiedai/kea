@@ -180,6 +180,17 @@ fn swap(v: Vector a, i: Int, j: Int) -> Vector a
       Ptr.write(Ptr.offset(v.ptr, j), xi)
       v
 
+doc
+  Remove the last element, decreasing length by 1.
+  Returns the vector unchanged when empty.
+
+    let v2 = Vector.pop(v)   -- length decreases by 1
+fn pop(v: Vector a) -> Vector a
+  if v.len == 0
+    v
+  else
+    v~{ len: v.len - 1 }
+
 -- -----------------------------------------------------------------------
 -- Conversion
 -- -----------------------------------------------------------------------

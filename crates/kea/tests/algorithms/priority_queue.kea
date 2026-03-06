@@ -1,0 +1,199 @@
+doc
+  Binary min-heap priority queue backed by a `Vector Int`.
+
+  The heap property: every parent is ≤ both children.  The root (index 0)
+  is always the minimum.  `pq_push` appends and sifts up; `pq_pop` swaps
+  root with the last element, shrinks the vector, and sifts down.
+
+  O(log n) push and pop.  Uses `Vector.swap` and `Vector.get` from the
+  standard library; no separate allocation beyond the vector itself.
+
+use Vector
+use Test
+
+-- -----------------------------------------------------------------------
+-- Index helpers
+-- -----------------------------------------------------------------------
+
+fn parent(i: Int) -> Int
+  (i - 1) / 2
+
+fn left(i: Int) -> Int
+  2 * i + 1
+
+fn right(i: Int) -> Int
+  2 * i + 2
+
+-- Safe element fetch: returns a large sentinel for out-of-bounds.
+fn get_elem(v: Vector Int, i: Int) -> Int
+  case Vector.get(v, i)
+    None    -> 2147483647  -- INT_MAX sentinel
+    Some(x) -> x
+
+-- -----------------------------------------------------------------------
+-- Push: append then sift up
+-- -----------------------------------------------------------------------
+
+doc
+  Insert `x` into the min-heap `v`.
+  Returns the updated vector.
+fn pq_push(v: Vector Int, x: Int) -> Vector Int
+  let v2 = Vector.push(v, x)
+  let n  = Vector.length(v2)
+  sift_up(v2, n - 1)
+
+-- Sift element at index `i` up until the heap property holds.
+fn sift_up(v: Vector Int, i: Int) -> Vector Int
+  if i <= 0
+    v
+  else
+    let p = parent(i)
+    if get_elem(v, i) < get_elem(v, p)
+      let v2 = Vector.swap(v, i, p)
+      sift_up(v2, p)
+    else
+      v
+
+-- -----------------------------------------------------------------------
+-- Pop: remove minimum (root), sift down
+-- -----------------------------------------------------------------------
+
+doc
+  Remove and return the minimum element.
+  Returns `(updated_vector, None)` when the heap is empty.
+  Returns `(updated_vector, Some(min))` otherwise.
+fn pq_pop(v: Vector Int) -> (Vector Int, Option Int)
+  let n = Vector.length(v)
+  if n == 0
+    (v, None)
+  else
+    let min = get_elem(v, 0)
+    let v2  = Vector.swap(v, 0, n - 1)
+    let v3  = Vector.pop(v2)
+    let v4  = sift_down(v3, 0)
+    (v4, Some(min))
+
+-- Sift element at index `i` down until the heap property holds.
+fn sift_down(v: Vector Int, i: Int) -> Vector Int
+  let n = Vector.length(v)
+  let l = left(i)
+  let r = right(i)
+  let smallest = find_smallest(v, i, l, r, n)
+  if smallest == i
+    v
+  else
+    let v2 = Vector.swap(v, i, smallest)
+    sift_down(v2, smallest)
+
+-- Return the index of the smallest among parent `i`, left `l`, right `r`.
+fn find_smallest(v: Vector Int, i: Int, l: Int, r: Int, n: Int) -> Int
+  let sm = if l < n and get_elem(v, l) < get_elem(v, i)
+    l
+  else
+    i
+  if r < n and get_elem(v, r) < get_elem(v, sm)
+    r
+  else
+    sm
+
+-- -----------------------------------------------------------------------
+-- Helper: pop an Int from the tuple
+-- -----------------------------------------------------------------------
+
+fn unwrap_int(o: Option Int) -> Int
+  case o
+    None    -> -1
+    Some(x) -> x
+
+-- -----------------------------------------------------------------------
+-- Tests
+-- -----------------------------------------------------------------------
+
+test "pq empty pop returns None"
+  let v  = Vector.from_list([])
+  let r  = pq_pop(v)
+  Test.assert(r.1 == None)
+  Vector.free(r.0)
+
+test "pq single element push then pop"
+  let v  = Vector.from_list([])
+  let v2 = pq_push(v, 42)
+  Test.assert(Vector.length(v2) == 1)
+  let r  = pq_pop(v2)
+  Test.assert(unwrap_int(r.1) == 42)
+  Test.assert(Vector.length(r.0) == 0)
+  Vector.free(r.0)
+
+test "pq two elements min first"
+  let v  = Vector.from_list([])
+  let v2 = pq_push(v,  10)
+  let v3 = pq_push(v2,  3)
+  let r1 = pq_pop(v3)
+  Test.assert(unwrap_int(r1.1) == 3)
+  let r2 = pq_pop(r1.0)
+  Test.assert(unwrap_int(r2.1) == 10)
+  Vector.free(r2.0)
+
+test "pq push out-of-order preserves heap property"
+  -- Insert 5 1 3 2 4 in that order; pop should give 1 2 3 4 5.
+  let v  = Vector.from_list([])
+  let v2 = pq_push(v,  5)
+  let v3 = pq_push(v2, 1)
+  let v4 = pq_push(v3, 3)
+  let v5 = pq_push(v4, 2)
+  let v6 = pq_push(v5, 4)
+  let r1 = pq_pop(v6)
+  let r2 = pq_pop(r1.0)
+  let r3 = pq_pop(r2.0)
+  let r4 = pq_pop(r3.0)
+  let r5 = pq_pop(r4.0)
+  Test.assert(unwrap_int(r1.1) == 1)
+  Test.assert(unwrap_int(r2.1) == 2)
+  Test.assert(unwrap_int(r3.1) == 3)
+  Test.assert(unwrap_int(r4.1) == 4)
+  Test.assert(unwrap_int(r5.1) == 5)
+  Vector.free(r5.0)
+
+test "pq push then pop interleaved"
+  -- Push 3 pop → 3; push 1 2 pop → 1; pop → 2.
+  let v  = Vector.from_list([])
+  let v2 = pq_push(v, 3)
+  let r1 = pq_pop(v2)
+  Test.assert(unwrap_int(r1.1) == 3)
+  let v3 = pq_push(r1.0, 1)
+  let v4 = pq_push(v3, 2)
+  let r2 = pq_pop(v4)
+  Test.assert(unwrap_int(r2.1) == 1)
+  let r3 = pq_pop(r2.0)
+  Test.assert(unwrap_int(r3.1) == 2)
+  Vector.free(r3.0)
+
+test "pq from pre-existing vector"
+  -- Build heap from scratch by pushing in already-heap order.
+  let v  = Vector.from_list([])
+  let v2 = pq_push(v, 1)
+  let v3 = pq_push(v2, 5)
+  let v4 = pq_push(v3, 10)
+  let r1 = pq_pop(v4)
+  Test.assert(unwrap_int(r1.1) == 1)
+  let r2 = pq_pop(r1.0)
+  Test.assert(unwrap_int(r2.1) == 5)
+  let r3 = pq_pop(r2.0)
+  Test.assert(unwrap_int(r3.1) == 10)
+  Vector.free(r3.0)
+
+test "pq duplicate elements"
+  let v  = Vector.from_list([])
+  let v2 = pq_push(v, 3)
+  let v3 = pq_push(v2, 3)
+  let v4 = pq_push(v3, 1)
+  let v5 = pq_push(v4, 3)
+  let r1 = pq_pop(v5)
+  Test.assert(unwrap_int(r1.1) == 1)
+  let r2 = pq_pop(r1.0)
+  Test.assert(unwrap_int(r2.1) == 3)
+  let r3 = pq_pop(r2.0)
+  Test.assert(unwrap_int(r3.1) == 3)
+  let r4 = pq_pop(r3.0)
+  Test.assert(unwrap_int(r4.1) == 3)
+  Vector.free(r4.0)

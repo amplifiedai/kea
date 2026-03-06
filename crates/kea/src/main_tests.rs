@@ -607,6 +607,16 @@ fn run_algorithm_gallery_ring_buffer() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
+fn run_algorithm_gallery_priority_queue() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/priority_queue.kea");
+    let run = run_test_file(&path).expect("priority_queue.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "priority_queue failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in priority_queue.kea");
+}
+
+#[test]
 fn run_algorithm_gallery_with_kea_test_runner() {
     let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms");
     let supported = [
@@ -616,6 +626,7 @@ fn run_algorithm_gallery_with_kea_test_runner() {
         "insertion_sort.kea",
         "merge_sort.kea",
         "quicksort.kea",
+        "priority_queue.kea",
         "ring_buffer.kea",
         "welford.kea",
     ];
