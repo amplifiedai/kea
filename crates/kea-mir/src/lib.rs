@@ -2941,6 +2941,16 @@ fn insert_retains_for_reused_call_args(function: &mut MirFunction, _layouts: &Mi
                     .iter()
                     .any(|i| inst_reads_value(i, &value_id));
 
+                // Does a later instruction in this block *consume* value_id (as a call
+                // argument)?  If so, the extra retain unit we insert is absorbed by that
+                // later consuming call — the current call gets one unit and the later call
+                // gets the retained unit.  We must NOT also insert Release in dead
+                // successors: by the time control reaches a successor the value has
+                // already been consumed by the later call in this block.
+                let consumed_later_in_block = block.instructions[inst_idx + 1..]
+                    .iter()
+                    .any(|i| inst_value_consumed_by_call(i, &value_id));
+
                 // Number of extra ownership units needed:
                 // - (count - 1) for duplicate appearances in the same call
                 // - +1 if the value is also used after the call
@@ -2951,7 +2961,9 @@ fn insert_retains_for_reused_call_args(function: &mut MirFunction, _layouts: &Mi
                     retains.push((block.id.clone(), inst_idx, value_id.clone()));
                 }
 
-                if live_in_successor || used_later_in_block {
+                // Only insert balancing Release in dead successors when the extra retain
+                // unit is NOT already consumed by a later call in this same block.
+                if (live_in_successor || used_later_in_block) && !consumed_later_in_block {
                     // The retained extra reference must be released in every dead successor
                     // (where the value is not live and not forwarded via Jump args).
                     if let Some(succs) = successors.get(&block.id) {
