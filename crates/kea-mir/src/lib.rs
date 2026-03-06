@@ -2751,6 +2751,30 @@ fn inst_value_consumed_by_call(inst: &MirInst, value: &MirValueId) -> bool {
             args.contains(value)
                 || matches!(callee, MirCallee::Value(callee_v) if callee_v == value)
         }
+        // CowUpdate always manages the lifecycle of its target: the unique path reuses the
+        // allocation in place (the result IS the target, so a subsequent Release would free the
+        // result), and the copy path releases the original internally during codegen. Either way
+        // the target is "consumed" — no additional Release should be inserted by this pass.
+        MirInst::CowUpdate { target, .. } => target == value,
+        // Sum constructors move their field values into the new heap cell without retaining
+        // them — the constructor takes ownership of the fields. A subsequent Release of a
+        // field would decrement its RC below the count held by the new cell, causing a
+        // use-after-free when the cell is later traversed.
+        MirInst::SumInit { fields, .. }
+        | MirInst::SumInitReuse { fields, .. }
+        | MirInst::SumInitFromToken { fields, .. } => fields.iter().any(|f| f == value),
+        // Record constructors (including tuples) similarly move their field values into the
+        // newly allocated record without retaining them. Releasing a field after RecordInit
+        // would drop the RC to 0 and free memory still referenced by the record's own field
+        // slot, causing a use-after-free when the record is later accessed or dropped.
+        MirInst::RecordInit { fields, .. }
+        | MirInst::RecordInitReuse { fields, .. }
+        | MirInst::RecordInitFromToken { fields, .. } => {
+            fields.iter().any(|(_, f)| f == value)
+        }
+        // ClosureInit moves its captures into the closure object (no Retain). A Release of
+        // a captured value after ClosureInit would free memory still referenced by the closure.
+        MirInst::ClosureInit { captures, .. } => captures.iter().any(|c| c == value),
         _ => false,
     }
 }
@@ -2894,7 +2918,15 @@ fn insert_retains_for_reused_call_args(function: &mut MirFunction, _layouts: &Mi
                 _ => continue,
             };
 
-            for value_id in consumed {
+            // Count occurrences of each heap-managed value in the consumed list.
+            // When the same value appears N times as call args, we need N-1 extra
+            // Retains to provide the callee with N ownership units.
+            let mut occurrence_counts: BTreeMap<MirValueId, usize> = BTreeMap::new();
+            for value_id in &consumed {
+                *occurrence_counts.entry(value_id.clone()).or_insert(0) += 1;
+            }
+
+            for (value_id, count) in occurrence_counts {
                 let Some(live) = live_sets.get(&value_id) else {
                     continue;
                 };
@@ -2909,37 +2941,42 @@ fn insert_retains_for_reused_call_args(function: &mut MirFunction, _layouts: &Mi
                     .iter()
                     .any(|i| inst_reads_value(i, &value_id));
 
-                if !live_in_successor && !used_later_in_block {
-                    // Value is consumed exactly once by this call on this path — no Retain needed.
-                    continue;
+                // Number of extra ownership units needed:
+                // - (count - 1) for duplicate appearances in the same call
+                // - +1 if the value is also used after the call
+                let extra_retains =
+                    (count - 1) + usize::from(live_in_successor || used_later_in_block);
+
+                for _ in 0..extra_retains {
+                    retains.push((block.id.clone(), inst_idx, value_id.clone()));
                 }
 
-                retains.push((block.id.clone(), inst_idx, value_id.clone()));
-
-                // The retained extra reference must be released in every dead successor
-                // (where the value is not live and not forwarded via Jump args).
-                if let Some(succs) = successors.get(&block.id) {
-                    for succ_id in succs {
-                        if live.contains(succ_id) {
-                            continue; // will be consumed on that path
-                        }
-                        let is_forwarded = forwarded_to
-                            .get(&value_id)
-                            .is_some_and(|ft| ft.contains(succ_id));
-                        if is_forwarded {
-                            continue;
-                        }
-                        let already_has_release = function
-                            .blocks
-                            .iter()
-                            .find(|b| &b.id == succ_id)
-                            .is_some_and(|b| {
-                                b.instructions.iter().any(|i| {
-                                    matches!(i, MirInst::Release { value } if value == &value_id)
-                                })
-                            });
-                        if !already_has_release {
-                            releases.insert((succ_id.clone(), value_id.clone()));
+                if live_in_successor || used_later_in_block {
+                    // The retained extra reference must be released in every dead successor
+                    // (where the value is not live and not forwarded via Jump args).
+                    if let Some(succs) = successors.get(&block.id) {
+                        for succ_id in succs {
+                            if live.contains(succ_id) {
+                                continue; // will be consumed on that path
+                            }
+                            let is_forwarded = forwarded_to
+                                .get(&value_id)
+                                .is_some_and(|ft| ft.contains(succ_id));
+                            if is_forwarded {
+                                continue;
+                            }
+                            let already_has_release = function
+                                .blocks
+                                .iter()
+                                .find(|b| &b.id == succ_id)
+                                .is_some_and(|b| {
+                                    b.instructions.iter().any(|i| {
+                                        matches!(i, MirInst::Release { value } if value == &value_id)
+                                    })
+                                });
+                            if !already_has_release {
+                                releases.insert((succ_id.clone(), value_id.clone()));
+                            }
                         }
                     }
                 }
@@ -3148,13 +3185,53 @@ fn insert_releases_for_dead_params(function: &mut MirFunction, layouts: &MirLayo
                 && !block.instructions.iter().any(|inst| {
                     matches!(inst, MirInst::Release { value } if value == param_id)
                 })
-                // Must have at least one predecessor that is live at entry
-                // (so the param is alive on the incoming edge and needs to die here).
+                // Must have ALL predecessors live at entry.
+                // If any predecessor is dead, that dead predecessor has its own Case 1
+                // Release for the incoming path. Inserting another Release here would
+                // double-free on paths that pass through the dead predecessor.
+                // Case 1 only fires at the IMMEDIATE FRONTIER of the dead region —
+                // blocks where every incoming edge comes from a live block.
+                // Blocks deeper in the dead region (with dead predecessors) are handled
+                // by Case 2 at the tail of the last live block that reaches them.
                 && predecessors
                     .get(&block.id)
-                    .is_some_and(|preds| preds.iter().any(|pid| live.contains(pid)))
+                    .is_some_and(|preds| !preds.is_empty() && preds.iter().all(|pid| live.contains(pid)))
                 // Must not be an unreachable block.
                 && !matches!(block.terminator, MirTerminator::Unreachable)
+                // Must have NO predecessor that consumed the param via an
+                // ownership-transferring operation (Call or CowUpdate). When a predecessor
+                // passes param to a Call, the callee takes ownership on that path and will
+                // release it; inserting a Release at this join block would double-free.
+                //
+                // When SOME predecessors consumed and others did not, Case 1 must stay out
+                // entirely — a single Release here would be wrong for the consuming paths.
+                // Case 2 will then fire for each non-consuming predecessor and insert the
+                // Release at that block's tail, where it is safe and path-specific.
+                && predecessors
+                    .get(&block.id)
+                    .map(|preds| {
+                        preds.iter()
+                            .filter(|pid| live.contains(*pid))
+                            .all(|pid| {
+                                function.blocks.iter()
+                                    .find(|b| &b.id == pid)
+                                    .map(|pred_block| {
+                                        // The last instruction that reads param in this pred.
+                                        let last_read = pred_block.instructions.iter().rev()
+                                            .find(|inst| inst_reads_value(inst, param_id));
+                                        match last_read {
+                                            Some(inst) => !inst_value_consumed_by_call(inst, param_id),
+                                            // No instruction read it — check terminator (Jump args)
+                                            None => !matches!(
+                                                &pred_block.terminator,
+                                                MirTerminator::Jump { args, .. } if args.contains(param_id)
+                                            ),
+                                        }
+                                    })
+                                    .unwrap_or(true)
+                            })
+                    })
+                    .unwrap_or(true)
             })
             .map(|b| b.id.clone())
             .collect();
@@ -4968,6 +5045,15 @@ struct FunctionLoweringCtx {
     const_lowering_stack: Vec<String>,
     const_owner_stack: Vec<String>,
     stacking_chains: BTreeMap<(String, String), StackingChain>,
+    /// SumPayloadLoad result values whose extracted field type is heap-managed.
+    /// Block cleanup skips releasing these to avoid double-freeing with the parent cell's
+    /// destructor: SumPayloadLoad gives a borrowed reference into the parent cell; an
+    /// independent Release can race with the parent's own destructor traversal.
+    /// The insert_releases_for_dead_params pass already guards against releasing the parent
+    /// (via the SumPayloadLoad-with-managed-field check), so neither the parent nor the
+    /// extracted child is released — a conservative "safe but leaky" mode until full
+    /// Perceus RC=1 uniqueness analysis is implemented.
+    sum_payload_load_dests: BTreeSet<MirValueId>,
 }
 
 #[derive(Debug, Clone)]
@@ -5103,6 +5189,7 @@ impl FunctionLoweringCtx {
             const_lowering_stack: Vec::new(),
             const_owner_stack: Vec::new(),
             stacking_chains: BTreeMap::new(),
+            sum_payload_load_dests: BTreeSet::new(),
         }
     }
 
@@ -6612,7 +6699,9 @@ impl FunctionLoweringCtx {
                     unique_path: block_id.clone(),
                     copy_path: block_id,
                 });
-                self.emit_inst(MirInst::Release { value: target });
+                // No Release here: the copy path in CowUpdate codegen emits
+                // the release of the original target; the unique path reuses
+                // the target in place, so releasing it would free the result.
                 self.record_value_types
                     .insert(dest.clone(), resolved_record_type);
                 Some(dest)
@@ -6679,6 +6768,11 @@ impl FunctionLoweringCtx {
                 });
                 if let Some(inner_sum_type) = self.infer_sum_type_from_type(&expr.ty) {
                     self.sum_value_types.insert(dest.clone(), inner_sum_type);
+                }
+                // Track SumPayloadLoad results with managed-type fields: Block cleanup
+                // must NOT release these independently (see sum_payload_load_dests doc).
+                if is_heap_managed_type(&expr.ty, &self.layouts) {
+                    self.sum_payload_load_dests.insert(dest.clone());
                 }
                 Some(dest)
             }
@@ -6816,6 +6910,16 @@ impl FunctionLoweringCtx {
                         // If the value's last use was as a direct Call argument, ownership
                         // was transferred to the callee — don't release from the caller side.
                         if self.value_was_consumed_by_call(value_id) {
+                            continue;
+                        }
+                        // SumPayloadLoad results of managed types are borrowed references
+                        // into the parent cell. Releasing them here can double-free with
+                        // the parent's destructor on paths where the parent is also dropped.
+                        // The insert_releases_for_dead_params pass guards against releasing
+                        // the parent after SumPayloadLoad extraction, so we accept a
+                        // conservative "no release" (safe but leaky) until Perceus analysis
+                        // is implemented.
+                        if self.sum_payload_load_dests.contains(value_id) {
                             continue;
                         }
                         releases.push(value_id.clone());
@@ -7883,7 +7987,13 @@ impl FunctionLoweringCtx {
                     .get(name)
                     .cloned()
                     .unwrap_or_else(|| expr.ty.clone());
-                if fallback != Type::Dynamic {
+                // For polymorphic sum types (e.g. `List a` inside a generic function),
+                // fall through to sum_value_types which stores only the nominal name
+                // (without type args).  This allows is_concrete_nominal_equality_type to
+                // accept the type and route through lower_eq_via_trait_call.
+                let is_polymorphic_sum = matches!(&fallback, Type::Sum(sum)
+                    if sum.type_args.iter().any(type_contains_inference_var));
+                if fallback != Type::Dynamic && !is_polymorphic_sum {
                     return fallback;
                 }
                 if let Some(record_type) = self.var_record_types.get(name) {
@@ -8787,11 +8897,14 @@ fn is_heap_managed_type(ty: &Type, layouts: &MirLayoutCatalog) -> bool {
             .iter()
             .find(|layout| layout.name == record.name)
             .is_some_and(|layout| layout.is_unboxed),
-        // Conservative: a sum type is heap-managed if ANY variant has fields.
-        // Even if some variants (e.g. Nil) need no allocation, Cons stores a
-        // counted reference inside the outer sum; releasing the outer sum
-        // recursively decrements the inner pointer's RC.
-        Type::Sum(sum_ty) => sum_ty.variants.iter().any(|(_, fields)| !fields.is_empty()),
+        // Conservative: any named sum type is heap-managed. Even if only some
+        // variants have fields (e.g. List has Nil + Cons), the allocation
+        // carries a reference count and releasing it may free inner nodes.
+        // When the sum type's `variants` field is empty (a partially-resolved
+        // generic reference like `List a` with type args but no variant info),
+        // we treat it as heap-managed rather than risk a use-after-free on the
+        // extracted payload.
+        Type::Sum(sum_ty) => !sum_ty.name.is_empty(),
         _ => false,
     }
 }
