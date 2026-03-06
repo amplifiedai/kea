@@ -1,0 +1,83 @@
+doc
+  Dot product of two `Vector Float` arrays.
+
+  Computes Σ xs[i] × ys[i] for i = 0 .. min(length xs, length ys) - 1.
+  O(n) time, O(1) extra space. Shorter vector determines the length.
+
+  The accumulator pattern uses tail recursion with an explicit accumulator;
+  Kea's TCO (via Cranelift `return_call`) fires automatically.
+
+use Vector
+use Float
+use Test
+
+doc
+  Compute the dot product of `xs` and `ys`.
+  Returns 0.0 when either vector is empty.
+fn dot(xs: Vector Float, ys: Vector Float) -> Float
+  let n = if Vector.length(xs) <= Vector.length(ys)
+    Vector.length(xs)
+  else
+    Vector.length(ys)
+  dot_step(xs, ys, 0, n, 0.0)
+
+-- Internal: accumulate xs[i]*ys[i] from i=0 to count-1.
+fn dot_step(xs: Vector Float, ys: Vector Float, i: Int, count: Int, acc: Float) -> Float
+  if i >= count
+    acc
+  else
+    let xi = read_float(xs, i)
+    let yi = read_float(ys, i)
+    dot_step(xs, ys, i + 1, count, acc + xi * yi)
+
+-- Read a Float from a vector; returns 0.0 for out-of-bounds.
+fn read_float(v: Vector Float, i: Int) -> Float
+  case Vector.get(v, i)
+    None -> 0.0
+    Some(x) -> x
+
+-- -----------------------------------------------------------------------
+-- Tests
+-- -----------------------------------------------------------------------
+
+test "dot empty vectors"
+  let xs = Vector.from_list([])
+  let ys = Vector.from_list([])
+  let d  = dot(xs, ys)
+  Test.assert(d == 0.0)
+
+test "dot unit vectors orthogonal"
+  -- [1,0] · [0,1] = 0
+  let xs = Vector.from_list([1.0, 0.0])
+  let ys = Vector.from_list([0.0, 1.0])
+  let d  = dot(xs, ys)
+  Test.assert(d == 0.0)
+  Vector.free(xs)
+  Vector.free(ys)
+
+test "dot unit vector with itself"
+  -- [1,0] · [1,0] = 1
+  let xs = Vector.from_list([1.0, 0.0])
+  let ys = Vector.from_list([1.0, 0.0])
+  let d  = dot(xs, ys)
+  Test.assert(d == 1.0)
+  Vector.free(xs)
+  Vector.free(ys)
+
+test "dot known values"
+  -- [1,2,3] · [4,5,6] = 4 + 10 + 18 = 32
+  let xs = Vector.from_list([1.0, 2.0, 3.0])
+  let ys = Vector.from_list([4.0, 5.0, 6.0])
+  let d  = dot(xs, ys)
+  Test.assert(d == 32.0)
+  Vector.free(xs)
+  Vector.free(ys)
+
+test "dot shorter vector determines length"
+  -- [1,2] · [3,4,5] = 3 + 8 = 11 (only first 2 elements)
+  let xs = Vector.from_list([1.0, 2.0])
+  let ys = Vector.from_list([3.0, 4.0, 5.0])
+  let d  = dot(xs, ys)
+  Test.assert(d == 11.0)
+  Vector.free(xs)
+  Vector.free(ys)

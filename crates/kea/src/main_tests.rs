@@ -567,12 +567,45 @@ fn run_algorithm_gallery_welford() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
+fn run_algorithm_gallery_insertion_sort() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/insertion_sort.kea");
+    let run = run_test_file(&path).expect("insertion_sort.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "insertion_sort failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in insertion_sort.kea");
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn run_algorithm_gallery_quicksort() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/quicksort.kea");
+    let run = run_test_file(&path).expect("quicksort.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "quicksort failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in quicksort.kea");
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn run_algorithm_gallery_dot_product() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/dot_product.kea");
+    let run = run_test_file(&path).expect("dot_product.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "dot_product failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in dot_product.kea");
+}
+
+#[test]
 fn run_algorithm_gallery_with_kea_test_runner() {
     let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms");
     let supported = [
         "binary_search.kea",
+        "dot_product.kea",
         "fnv1a.kea",
+        "insertion_sort.kea",
         "merge_sort.kea",
+        "quicksort.kea",
         "welford.kea",
     ];
     let mut case_files = std::fs::read_dir(&cases_dir)

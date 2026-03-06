@@ -1,0 +1,94 @@
+doc
+  Insertion sort on a mutable `Vector Int`.
+
+  Insertion sort is O(n²) in the worst case but O(n) on nearly-sorted input.
+  It sorts in place by maintaining a sorted prefix and inserting each new
+  element into its correct position via a rightward shift.
+
+  This implementation uses `Vector.swap` to move elements — no extra
+  allocation, no copies of the vector struct.
+
+use Vector
+use Test
+
+doc
+  Sort `v` in ascending order using insertion sort.
+  Returns the same vector (mutated in place).
+fn insertion_sort(v: Vector Int) -> Vector Int
+  insertion_sort_outer(v, 1)
+
+-- Outer loop: extend the sorted prefix one step at a time.
+fn insertion_sort_outer(v: Vector Int, i: Int) -> Vector Int
+  if i >= Vector.length(v)
+    v
+  else
+    let v2 = insertion_sort_inner(v, i)
+    insertion_sort_outer(v2, i + 1)
+
+-- Inner loop: shift v[j] left while it is smaller than its predecessor.
+fn insertion_sort_inner(v: Vector Int, j: Int) -> Vector Int
+  if j <= 0
+    v
+  else
+    let left  = Vector.get(v, j - 1)
+    let right = Vector.get(v, j)
+    case left
+      None -> v
+      Some(l) ->
+        case right
+          None -> v
+          Some(r) ->
+            if r < l
+              let v2 = Vector.swap(v, j - 1, j)
+              insertion_sort_inner(v2, j - 1)
+            else
+              v
+
+-- -----------------------------------------------------------------------
+-- Tests
+-- -----------------------------------------------------------------------
+
+test "insertion sort empty"
+  let v  = Vector.from_list([])
+  let v2 = insertion_sort(v)
+  Test.assert(Vector.length(v2) == 0)
+
+test "insertion sort singleton"
+  let v  = Vector.from_list([42])
+  let v2 = insertion_sort(v)
+  Test.assert(Vector.get(v2, 0) == Some(42))
+  Vector.free(v2)
+
+test "insertion sort already sorted"
+  let v  = Vector.from_list([1, 2, 3, 4, 5])
+  let v2 = insertion_sort(v)
+  Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 4) == Some(5))
+  Vector.free(v2)
+
+test "insertion sort reverse sorted"
+  let v  = Vector.from_list([5, 4, 3, 2, 1])
+  let v2 = insertion_sort(v)
+  Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 1) == Some(2))
+  Test.assert(Vector.get(v2, 2) == Some(3))
+  Test.assert(Vector.get(v2, 3) == Some(4))
+  Test.assert(Vector.get(v2, 4) == Some(5))
+  Vector.free(v2)
+
+test "insertion sort with duplicates"
+  let v  = Vector.from_list([3, 1, 4, 1, 5, 9, 2, 6, 5])
+  let v2 = insertion_sort(v)
+  Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 1) == Some(1))
+  Test.assert(Vector.get(v2, 2) == Some(2))
+  Test.assert(Vector.get(v2, 3) == Some(3))
+  Test.assert(Vector.get(v2, 8) == Some(9))
+  Vector.free(v2)
+
+test "insertion sort two elements swapped"
+  let v  = Vector.from_list([2, 1])
+  let v2 = insertion_sort(v)
+  Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 1) == Some(2))
+  Vector.free(v2)

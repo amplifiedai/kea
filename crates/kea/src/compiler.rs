@@ -2237,7 +2237,7 @@ fn collect_project_modules_with_profile(
         .collect())
 }
 
-fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
+fn merge_modules_for_codegen(modules: &[(String, Module)], entry_module_path: &str) -> Module {
     fn upsert_function_decl(
         name: String,
         decl: kea_ast::Decl,
@@ -2252,19 +2252,56 @@ fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
         declarations.push(decl);
     }
 
+    /// Insert a bare-name declaration only when no module has claimed that
+    /// bare name yet.  Used for non-entry modules so that their bare `foo`
+    /// doesn't stomp over a prelude/earlier `foo` that the type environment
+    /// already has a definitive type for.  The qualified `M.foo` is always
+    /// registered by the caller so it remains reachable.
+    fn insert_bare_if_absent(
+        name: String,
+        decl: kea_ast::Decl,
+        declarations: &mut Vec<kea_ast::Decl>,
+        function_decl_indices: &mut BTreeMap<String, usize>,
+    ) {
+        if function_decl_indices.contains_key(&name) {
+            return;
+        }
+        function_decl_indices.insert(name, declarations.len());
+        declarations.push(decl);
+    }
+
     let mut declarations = Vec::new();
     let mut function_decl_indices: BTreeMap<String, usize> = BTreeMap::new();
 
     for (module_path, module) in modules {
+        let is_entry = module_path == entry_module_path;
         for decl in &module.declarations {
             match &decl.node {
                 DeclKind::Function(fn_decl) => {
-                    upsert_function_decl(
-                        fn_decl.name.node.clone(),
-                        decl.clone(),
-                        &mut declarations,
-                        &mut function_decl_indices,
-                    );
+                    // Entry module: override any earlier bare-name binding so
+                    // its own functions are in scope unqualified (e.g., the
+                    // primary module's `is_empty` beats a library `is_empty`).
+                    // Non-entry modules: insert bare name only if not already
+                    // claimed.  Two different libraries defining a function
+                    // with the same bare name (e.g., List.length and
+                    // Vector.length) would otherwise compile the bare `length`
+                    // declaration against the wrong type-environment binding,
+                    // producing a broken empty function body.
+                    if is_entry {
+                        upsert_function_decl(
+                            fn_decl.name.node.clone(),
+                            decl.clone(),
+                            &mut declarations,
+                            &mut function_decl_indices,
+                        );
+                    } else {
+                        insert_bare_if_absent(
+                            fn_decl.name.node.clone(),
+                            decl.clone(),
+                            &mut declarations,
+                            &mut function_decl_indices,
+                        );
+                    }
 
                     if fn_decl.name.node.contains('.') {
                         continue;
@@ -2280,12 +2317,21 @@ fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
                     );
                 }
                 DeclKind::ExprFn(expr_decl) => {
-                    upsert_function_decl(
-                        expr_decl.name.node.clone(),
-                        decl.clone(),
-                        &mut declarations,
-                        &mut function_decl_indices,
-                    );
+                    if is_entry {
+                        upsert_function_decl(
+                            expr_decl.name.node.clone(),
+                            decl.clone(),
+                            &mut declarations,
+                            &mut function_decl_indices,
+                        );
+                    } else {
+                        insert_bare_if_absent(
+                            expr_decl.name.node.clone(),
+                            decl.clone(),
+                            &mut declarations,
+                            &mut function_decl_indices,
+                        );
+                    }
 
                     if expr_decl.name.node.contains('.') {
                         continue;
@@ -2482,7 +2528,7 @@ fn typecheck_loaded_modules(
     apply_hardcoded_prelude_reexports(&mut env, &traits);
     env.set_current_package_scope(None);
 
-    let module = merge_modules_for_codegen(&typed_modules);
+    let module = merge_modules_for_codegen(&typed_modules, entry_module_path);
     let hir = lower_module(&module, &env, &all_expr_types);
     let hir = kea_hir::monomorphize::monomorphize(&hir);
     diagnostics.extend(validate_fip_annotations(&module, &hir));

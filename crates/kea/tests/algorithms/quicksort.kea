@@ -1,0 +1,115 @@
+doc
+  Quicksort on a mutable `Vector Int` using Lomuto partition.
+
+  Average-case O(n log n), worst-case O(n²) (already-sorted input with last
+  element as pivot). Sorts in place via `Vector.swap` with no extra allocation.
+
+  The Lomuto partition scheme maintains two indices `i` and `j`: `j` scans
+  forward while `i` trails behind; elements ≤ pivot are swapped to the left
+  partition as `j` advances. After the scan, the pivot is placed at `i`.
+
+use Vector
+use Test
+
+doc
+  Sort `v` in ascending order using quicksort.
+  Returns the same vector (mutated in place).
+fn quicksort(v: Vector Int) -> Vector Int
+  let n = Vector.length(v)
+  if n <= 1
+    v
+  else
+    qs(v, 0, n - 1)
+
+-- Recursive driver: sort v[lo..hi] inclusive.
+fn qs(v: Vector Int, lo: Int, hi: Int) -> Vector Int
+  if lo >= hi
+    v
+  else
+    let result = partition(v, lo, hi)
+    let v2   = result.0
+    let pivot = result.1
+    let v3   = qs(v2, lo, pivot - 1)
+    qs(v3, pivot + 1, hi)
+
+-- Lomuto partition: use v[hi] as pivot, place it at its sorted position.
+-- Returns (updated_vector, pivot_index).
+fn partition(v: Vector Int, lo: Int, hi: Int) -> (Vector Int, Int)
+  let piv_val = get_elem(v, hi)
+  partition_scan(v, lo, hi, piv_val, lo - 1)
+
+-- Scan index j from lo to hi-1; swap small elements toward the left.
+fn partition_scan(v: Vector Int, j: Int, hi: Int, piv: Int, i: Int) -> (Vector Int, Int)
+  if j >= hi
+    -- Place pivot at i+1.
+    let v2 = Vector.swap(v, i + 1, hi)
+    (v2, i + 1)
+  else
+    let elem = get_elem(v, j)
+    if elem <= piv
+      let v2 = Vector.swap(v, i + 1, j)
+      partition_scan(v2, j + 1, hi, piv, i + 1)
+    else
+      partition_scan(v, j + 1, hi, piv, i)
+
+-- Safe element fetch: returns 0 for out-of-bounds (shouldn't happen in practice).
+fn get_elem(v: Vector Int, i: Int) -> Int
+  case Vector.get(v, i)
+    None -> 0
+    Some(x) -> x
+
+-- -----------------------------------------------------------------------
+-- Tests
+-- -----------------------------------------------------------------------
+
+test "quicksort empty"
+  let v  = Vector.from_list([])
+  let v2 = quicksort(v)
+  Test.assert(Vector.length(v2) == 0)
+
+test "quicksort singleton"
+  let v  = Vector.from_list([42])
+  let v2 = quicksort(v)
+  Test.assert(Vector.get(v2, 0) == Some(42))
+  Vector.free(v2)
+
+test "quicksort already sorted"
+  let v  = Vector.from_list([1, 2, 3, 4, 5])
+  let v2 = quicksort(v)
+  Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 4) == Some(5))
+  Vector.free(v2)
+
+test "quicksort reverse sorted"
+  let v  = Vector.from_list([5, 4, 3, 2, 1])
+  let v2 = quicksort(v)
+  Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 1) == Some(2))
+  Test.assert(Vector.get(v2, 2) == Some(3))
+  Test.assert(Vector.get(v2, 3) == Some(4))
+  Test.assert(Vector.get(v2, 4) == Some(5))
+  Vector.free(v2)
+
+test "quicksort with duplicates"
+  let v  = Vector.from_list([3, 1, 4, 1, 5, 9, 2, 6, 5])
+  let v2 = quicksort(v)
+  Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 1) == Some(1))
+  Test.assert(Vector.get(v2, 2) == Some(2))
+  Test.assert(Vector.get(v2, 3) == Some(3))
+  Test.assert(Vector.get(v2, 8) == Some(9))
+  Vector.free(v2)
+
+test "quicksort two elements swapped"
+  let v  = Vector.from_list([2, 1])
+  let v2 = quicksort(v)
+  Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 1) == Some(2))
+  Vector.free(v2)
+
+test "quicksort larger input"
+  let v  = Vector.from_list([8, 3, 7, 1, 5, 4, 6, 2])
+  let v2 = quicksort(v)
+  Test.assert(Vector.get(v2, 0) == Some(1))
+  Test.assert(Vector.get(v2, 7) == Some(8))
+  Vector.free(v2)
