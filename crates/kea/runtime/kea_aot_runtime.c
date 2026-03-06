@@ -163,6 +163,15 @@ int64_t __kea_net_recv(int64_t conn, int64_t size) {
 #endif
 }
 
+int64_t __kea_sys_malloc(int64_t size) {
+  if (size <= 0) return 0;
+  return (int64_t)malloc((size_t)size);
+}
+
+void __kea_sys_free(int64_t ptr) {
+  if (ptr != 0) free((void *)ptr);
+}
+
 void __kea_panic_div_zero(void) {
   static const char msg[] = "panic: integer division by zero\n";
   fwrite(msg, 1, sizeof(msg) - 1, stderr);
