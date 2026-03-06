@@ -933,7 +933,8 @@ pub fn run_test_file(input: &Path) -> Result<TestRunResult, String> {
             .module
             .declarations
             .retain(|decl| !is_main_decl(decl));
-        let main_decl = build_test_main_decl(&test.function_name, scenario_entry.module.span.file)?;
+        let qualified_fn_name = format!("{entry_module_path}.{}", test.function_name);
+        let main_decl = build_test_main_decl(&qualified_fn_name, scenario_entry.module.span.file)?;
         scenario_entry.module.declarations.push(main_decl);
 
         let mut result = TestCaseResult {
@@ -1667,7 +1668,7 @@ fn eq_chain(left_vars: &[String], right_vars: &[String]) -> String {
         left_vars
             .iter()
             .zip(right_vars.iter())
-            .map(|(left, right)| format!("Eq.eq({left}, {right})"))
+            .map(|(left, right)| format!("({left} == {right})"))
             .collect::<Vec<_>>()
             .join(" and ")
     }

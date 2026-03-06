@@ -468,6 +468,105 @@ fn run_stdlib_vector_tests() {
 }
 
 #[test]
+fn run_algorithm_gallery_binary_search() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/binary_search.kea");
+    let run = run_test_file(&path).expect("binary_search.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "binary_search failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in binary_search.kea");
+}
+
+#[test]
+fn run_algorithm_gallery_fnv1a() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/fnv1a.kea");
+    let run = run_test_file(&path).expect("fnv1a.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "fnv1a failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in fnv1a.kea");
+}
+
+#[test]
+fn run_algorithm_gallery_merge_sort_basic() {
+    let path = std::path::PathBuf::from("/tmp/sort_combo.kea");
+    let run = run_test_file(&path).expect("merge_sort_test.kea should compile");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "merge failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests ran");
+}
+
+#[test]
+fn run_algorithm_gallery_merge_sort_split_only() {
+    let source = "\
+use List\nuse Test\n\n\
+fn split(xs: List Int) -> (List Int, List Int)\n  \
+split_step(xs, xs, Nil)\n\n\
+fn split_step(slow: List Int, fast: List Int, left_acc: List Int) -> (List Int, List Int)\n  \
+case fast\n    \
+Nil ->\n      (List.reverse(left_acc), slow)\n    \
+Cons(_, Nil) ->\n      (List.reverse(left_acc), slow)\n    \
+Cons(_, Cons(_, fast_tail)) ->\n      \
+case slow\n        \
+Nil -> (List.reverse(left_acc), Nil)\n        \
+Cons(s, slow_tail) -> split_step(slow_tail, fast_tail, Cons(s, left_acc))\n\n\
+test \"split even\"\n  \
+let halves = split([1, 2, 3, 4])\n  \
+let left = halves.0\n  \
+let right = halves.1\n  \
+Test.assert(List.length(left) == 2)\n  \
+Test.assert(List.length(right) == 2)\n";
+    let path = write_temp_source(source, "kea-merge-split", "kea");
+    let run = run_test_file(&path).expect("split should compile");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "split failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests ran");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn run_algorithm_gallery_merge_sort_simple() {
+    let source = "\
+use List\nuse Test\n\n\
+fn merge_acc(xs: List Int, ys: List Int, acc: List Int) -> List Int\n  \
+case xs\n    \
+Nil -> List.append(List.reverse(acc), ys)\n    \
+Cons(x, xs_tail) ->\n      \
+case ys\n        \
+Nil -> List.append(List.reverse(acc), xs)\n        \
+Cons(y, ys_tail) ->\n          \
+if x <= y\n            \
+merge_acc(xs_tail, ys, Cons(x, acc))\n          \
+else\n            \
+merge_acc(xs, ys_tail, Cons(y, acc))\n\n\
+test \"merge simple\"\n  \
+let result = merge_acc([1, 3], [2, 4], [])\n  \
+Test.assert(List.length(result) == 4)\n";
+    let path = write_temp_source(source, "kea-merge-simple", "kea");
+    let run = run_test_file(&path).expect("merge simple should compile");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "merge failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests ran");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn run_algorithm_gallery_merge_sort() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/merge_sort.kea");
+    let run = run_test_file(&path).expect("merge_sort.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "merge_sort failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in merge_sort.kea");
+}
+
+#[test]
+fn run_algorithm_gallery_welford() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/welford.kea");
+    let run = run_test_file(&path).expect("welford.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "welford failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in welford.kea");
+}
+
+#[test]
 fn run_algorithm_gallery_with_kea_test_runner() {
     let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms");
     let supported = [
