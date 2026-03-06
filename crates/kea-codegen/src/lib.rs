@@ -414,12 +414,12 @@ fn runtime_import_signature(module: &impl Module, name: &str) -> cranelift_codeg
     let ptr = module.target_config().pointer_type();
     let mut sig = module.make_signature();
     match name {
-        // Memory management
-        "malloc" => {
+        // Memory management — use prefixed names to avoid colliding with user functions
+        "malloc" | "__kea_sys_malloc" => {
             sig.params.push(AbiParam::new(ptr));
             sig.returns.push(AbiParam::new(ptr));
         }
-        "free" => {
+        "free" | "__kea_sys_free" => {
             sig.params.push(AbiParam::new(ptr));
         }
         // IO capabilities
@@ -711,6 +711,23 @@ unsafe extern "C" {
     fn free(ptr: *mut c_void);
 }
 
+// Internal wrappers with `__kea_sys_` prefix so they never collide with a
+// user-defined Kea function named `free` or `malloc`.  The JIT module's
+// symbol table is shared: a user function declared as Linkage::Local with
+// the same name as an Import would shadow the import and cause a crash.
+unsafe extern "C" fn kea_sys_malloc_stub(size: i64) -> i64 {
+    if size <= 0 {
+        return 0;
+    }
+    unsafe { malloc(size as usize) as i64 }
+}
+
+unsafe extern "C" fn kea_sys_free_stub(ptr: i64) {
+    if ptr != 0 {
+        unsafe { free(ptr as *mut c_void) };
+    }
+}
+
 unsafe extern "C" fn kea_ptr_null_stub() -> i64 {
     0
 }
@@ -888,6 +905,10 @@ unsafe extern "C" fn kea_text_repeat_stub(s: *const c_char, count: i64) -> *cons
 }
 
 fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
+    // Register malloc/free under prefixed names so they can never be shadowed
+    // by a user-defined Kea function named `free` or `malloc`.
+    builder.symbol("__kea_sys_malloc", kea_sys_malloc_stub as *const u8);
+    builder.symbol("__kea_sys_free", kea_sys_free_stub as *const u8);
     builder.symbol("__kea_net_connect", kea_net_connect_stub as *const u8);
     builder.symbol("__kea_net_send", kea_net_send_stub as *const u8);
     builder.symbol("__kea_net_recv", kea_net_recv_stub as *const u8);
@@ -1487,17 +1508,32 @@ fn collect_external_call_signatures<M: Module>(
                     Some(clif_type(ret_type)?)
                 };
 
-                match signatures.get(name) {
-                    Some((existing_params, existing_ret))
-                        if existing_params != &canonical_params
-                            || existing_ret != &canonical_ret =>
-                    {
+                // Dynamic return means "the caller ignores the return value".  This
+                // arises for Ptr intrinsics like `__kea_ptr_free` / `__kea_ptr_write_i64`
+                // that appear in both tail position (ty_hint=Unit → canonical_ret=None)
+                // and non-tail block position (ty_hint=None → Dynamic → canonical_ret=Some(I64)).
+                // When the same external symbol appears with both, we keep the more-specific
+                // Unit (None) signature since that is the true ABI; Dynamic is just "don't care".
+                // We handle both orderings: existing-is-dynamic and new-is-dynamic.
+                let ret_is_dynamic = *ret_type == Type::Dynamic || matches!(ret_type, Type::Var(_));
+
+                match signatures.get_mut(name) {
+                    Some((existing_params, _)) if existing_params != &canonical_params => {
                         return Err(CodegenError::UnsupportedMir {
                             function: function.name.clone(),
                             detail: format!(
                                 "external call `{name}` used with conflicting signatures"
                             ),
                         });
+                    }
+                    Some((_, existing_ret)) if *existing_ret != canonical_ret => {
+                        // Return-type mismatch: one side must be Dynamic.  Keep the
+                        // more-specific Unit/None entry; promote existing Dynamic to Unit.
+                        if !ret_is_dynamic && existing_ret.is_some() {
+                            // Existing was Dynamic (Some(I64)), new is Unit (None): update.
+                            *existing_ret = None;
+                        }
+                        // If new is Dynamic, existing is already more specific: keep it.
                     }
                     Some(_) => {}
                     None => {
@@ -1808,7 +1844,7 @@ fn allocate_heap_payload(
     imports: &mut RuntimeImports,
     payload_bytes: u32,
 ) -> Result<Value, CodegenError> {
-    let malloc_func_id = imports.get(module, "malloc")?;
+    let malloc_func_id = imports.get(module, "__kea_sys_malloc")?;
     let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
     let ptr_ty = module.target_config().pointer_type();
     let alloc_bytes = payload_bytes.max(1).saturating_add(8);
@@ -1834,7 +1870,7 @@ fn allocate_heap_payload_dynamic(
     imports: &mut RuntimeImports,
     payload_bytes: Value,
 ) -> Result<Value, CodegenError> {
-    let malloc_func_id = imports.get(module, "malloc")?;
+    let malloc_func_id = imports.get(module, "__kea_sys_malloc")?;
     let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
     let ptr_ty = module.target_config().pointer_type();
     let payload_bytes = coerce_value_to_clif_type(builder, payload_bytes, ptr_ty);
@@ -2608,7 +2644,7 @@ fn emit_generic_release<M: Module>(
     payload_ptr: Value,
     imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
-    let free_func_id = imports.get(module, "free")?;
+    let free_func_id = imports.get(module, "__kea_sys_free")?;
     let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
     let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
     let next = builder.ins().iadd_imm(rc_value, -1);
@@ -2940,7 +2976,7 @@ fn define_record_drop_function<M: Module>(
     }
     builder.ins().jump(free_block, &[]);
     builder.switch_to_block(free_block);
-    let free_func_id = imports.get(module, "free")?;
+    let free_func_id = imports.get(module, "__kea_sys_free")?;
     let free_ref = module.declare_func_in_func(free_func_id, builder.func);
     let _ = builder.ins().call(free_ref, &[rc_ptr]);
     builder.ins().jump(ret_block, &[]);
@@ -3093,7 +3129,7 @@ fn define_sum_drop_function<M: Module>(
         None
     };
 
-    let free_func_id = imports.get(module, "free")?;
+    let free_func_id = imports.get(module, "__kea_sys_free")?;
     let free_ref = module.declare_func_in_func(free_func_id, builder.func);
 
     if has_unit_variant && !has_payload_variant {
@@ -4513,12 +4549,21 @@ fn lower_instruction<M: Module>(
             };
             let value_ty = clif_type(&resolved_field_ty)?;
             let value = builder.ins().load(value_ty, MemFlags::new(), addr, 0);
-            if is_managed_heap_type(&resolved_field_ty, ctx.layout_plan)
-                && !sum_type_has_immediate_variants(&resolved_field_ty, ctx.layout_plan)
-            {
+            if is_managed_heap_type(&resolved_field_ty, ctx.layout_plan) {
                 let ptr_ty = module.target_config().pointer_type();
                 let payload_ptr = coerce_value_to_clif_type(builder, value, ptr_ty);
-                emit_retain(builder, payload_ptr);
+                // Use emit_typed_retain (not raw emit_retain) so that mixed sum
+                // types like List (which have immediate Nil variants encoded as
+                // tagged ints) are handled safely — the typed retain function
+                // checks the tag before dereferencing, skipping Nil values.
+                emit_typed_retain(
+                    module,
+                    builder,
+                    payload_ptr,
+                    Some(&resolved_field_ty),
+                    ctx.layout_plan,
+                    ctx.retain_func_ids,
+                )?;
             }
             values.insert(dest.clone(), value);
             Ok(false)
@@ -4857,7 +4902,7 @@ fn lower_instruction<M: Module>(
                             let needs_floor =
                                 builder.ins().icmp_imm(IntCC::SignedLessThanOrEqual, requested, 0);
                             let alloc_size = builder.ins().select(needs_floor, one, requested);
-                            let malloc_func_id = imports.get(module, "malloc")?;
+                            let malloc_func_id = imports.get(module, "__kea_sys_malloc")?;
                             let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
                             let alloc_call = builder.ins().call(malloc_ref, &[alloc_size]);
                             let raw_ptr = builder
@@ -4879,7 +4924,7 @@ fn lower_instruction<M: Module>(
                                 });
                             }
                             let ptr = coerce_value_to_clif_type(builder, lowered_args[0], ptr_ty);
-                            let free_func_id = imports.get(module, "free")?;
+                            let free_func_id = imports.get(module, "__kea_sys_free")?;
                             let free_ref = module.declare_func_in_func(free_func_id, builder.func);
                             let _ = builder.ins().call(free_ref, &[ptr]);
                             if *ret_type == Type::Unit {
@@ -5543,7 +5588,7 @@ fn lower_instruction<M: Module>(
                 value_ty,
                 Some(Type::Opaque { name, .. }) if name == STATE_CELL_TYPE_MARKER
             ) {
-                let free_func_id = imports.get(module, "free")?;
+                let free_func_id = imports.get(module, "__kea_sys_free")?;
                 let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
                 let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
                 let next = builder.ins().iadd_imm(rc_value, -1);
@@ -5759,6 +5804,23 @@ fn lower_instruction<M: Module>(
                 };
                 builder.ins().store(MemFlags::new(), value, out_ptr, offset);
             }
+            // Release the original target now that we have made a copy.
+            // In the unique path the result IS target_ptr, so no release is
+            // emitted there; here in the copy path the original is no longer
+            // needed.
+            let target_ptr_coerced =
+                coerce_value_to_clif_type(builder, target_ptr, ptr_ty);
+            let target_ty = ctx.value_types.get(target);
+            emit_typed_release(
+                module,
+                builder,
+                function_name,
+                target_ptr_coerced,
+                target_ty,
+                ctx.layout_plan,
+                ctx.drop_func_ids,
+                imports,
+            )?;
             builder.ins().jump(join_block, &[out_ptr]);
 
             builder.switch_to_block(join_block);
@@ -6193,9 +6255,30 @@ fn lower_terminator(
                         function: ctx.function_name.to_string(),
                         detail: format!("jump target block {:?} not found", target),
                     })?;
+            // Collect the expected param types from the target block so we can
+            // coerce each arg (e.g. i8 Unit → i64 Dynamic) before jumping.
+            // This can differ when an if-expression has type Dynamic but its
+            // branches return Unit values (ty_hint not propagated in non-tail
+            // block positions).
+            let expected_param_types: Vec<cranelift_codegen::ir::Type> = builder
+                .func
+                .dfg
+                .block_params(target_block)
+                .iter()
+                .map(|&v| builder.func.dfg.value_type(v))
+                .collect();
             let mut lowered_args = Vec::with_capacity(args.len());
-            for arg in args {
-                lowered_args.push(get_value(ctx.values, ctx.function_name, arg)?);
+            for (arg, expected_ty) in args
+                .iter()
+                .zip(expected_param_types.iter().copied().map(Some).chain(std::iter::repeat(None)))
+            {
+                let val = get_value(ctx.values, ctx.function_name, arg)?;
+                let coerced = if let Some(ty) = expected_ty {
+                    coerce_value_to_clif_type(builder, val, ty)
+                } else {
+                    val
+                };
+                lowered_args.push(coerced);
             }
             builder.ins().jump(target_block, &lowered_args);
             Ok(())
@@ -11436,7 +11519,8 @@ mod tests {
         ]);
         let layout_plan = plan_layout_catalog(&module).expect("layout planning should succeed");
         let isa = build_isa(&BackendConfig::default()).expect("host ISA should build");
-        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        register_jit_runtime_symbols(&mut builder);
         let mut jit_module = JITModule::new(builder);
         let func_ids = compile_into_module(&mut jit_module, &module, &layout_plan)
             .expect("fail-only result module should compile");
@@ -11461,7 +11545,8 @@ mod tests {
         let module = sample_fail_only_call_propagation_err_module();
         let layout_plan = plan_layout_catalog(&module).expect("layout planning should succeed");
         let isa = build_isa(&BackendConfig::default()).expect("host ISA should build");
-        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        register_jit_runtime_symbols(&mut builder);
         let mut jit_module = JITModule::new(builder);
         let func_ids = compile_into_module(&mut jit_module, &module, &layout_plan)
             .expect("fail-only call propagation module should compile");
@@ -11488,7 +11573,8 @@ mod tests {
         let module = sample_fail_only_call_propagation_ok_module();
         let layout_plan = plan_layout_catalog(&module).expect("layout planning should succeed");
         let isa = build_isa(&BackendConfig::default()).expect("host ISA should build");
-        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        register_jit_runtime_symbols(&mut builder);
         let mut jit_module = JITModule::new(builder);
         let func_ids = compile_into_module(&mut jit_module, &module, &layout_plan)
             .expect("fail-only call propagation module should compile");
@@ -11515,7 +11601,8 @@ mod tests {
         let module = sample_indirect_function_call_module();
         let layout_plan = plan_layout_catalog(&module).expect("layout planning should succeed");
         let isa = build_isa(&BackendConfig::default()).expect("host ISA should build");
-        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        register_jit_runtime_symbols(&mut builder);
         let mut jit_module = JITModule::new(builder);
         let func_ids = compile_into_module(&mut jit_module, &module, &layout_plan)
             .expect("indirect call module should compile");
@@ -11535,7 +11622,8 @@ mod tests {
         let module = sample_fail_indirect_function_call_module();
         let layout_plan = plan_layout_catalog(&module).expect("layout planning should succeed");
         let isa = build_isa(&BackendConfig::default()).expect("host ISA should build");
-        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        register_jit_runtime_symbols(&mut builder);
         let mut jit_module = JITModule::new(builder);
         let func_ids = compile_into_module(&mut jit_module, &module, &layout_plan)
             .expect("fail-indirect module should compile");
