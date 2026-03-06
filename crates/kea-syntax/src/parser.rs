@@ -2384,7 +2384,20 @@ impl Parser {
             None
         }?;
 
-        self.skip_newlines();
+        // Only skip newlines here when the next non-whitespace token is a function
+        // arrow (-> or -[eff]>). Unconditionally skipping newlines would allow
+        // space-type-application to cross line boundaries, e.g. parsing
+        // `ptr: Ptr a\n  len: Int` as field `ptr` with type `Ptr a len`.
+        let had_newline = self.check_newline();
+        if had_newline {
+            // Peek past the newlines to see if a function arrow follows.
+            let saved = self.pos;
+            self.skip_newlines();
+            if !self.check(&TokenKind::Arrow) && !self.check(&TokenKind::Minus) {
+                // No arrow — restore position so the newline is not silently consumed.
+                self.pos = saved;
+            }
+        }
         if self.match_token(&TokenKind::Arrow) {
             self.skip_newlines();
             let ret = self.type_annotation()?.node;
@@ -2439,19 +2452,24 @@ impl Parser {
     }
 
     fn starts_space_type_application_arg(&self) -> bool {
-        matches!(
-            self.peek_kind(),
-            Some(
-                TokenKind::Ident(_)
-                    | TokenKind::UpperIdent(_)
-                    | TokenKind::Fn
-                    | TokenKind::Forall
-                    | TokenKind::LParen
-                    | TokenKind::LBracket
-                    | TokenKind::LBrace
-                    | TokenKind::Int(_)
+        // A space-applied type argument must be on the same line as the
+        // constructor. A newline in leading trivia means we've crossed into
+        // the next line — e.g., a struct field like `ptr: Ptr a` must not
+        // consume `len` on the following line as another type argument.
+        !self.peek_has_leading_newline()
+            && matches!(
+                self.peek_kind(),
+                Some(
+                    TokenKind::Ident(_)
+                        | TokenKind::UpperIdent(_)
+                        | TokenKind::Fn
+                        | TokenKind::Forall
+                        | TokenKind::LParen
+                        | TokenKind::LBracket
+                        | TokenKind::LBrace
+                        | TokenKind::Int(_)
+                )
             )
-        )
     }
 
     // -- Expression parsing --
@@ -4793,6 +4811,14 @@ impl Parser {
         })
     }
 
+    fn peek_has_leading_newline(&self) -> bool {
+        self.tokens.get(self.pos).is_some_and(|t| {
+            t.leading_trivia
+                .iter()
+                .any(|tv| tv.kind == TriviaKind::Newline)
+        })
+    }
+
     /// Peek at a token relative to the current position.
     fn peek_at(&self, offset: usize) -> Option<&Token> {
         self.tokens.get(self.pos + offset)
@@ -6491,6 +6517,26 @@ mod tests {
                 assert_eq!(def.name.node, "Box");
                 assert_eq!(def.params, vec!["t".to_string()]);
                 assert_eq!(def.fields.len(), 1);
+            }
+            _ => panic!("expected RecordDef"),
+        }
+    }
+
+    #[test]
+    fn parse_record_def_with_applied_field_type() {
+        // Regression: `ptr: Ptr a` in a struct field must NOT consume
+        // `len` on the following line as a second type argument to `Ptr`.
+        let src = "struct Vector(a)\n  ptr: Ptr a\n  len: Int\n  cap: Int";
+        let module = parse_mod(src);
+        assert_eq!(module.declarations.len(), 1, "expected 1 declaration");
+        match &module.declarations[0].node {
+            DeclKind::RecordDef(def) => {
+                assert_eq!(def.name.node, "Vector");
+                assert_eq!(def.params, vec!["a".to_string()]);
+                assert_eq!(def.fields.len(), 3, "expected 3 fields, got {:?}", def.fields);
+                assert_eq!(def.fields[0].0.node, "ptr");
+                assert_eq!(def.fields[1].0.node, "len");
+                assert_eq!(def.fields[2].0.node, "cap");
             }
             _ => panic!("expected RecordDef"),
         }
