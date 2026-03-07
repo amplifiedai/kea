@@ -592,6 +592,10 @@ pub struct Unifier {
     /// Per-expression types recorded during inference, keyed by source span.
     /// Used to propagate concrete types to HIR lowering for monomorphization.
     pub expr_types: std::collections::BTreeMap<Span, Type>,
+    /// Record registry for structural projection in `AnonRecord ~ Record`
+    /// unification. Set by the inference context before solving begins.
+    /// `None` in bare test unifiers that don't need structural projection.
+    record_registry: Option<crate::typeck::RecordRegistry>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -716,7 +720,16 @@ impl Unifier {
             capture_constraints: false,
             captured_constraints: Vec::new(),
             expr_types: std::collections::BTreeMap::new(),
+            record_registry: None,
         }
+    }
+
+    /// Attach a record registry for structural projection (`AnonRecord ~ Record`).
+    ///
+    /// Must be called before inference begins on any expression that contains
+    /// named record types. The registry is cloned in; callers keep ownership.
+    pub fn set_record_registry(&mut self, reg: crate::typeck::RecordRegistry) {
+        self.record_registry = Some(reg);
     }
 
     /// Generate a fresh type variable.
@@ -1321,85 +1334,79 @@ impl Unifier {
                 self.unify_rows_immediate(a, b, provenance);
             }
 
-            // Named record: must be same name, then unify rows.
+            // Named record: purely nominal — same name, unify type params only.
+            // Field structure lives in the registry and is not compared here.
             (Type::Record(a), Type::Record(b)) if a.name == b.name => {
                 self.push_unify_step(
-                    crate::trace::UnifyAction::UnifyRows,
+                    crate::trace::UnifyAction::Decompose,
                     &expected,
                     &actual,
-                    format!("Record({}) ~ Record({}) → row unification", a.name, b.name),
+                    format!("Record({}) ~ Record({}) → unify params", a.name, b.name),
                 );
-                self.unify_rows_immediate(&a.row, &b.row, provenance);
+                for (pa, pb) in a.params.iter().zip(b.params.iter()) {
+                    self.unify_immediate(pa, pb, provenance);
+                }
             }
 
             // Structural projection: named record unifies with anonymous row.
             // A function expecting `{name: String | r}` accepts `User` — the named
-            // record's fields are expanded and unified structurally, with the row
-            // variable absorbing extras.
+            // record's fields are expanded from the registry and unified structurally.
             //
             // Decision 10: named records are nominal, anonymous records are structural.
             // Structural projection (named → structural) is allowed at the unifier
-            // level for both open and closed anonymous records, because inference
-            // creates closed anonymous records as intermediates (e.g. field access
-            // on a type variable creates an open row that gets fully resolved).
+            // level for both open and closed anonymous records.
             //
             // The surface-level check (blocking `#{ ... }` where `Patent` is expected)
             // is enforced at expression inference, not here.
             (Type::AnonRecord(row), Type::Record(rec))
             | (Type::Record(rec), Type::AnonRecord(row)) => {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::UnifyRows,
-                    &expected,
-                    &actual,
-                    format!(
-                        "structural projection: Record({}) ~ AnonRecord → row unification",
-                        rec.name
-                    ),
-                );
-                self.unify_rows_immediate(row, &rec.row, provenance);
+                let rec_name = rec.name.clone();
+                let instantiated = self
+                    .record_registry
+                    .as_ref()
+                    .and_then(|reg| crate::typeck::instantiate_record_row(rec, reg));
+                if let Some(rec_row) = instantiated {
+                    self.push_unify_step(
+                        crate::trace::UnifyAction::UnifyRows,
+                        &expected,
+                        &actual,
+                        format!(
+                            "structural projection: Record({rec_name}) ~ AnonRecord → row unification"
+                        ),
+                    );
+                    self.unify_rows_immediate(row, &rec_row, provenance);
+                } else {
+                    // Registry unavailable (test unifier) or record not found —
+                    // treat as unresolvable mismatch.
+                    self.push_unify_step(
+                        crate::trace::UnifyAction::Error,
+                        &expected,
+                        &actual,
+                        format!("structural projection: Record({rec_name}) ~ AnonRecord — registry unavailable"),
+                    );
+                    let (message, help) =
+                        type_mismatch_message(&expected, &actual, &provenance.reason);
+                    let mut diag = Diagnostic::error(Category::TypeMismatch, message)
+                        .at(span_to_location(provenance.span));
+                    if let Some(help_text) = help {
+                        diag = diag.with_help(help_text);
+                    }
+                    self.errors.push(diag);
+                }
             }
 
-            // Sum types: same name, unify variant fields pairwise.
+            // Sum types: purely nominal — same name, unify type args only.
             (Type::Sum(a), Type::Sum(b))
-                if a.name == b.name
-                    && a.type_args.len() == b.type_args.len()
-                    && a.variants.len() == b.variants.len() =>
+                if a.name == b.name && a.type_args.len() == b.type_args.len() =>
             {
                 self.push_unify_step(
                     crate::trace::UnifyAction::Decompose,
                     &expected,
                     &actual,
-                    format!("Sum({}) ~ Sum({}) → unify variants", a.name, b.name),
+                    format!("Sum({}) ~ Sum({}) → unify type args", a.name, b.name),
                 );
                 for (a_arg, b_arg) in a.type_args.iter().zip(b.type_args.iter()) {
                     self.unify_immediate(a_arg, b_arg, provenance);
-                }
-                for ((_, a_fields), (_, b_fields)) in a.variants.iter().zip(b.variants.iter()) {
-                    for (af, bf) in a_fields.iter().zip(b_fields.iter()) {
-                        self.unify_immediate(af, bf, provenance);
-                    }
-                }
-            }
-
-            // Recursive placeholder support: during recursive sum registration we
-            // may carry shallow references (`variants = []`) in field positions.
-            // Treat these as nominal references that match by type name.
-            (Type::Sum(a), Type::Sum(b))
-                if a.name == b.name && (a.variants.is_empty() || b.variants.is_empty()) =>
-            {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    format!(
-                        "Sum({}) placeholder ~ Sum({}) → nominal match",
-                        a.name, b.name
-                    ),
-                );
-                if a.type_args.len() == b.type_args.len() {
-                    for (a_arg, b_arg) in a.type_args.iter().zip(b.type_args.iter()) {
-                        self.unify_immediate(a_arg, b_arg, provenance);
-                    }
                 }
             }
 
@@ -1782,14 +1789,8 @@ impl Unifier {
                     self.occurs_in(var, &scheme.ty)
                 }
             }
-            Type::Sum(st) => {
-                st.type_args.iter().any(|t| self.occurs_in(var, t))
-                    || st
-                        .variants
-                        .iter()
-                        .any(|(_, fields)| fields.iter().any(|t| self.occurs_in(var, t)))
-            }
-            Type::Record(rt) => rt.row.fields.iter().any(|(_, t)| self.occurs_in(var, t)),
+            Type::Sum(st) => st.type_args.iter().any(|t| self.occurs_in(var, t)),
+            Type::Record(rt) => rt.params.iter().any(|t| self.occurs_in(var, t)),
             Type::Opaque { params, .. } => params.iter().any(|t| self.occurs_in(var, t)),
             Type::AnonRecord(row) | Type::Row(row) => {
                 row.fields.iter().any(|(_, t)| self.occurs_in(var, t))

@@ -133,15 +133,15 @@ pub enum Type {
     Never,
     /// Atom: a compile-time symbol (e.g., `:restart`, `:one_for_one`).
     Atom,
-    /// Calendar date (days since Unix epoch, Arrow Date32).
+    /// Calendar date.
     Date,
-    /// UTC timestamp (microseconds since Unix epoch, Arrow Timestamp(Microsecond, UTC)).
+    /// UTC timestamp (microseconds since Unix epoch).
     DateTime,
     /// Dynamically typed value placeholder.
     Dynamic,
 
     // -- Compound types --
-    /// Arrow-compatible fixed-size list: `FixedSizeList(T, N)`.
+    /// Fixed-size list: `FixedSizeList(T, N)`.
     FixedSizeList {
         element: Box<Type>,
         size: Dim,
@@ -222,39 +222,26 @@ pub enum Type {
     Row(RowType),
 }
 
-pub const BUILTIN_ERROR_TYPE_NAMES: [&str; 4] =
-    ["IOError", "SchemaError", "ExecError", "ActorError"];
+pub const BUILTIN_ERROR_TYPE_NAMES: [&str; 2] = ["IOError", "ActorError"];
 pub const BUILTIN_PROTOCOL_TYPE_NAMES: [&str; 3] =
     ["SupervisionAction", "SupervisorStrategy", "ActorSignal"];
 
 pub fn is_builtin_error_type_name(name: &str) -> bool {
-    matches!(name, "IOError" | "SchemaError" | "ExecError" | "ActorError")
+    matches!(name, "IOError" | "ActorError")
 }
 
-/// Build the canonical builtin error sum type.
+/// Return a nominal reference to a builtin error sum type.
 ///
-/// Most builtin errors are single-variant: `type IOError = IOError(String)`.
-/// `ActorError` is multi-variant: `type ActorError = Dead(String) | MailboxFull(String) | Timeout(String) | Custom(String)`.
+/// Variant data lives in the `SumTypeRegistry`; this function only signals
+/// that the name is a recognised error type so annotation resolution can
+/// emit the correct `Type::Sum` handle.
 pub fn builtin_error_sum_type(name: &str) -> Option<Type> {
     if !is_builtin_error_type_name(name) {
         return None;
     }
-    if name == "ActorError" {
-        return Some(Type::Sum(SumType {
-            name: "ActorError".to_string(),
-            type_args: vec![],
-            variants: vec![
-                ("Dead".to_string(), vec![Type::String]),
-                ("MailboxFull".to_string(), vec![Type::String]),
-                ("Timeout".to_string(), vec![Type::String]),
-                ("Custom".to_string(), vec![Type::String]),
-            ],
-        }));
-    }
     Some(Type::Sum(SumType {
         name: name.to_string(),
         type_args: vec![],
-        variants: vec![(name.to_string(), vec![Type::String])],
     }))
 }
 
@@ -265,31 +252,14 @@ pub fn is_builtin_protocol_type_name(name: &str) -> bool {
     )
 }
 
+/// Return a nominal reference to a builtin protocol sum type.
 pub fn builtin_protocol_sum_type(name: &str) -> Option<Type> {
     if !is_builtin_protocol_type_name(name) {
         return None;
     }
-    let variants = match name {
-        "SupervisionAction" => vec![
-            ("Restart".to_string(), vec![]),
-            ("Stop".to_string(), vec![]),
-            ("Escalate".to_string(), vec![]),
-        ],
-        "SupervisorStrategy" => vec![
-            ("OneForOne".to_string(), vec![]),
-            ("OneForAll".to_string(), vec![]),
-            ("RestForOne".to_string(), vec![]),
-        ],
-        "ActorSignal" => vec![
-            ("Shutdown".to_string(), vec![]),
-            ("Kill".to_string(), vec![]),
-        ],
-        _ => return None,
-    };
     Some(Type::Sum(SumType {
         name: name.to_string(),
         type_args: vec![],
-        variants,
     }))
 }
 
@@ -324,23 +294,27 @@ impl FunctionType {
 }
 
 /// A nominal record type.
+///
+/// Purely nominal: name + instantiated type parameters only.
+/// Field structure lives in the `RecordRegistry`; fetched at unification time
+/// via `instantiate_record_row`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordType {
     pub name: String,
     pub params: Vec<Type>,
-    pub row: RowType,
 }
 
 /// A nominal sum type (algebraic data type).
 ///
-/// Each variant has a name and zero or more positional field types.
+/// Purely nominal: name + instantiated type arguments only.
+/// Variant structure lives in the `SumTypeRegistry`; fetched at unification
+/// and exhaustiveness-checking time via `instantiate_sum_variants`.
 /// Example: `type Shape = Circle(Float) | Rectangle(Float, Float)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SumType {
     pub name: String,
     /// Instantiated type arguments for this nominal sum type.
     pub type_args: Vec<Type>,
-    pub variants: Vec<(String, Vec<Type>)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -900,7 +874,6 @@ fn collect_free_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVarId>) {
             for param in &rt.params {
                 collect_free_type_vars(param, vars);
             }
-            collect_free_type_vars_row(&rt.row, vars);
         }
         Type::Opaque { params, .. } => {
             for param in params {
@@ -913,11 +886,6 @@ fn collect_free_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVarId>) {
         Type::Sum(st) => {
             for arg in &st.type_args {
                 collect_free_type_vars(arg, vars);
-            }
-            for (_, fields) in &st.variants {
-                for t in fields {
-                    collect_free_type_vars(t, vars);
-                }
             }
         }
         Type::Tagged { inner, .. }
@@ -965,7 +933,6 @@ fn collect_free_row_vars(ty: &Type, vars: &mut BTreeSet<RowVarId>) {
             for param in &rt.params {
                 collect_free_row_vars(param, vars);
             }
-            collect_free_row_vars_row(&rt.row, vars);
         }
         Type::Opaque { params, .. } => {
             for param in params {
@@ -978,11 +945,6 @@ fn collect_free_row_vars(ty: &Type, vars: &mut BTreeSet<RowVarId>) {
         Type::Sum(st) => {
             for arg in &st.type_args {
                 collect_free_row_vars(arg, vars);
-            }
-            for (_, fields) in &st.variants {
-                for t in fields {
-                    collect_free_row_vars(t, vars);
-                }
             }
         }
         Type::Set(inner) => {
@@ -1081,7 +1043,6 @@ fn collect_free_dim_vars(ty: &Type, vars: &mut BTreeSet<DimVarId>) {
             for param in &rt.params {
                 collect_free_dim_vars(param, vars);
             }
-            collect_free_dim_vars_row(&rt.row, vars);
         }
         Type::Opaque { params, .. } => {
             for param in params {
@@ -1094,11 +1055,6 @@ fn collect_free_dim_vars(ty: &Type, vars: &mut BTreeSet<DimVarId>) {
         Type::Sum(st) => {
             for arg in &st.type_args {
                 collect_free_dim_vars(arg, vars);
-            }
-            for (_, fields) in &st.variants {
-                for t in fields {
-                    collect_free_dim_vars(t, vars);
-                }
             }
         }
         Type::Set(inner) => {
@@ -1609,17 +1565,11 @@ pub fn is_sendable(ty: &Type) -> bool {
         | Type::FixedSizeList { element: inner, .. }
         | Type::Tensor { element: inner, .. } => is_sendable(inner),
         Type::Map(k, v) => is_sendable(k) && is_sendable(v),
-        // Records: Sendable if all fields are Sendable.
-        Type::Record(rt) => rt.row.fields.iter().all(|(_, t)| is_sendable(t)),
+        // Records: Sendable if all type params are Sendable (nominal; fields in registry).
+        Type::Record(rt) => rt.params.iter().all(is_sendable),
         Type::AnonRecord(row) | Type::Row(row) => row.fields.iter().all(|(_, t)| is_sendable(t)),
-        // Sum types: Sendable if all variant fields are Sendable.
-        Type::Sum(st) => {
-            st.type_args.iter().all(is_sendable)
-                && st
-                    .variants
-                    .iter()
-                    .all(|(_, fields)| fields.iter().all(is_sendable))
-        }
+        // Sum types: Sendable if all type args are Sendable (nominal; variants in registry).
+        Type::Sum(st) => st.type_args.iter().all(is_sendable),
         // Opaque wrappers are sendable if all type parameters are sendable.
         Type::Opaque { params, .. } => params.iter().all(is_sendable),
         Type::Forall(scheme) => is_sendable(&scheme.ty),
@@ -1695,11 +1645,11 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
             sendable_violation_inner(k, path).or_else(|| sendable_violation_inner(v, path))
         }
         Type::Record(rt) => {
-            for (label, t) in &rt.row.fields {
+            for (i, t) in rt.params.iter().enumerate() {
                 let p = if path.is_empty() {
-                    label.0.clone()
+                    format!("param.{i}")
                 } else {
-                    format!("{path}.{}", label.0)
+                    format!("{path}.param.{i}")
                 };
                 if let Some(v) = sendable_violation_inner(t, &p) {
                     return Some(v);
@@ -1729,14 +1679,6 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
                 };
                 if let Some(v) = sendable_violation_inner(arg, &p) {
                     return Some(v);
-                }
-            }
-            for (variant_name, fields) in &st.variants {
-                for (i, t) in fields.iter().enumerate() {
-                    let p = format!("{variant_name}.{i}");
-                    if let Some(v) = sendable_violation_inner(t, &p) {
-                        return Some(v);
-                    }
                 }
             }
             None
@@ -1993,21 +1935,7 @@ impl Type {
     pub fn list(inner: Type) -> Type {
         Type::Sum(SumType {
             name: "List".to_string(),
-            type_args: vec![inner.clone()],
-            variants: vec![
-                ("Nil".to_string(), vec![]),
-                (
-                    "Cons".to_string(),
-                    vec![
-                        inner.clone(),
-                        Type::Sum(SumType {
-                            name: "List".to_string(),
-                            type_args: vec![inner],
-                            variants: vec![], // placeholder for recursive ref
-                        }),
-                    ],
-                ),
-            ],
+            type_args: vec![inner],
         })
     }
 
@@ -2015,11 +1943,7 @@ impl Type {
     pub fn option(inner: Type) -> Type {
         Type::Sum(SumType {
             name: "Option".to_string(),
-            type_args: vec![inner.clone()],
-            variants: vec![
-                ("None".to_string(), vec![]),
-                ("Some".to_string(), vec![inner]),
-            ],
+            type_args: vec![inner],
         })
     }
 
@@ -2027,11 +1951,7 @@ impl Type {
     pub fn result(ok: Type, err: Type) -> Type {
         Type::Sum(SumType {
             name: "Result".to_string(),
-            type_args: vec![ok.clone(), err.clone()],
-            variants: vec![
-                ("Ok".to_string(), vec![ok]),
-                ("Err".to_string(), vec![err]),
-            ],
+            type_args: vec![ok, err],
         })
     }
 
@@ -2090,19 +2010,6 @@ impl Type {
         self.is_integer() || self.is_float() || self.is_decimal()
     }
 
-    /// Check whether this type has an Arrow/DataFusion representation.
-    ///
-    /// Returns `true` for scalar types that can be used as UDF parameters or
-    /// return types: Int, Float, Bool, String, Unit, Date, DateTime, Option(T).
-    /// This is a pure check that doesn't depend on Arrow and mirrors the
-    /// scalar mapping used at the dataframe runtime boundary.
-    pub fn is_arrow_scalar(&self) -> bool {
-        matches!(
-            self,
-            Type::Bool | Type::String | Type::Unit | Type::Never | Type::Date | Type::DateTime
-        ) || self.as_option().is_some_and(|inner| inner.is_arrow_scalar())
-            || self.is_numeric()
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2240,7 +2147,6 @@ impl Substitution {
             Type::Record(rt) => Type::Record(RecordType {
                 name: rt.name.clone(),
                 params: rt.params.iter().map(|t| self.apply(t)).collect(),
-                row: self.apply_row(&rt.row),
             }),
             Type::Opaque { name, params } => Type::Opaque {
                 name: name.clone(),
@@ -2250,16 +2156,6 @@ impl Substitution {
             Type::Sum(st) => Type::Sum(SumType {
                 name: st.name.clone(),
                 type_args: st.type_args.iter().map(|t| self.apply(t)).collect(),
-                variants: st
-                    .variants
-                    .iter()
-                    .map(|(vname, fields)| {
-                        (
-                            vname.clone(),
-                            fields.iter().map(|t| self.apply(t)).collect(),
-                        )
-                    })
-                    .collect(),
             }),
             Type::Tagged { inner, tags } => Type::Tagged {
                 inner: Box::new(self.apply(inner)),
@@ -2853,7 +2749,6 @@ mod tests {
         let ty = Type::Record(RecordType {
             name: "Box".to_string(),
             params: vec![Type::Int],
-            row: RowType::closed(vec![(Label::new("value"), Type::Int)]),
         });
         let (name, args) = type_constructor_for_trait(&ty).expect("constructor");
         assert_eq!(name, "Box");
@@ -2924,10 +2819,7 @@ mod tests {
             &builtin_error_sum_type("IOError").expect("builtin error type")
         ));
         assert!(is_sendable(
-            &builtin_error_sum_type("SchemaError").expect("builtin error type")
-        ));
-        assert!(is_sendable(
-            &builtin_error_sum_type("ExecError").expect("builtin error type")
+            &builtin_error_sum_type("ActorError").expect("builtin error type")
         ));
     }
 
@@ -3055,28 +2947,14 @@ mod tests {
     }
 
     #[test]
-    fn actor_error_has_four_variants() {
+    fn actor_error_is_recognized_builtin() {
+        // Variants live in the SumTypeRegistry (kea-infer), not inline on SumType.
+        // Here we just verify ActorError is recognized as a builtin error type.
         let ty = builtin_error_sum_type("ActorError").expect("ActorError should exist");
         let Type::Sum(sum) = ty else {
             panic!("ActorError should be a Sum type");
         };
         assert_eq!(sum.name, "ActorError");
-        assert_eq!(sum.variants.len(), 4, "ActorError should have 4 variants");
-
-        let expected = [
-            ("Dead", vec![Type::String]),
-            ("MailboxFull", vec![Type::String]),
-            ("Timeout", vec![Type::String]),
-            ("Custom", vec![Type::String]),
-        ];
-        for (name, fields) in &expected {
-            let found = sum.variants.iter().find(|(n, _)| n == name);
-            assert!(found.is_some(), "missing variant: {name}");
-            assert_eq!(
-                &found.unwrap().1,
-                fields,
-                "variant {name} should carry String"
-            );
-        }
+        assert!(is_builtin_error_type_name("ActorError"));
     }
 }

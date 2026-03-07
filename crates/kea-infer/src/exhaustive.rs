@@ -7,9 +7,12 @@
 //! variable pattern.
 
 use kea_ast::PatternKind;
-use kea_types::{RowType, SumType, Type};
+use kea_types::{RowType, Type};
 
-use crate::Unifier;
+use crate::{
+    Unifier,
+    typeck::{RecordRegistry, SumTypeRegistry, instantiate_record_row, instantiate_sum_variants},
+};
 
 /// Check whether a set of patterns exhaustively covers the scrutinee type.
 ///
@@ -18,6 +21,8 @@ pub fn check_exhaustiveness(
     scrutinee_ty: &Type,
     patterns: &[&kea_ast::Pattern],
     unifier: &Unifier,
+    records: &RecordRegistry,
+    sum_types: &SumTypeRegistry,
 ) -> Vec<String> {
     let resolved = unifier.substitution.apply(scrutinee_ty);
 
@@ -37,12 +42,17 @@ pub fn check_exhaustiveness(
         Type::Bool => check_bool(patterns),
         // Stdlib List: has Nil/Cons variants — needs [] and [_, .._] patterns
         // Only route to check_list for the actual stdlib List, not user-defined types named "List"
-        Type::Sum(st)
-            if st.name == "List"
-                && st.variants.iter().any(|(v, _)| v == "Nil")
-                && st.variants.iter().any(|(v, _)| v == "Cons") =>
-        {
-            check_list(patterns)
+        Type::Sum(st) if st.name == "List" => {
+            // Verify the registry confirms this is the stdlib List (has Nil/Cons).
+            let variants = instantiate_sum_variants(st, sum_types)
+                .unwrap_or_default();
+            if variants.iter().any(|(v, _)| v == "Nil")
+                && variants.iter().any(|(v, _)| v == "Cons")
+            {
+                check_list(patterns)
+            } else {
+                check_sum_type_from_variants(&variants, patterns)
+            }
         }
         // Infinite types: must have wildcard/var (already checked above)
         Type::Int | Type::Float | Type::String => {
@@ -59,8 +69,11 @@ pub fn check_exhaustiveness(
                 vec!["()".to_string()]
             }
         }
-        // Sum types: check variant coverage (includes Option and Result via Type::sum())
-        Type::Sum(st) => check_sum_type(st, patterns),
+        // Sum types: check variant coverage via registry.
+        Type::Sum(st) => {
+            let variants = instantiate_sum_variants(st, sum_types).unwrap_or_default();
+            check_sum_type_from_variants(&variants, patterns)
+        }
         // Opaque types behave like a single-constructor nominal wrapper.
         Type::Opaque { name, .. } => check_opaque_type(name, patterns),
         // Other types: require at least one irrefutable structural pattern
@@ -68,7 +81,7 @@ pub fn check_exhaustiveness(
         _ => {
             if patterns
                 .iter()
-                .any(|p| pattern_irrefutable_for_type(p, &resolved))
+                .any(|p| pattern_irrefutable_for_type(p, &resolved, Some(records), sum_types))
             {
                 vec![]
             } else {
@@ -146,8 +159,10 @@ fn check_list(patterns: &[&kea_ast::Pattern]) -> Vec<String> {
     missing
 }
 
-fn check_sum_type(st: &SumType, patterns: &[&kea_ast::Pattern]) -> Vec<String> {
-    let all_variants: Vec<&str> = st.variants.iter().map(|(name, _)| name.as_str()).collect();
+fn check_sum_type_from_variants(
+    variants: &[(String, Vec<kea_types::Type>)],
+    patterns: &[&kea_ast::Pattern],
+) -> Vec<String> {
     let mut covered = std::collections::BTreeSet::new();
 
     for p in patterns {
@@ -160,15 +175,14 @@ fn check_sum_type(st: &SumType, patterns: &[&kea_ast::Pattern]) -> Vec<String> {
         }
     }
 
-    all_variants
-        .into_iter()
-        .filter(|v| !covered.contains(v))
-        .map(|v| {
-            let fields = &st.variants.iter().find(|(n, _)| n == v).unwrap().1;
+    variants
+        .iter()
+        .filter(|(name, _)| !covered.contains(name.as_str()))
+        .map(|(name, fields)| {
             if fields.is_empty() {
-                v.to_string()
+                name.clone()
             } else {
-                format!("{}({})", v, vec!["_"; fields.len()].join(", "))
+                format!("{}({})", name, vec!["_"; fields.len()].join(", "))
             }
         })
         .collect()
@@ -193,12 +207,21 @@ fn check_opaque_type(name: &str, patterns: &[&kea_ast::Pattern]) -> Vec<String> 
 pub fn is_irrefutable(
     pattern: &kea_ast::Pattern,
     ty: &Type,
-    _sum_types: &crate::typeck::SumTypeRegistry,
+    sum_types: &SumTypeRegistry,
 ) -> bool {
-    pattern_irrefutable_for_type(pattern, ty)
+    // is_irrefutable doesn't need the record registry since record field
+    // irrefutability only depends on the row structure, which we look up
+    // from the anonymous row side.  For full nominal accuracy we'd pass
+    // records here too, but the existing call sites only need the sum check.
+    pattern_irrefutable_for_type(pattern, ty, None, sum_types)
 }
 
-fn pattern_irrefutable_for_type(pattern: &kea_ast::Pattern, ty: &Type) -> bool {
+fn pattern_irrefutable_for_type(
+    pattern: &kea_ast::Pattern,
+    ty: &Type,
+    records: Option<&RecordRegistry>,
+    sum_types: &SumTypeRegistry,
+) -> bool {
     match &pattern.node {
         PatternKind::Wildcard | PatternKind::Var(_) => true,
         PatternKind::Tuple(pats) => {
@@ -207,7 +230,7 @@ fn pattern_irrefutable_for_type(pattern: &kea_ast::Pattern, ty: &Type) -> bool {
                     && pats
                         .iter()
                         .zip(elems)
-                        .all(|(p, elem_ty)| pattern_irrefutable_for_type(p, elem_ty))
+                        .all(|(p, elem_ty)| pattern_irrefutable_for_type(p, elem_ty, records, sum_types))
             } else {
                 false
             }
@@ -217,14 +240,22 @@ fn pattern_irrefutable_for_type(pattern: &kea_ast::Pattern, ty: &Type) -> bool {
                 if &rt.name != name {
                     return false;
                 }
-                row_pattern_irrefutable(fields, *rest, &rt.row)
+                let row = records
+                    .and_then(|reg| instantiate_record_row(rt, reg))
+                    .unwrap_or_else(RowType::empty_closed);
+                row_pattern_irrefutable(fields, *rest, &row, records, sum_types)
             } else {
                 false
             }
         }
         PatternKind::AnonRecord { fields, rest } => match ty {
-            Type::AnonRecord(row) => row_pattern_irrefutable(fields, *rest, row),
-            Type::Record(rt) => row_pattern_irrefutable(fields, *rest, &rt.row),
+            Type::AnonRecord(row) => row_pattern_irrefutable(fields, *rest, row, records, sum_types),
+            Type::Record(rt) => {
+                let row = records
+                    .and_then(|reg| instantiate_record_row(rt, reg))
+                    .unwrap_or_else(RowType::empty_closed);
+                row_pattern_irrefutable(fields, *rest, &row, records, sum_types)
+            }
             _ => false,
         },
         PatternKind::Lit(kea_ast::Lit::Unit) => matches!(ty, Type::Unit),
@@ -238,10 +269,11 @@ fn pattern_irrefutable_for_type(pattern: &kea_ast::Pattern, ty: &Type) -> bool {
                 return name == opaque_name && !rest && args.len() == 1 && args[0].name.is_none();
             }
             if let Type::Sum(st) = ty {
-                if st.variants.len() != 1 {
+                let variants = instantiate_sum_variants(st, sum_types).unwrap_or_default();
+                if variants.len() != 1 {
                     return false;
                 }
-                if let Some((only_name, field_types)) = st.variants.first() {
+                if let Some((only_name, field_types)) = variants.first() {
                     if only_name != name {
                         return false;
                     }
@@ -258,17 +290,17 @@ fn pattern_irrefutable_for_type(pattern: &kea_ast::Pattern, ty: &Type) -> bool {
                     return args
                         .iter()
                         .zip(field_types)
-                        .all(|(p, field_ty)| pattern_irrefutable_for_type(&p.pattern, field_ty));
+                        .all(|(p, field_ty)| pattern_irrefutable_for_type(&p.pattern, field_ty, records, sum_types));
                 }
             }
             false
         }
         // List patterns are always refutable — can't know length statically
         PatternKind::List { .. } => false,
-        PatternKind::As { pattern: inner, .. } => pattern_irrefutable_for_type(inner, ty),
+        PatternKind::As { pattern: inner, .. } => pattern_irrefutable_for_type(inner, ty, records, sum_types),
         PatternKind::Or(alternatives) => alternatives
             .iter()
-            .any(|alt| pattern_irrefutable_for_type(alt, ty)),
+            .any(|alt| pattern_irrefutable_for_type(alt, ty, records, sum_types)),
         _ => false,
     }
 }
@@ -295,6 +327,8 @@ fn row_pattern_irrefutable(
     fields: &[(String, kea_ast::Pattern)],
     rest: bool,
     row: &RowType,
+    records: Option<&RecordRegistry>,
+    sum_types: &SumTypeRegistry,
 ) -> bool {
     let required_fields = &row.fields;
     let field_map = fields
@@ -311,7 +345,7 @@ fn row_pattern_irrefutable(
         else {
             return false;
         };
-        if !pattern_irrefutable_for_type(pat, field_ty) {
+        if !pattern_irrefutable_for_type(pat, field_ty, records, sum_types) {
             return false;
         }
     }

@@ -1343,11 +1343,10 @@ impl RecordRegistry {
             return Some(Type::Record(RecordType {
                 name: name.to_string(),
                 params: vec![],
-                row: info.row.clone(),
             }));
         }
 
-        let replacements: Vec<Type> = info
+        let fresh_vars: Vec<Type> = info
             .params
             .iter()
             .enumerate()
@@ -1359,24 +1358,9 @@ impl RecordRegistry {
                 }
             })
             .collect();
-        let row = RowType {
-            fields: info
-                .row
-                .fields
-                .iter()
-                .map(|(label, ty)| {
-                    (
-                        label.clone(),
-                        substitute_params(ty, &info.params, &replacements),
-                    )
-                })
-                .collect(),
-            rest: info.row.rest,
-        };
         Some(Type::Record(RecordType {
             name: name.to_string(),
-            params: replacements,
-            row,
+            params: fresh_vars,
         }))
     }
 
@@ -1587,52 +1571,68 @@ impl SumTypeRegistry {
     }
 
     fn register_builtin_sum_types(&mut self) {
-        let mut builtin_names = Vec::new();
-        builtin_names.extend(kea_types::BUILTIN_ERROR_TYPE_NAMES);
-        builtin_names.extend(kea_types::BUILTIN_PROTOCOL_TYPE_NAMES);
-
-        for name in builtin_names {
-            let Some(Type::Sum(sum)) = kea_types::builtin_sum_type(name) else {
-                continue;
-            };
-
-            let variants = sum
-                .variants
-                .iter()
-                .map(|(variant_name, fields)| VariantInfo {
-                    name: variant_name.clone(),
-                    fields: fields
-                        .iter()
-                        .map(|ty| VariantFieldInfo {
-                            name: None,
-                            ty: ty.clone(),
-                        })
-                        .collect(),
-                    where_constraints: vec![],
-                    recursive_fields: vec![false; fields.len()],
-                    definition_span: None,
-                })
-                .collect::<Vec<_>>();
-
-            for variant in &variants {
-                self.variant_to_types
-                    .entry(variant.name.clone())
-                    .or_default()
-                    .push(name.to_string());
+        // Helper: build a VariantInfo for a single-field string variant.
+        fn str_variant(name: &str) -> VariantInfo {
+            VariantInfo {
+                name: name.to_string(),
+                fields: vec![VariantFieldInfo {
+                    name: None,
+                    ty: Type::String,
+                }],
+                where_constraints: vec![],
+                recursive_fields: vec![false],
+                definition_span: None,
             }
-
-            self.types.insert(
-                name.to_string(),
-                SumTypeInfo {
-                    params: vec![],
-                    variants,
-                    is_recursive: false,
-                    definition_span: None,
-                    doc: Some(format!("Builtin sum type `{name}`.")),
-                    public: true,
-                },
-            );
         }
+        fn unit_variant(name: &str) -> VariantInfo {
+            VariantInfo {
+                name: name.to_string(),
+                fields: vec![],
+                where_constraints: vec![],
+                recursive_fields: vec![],
+                definition_span: None,
+            }
+        }
+
+        // IOError = IOError(String)
+        self.insert_builtin("IOError", vec![], vec![str_variant("IOError")]);
+        // ActorError = Dead(String) | MailboxFull(String) | Timeout(String) | Custom(String)
+        self.insert_builtin(
+            "ActorError",
+            vec![],
+            vec![
+                str_variant("Dead"),
+                str_variant("MailboxFull"),
+                str_variant("Timeout"),
+                str_variant("Custom"),
+            ],
+        );
+        // SupervisionAction = Restart | Stop | Escalate
+        self.insert_builtin(
+            "SupervisionAction",
+            vec![],
+            vec![
+                unit_variant("Restart"),
+                unit_variant("Stop"),
+                unit_variant("Escalate"),
+            ],
+        );
+        // SupervisorStrategy = OneForOne | OneForAll | RestForOne
+        self.insert_builtin(
+            "SupervisorStrategy",
+            vec![],
+            vec![
+                unit_variant("OneForOne"),
+                unit_variant("OneForAll"),
+                unit_variant("RestForOne"),
+            ],
+        );
+        // ActorSignal = Shutdown | Kill
+        self.insert_builtin(
+            "ActorSignal",
+            vec![],
+            vec![unit_variant("Shutdown"), unit_variant("Kill")],
+        );
 
         // Option(T) = None | Some(T)
         let option_variants = vec![
@@ -1803,7 +1803,6 @@ impl SumTypeRegistry {
         let seq_of_a = Type::Sum(kea_types::SumType {
             name: "Seq".to_string(),
             type_args: vec![a_var.clone()],
-            variants: vec![],
         });
         let thunk_to_seq = Type::Function(FunctionType {
             params: vec![],
@@ -1859,6 +1858,27 @@ impl SumTypeRegistry {
                 is_recursive: true,
                 definition_span: None,
                 doc: Some("Pure lazy sequence. Replayable value — can be traversed multiple times. Complement to Stream(T) which is consumed once.".to_string()),
+                public: true,
+            },
+        );
+    }
+
+    /// Register a builtin sum type with a fixed doc comment.
+    fn insert_builtin(&mut self, name: &str, params: Vec<String>, variants: Vec<VariantInfo>) {
+        for variant in &variants {
+            self.variant_to_types
+                .entry(variant.name.clone())
+                .or_default()
+                .push(name.to_string());
+        }
+        self.types.insert(
+            name.to_string(),
+            SumTypeInfo {
+                params,
+                variants,
+                is_recursive: false,
+                definition_span: None,
+                doc: Some(format!("Builtin sum type `{name}`.")),
                 public: true,
             },
         );
@@ -2309,22 +2329,9 @@ impl SumTypeRegistry {
         }
 
         let fresh_vars: Vec<Type> = info.params.iter().map(|_| unifier.fresh_type()).collect();
-        let variants = info
-            .variants
-            .iter()
-            .map(|v| {
-                let fields = v
-                    .fields
-                    .iter()
-                    .map(|field| substitute_params(&field.ty, &info.params, &fresh_vars))
-                    .collect();
-                (v.name.clone(), fields)
-            })
-            .collect();
         let sum_ty = Type::Sum(SumType {
             name: type_name.to_string(),
             type_args: fresh_vars.clone(),
-            variants,
         });
         let field_types = variant
             .fields
@@ -2358,59 +2365,32 @@ impl SumTypeRegistry {
     }
 
     /// Convert with an optional unifier for fresh type var generation.
-    /// If unifier is None, uses placeholder vars (for annotation resolution).
+    /// If unifier is None, uses positional placeholder vars (for annotation resolution).
     pub fn to_type_with(&self, name: &str, unifier: &mut Option<&mut Unifier>) -> Option<Type> {
         let info = self.lookup(name)?;
         if info.params.is_empty() {
-            // No params — return as-is
-            let variants = info
-                .variants
-                .iter()
-                .map(|v| {
-                    (
-                        v.name.clone(),
-                        v.fields.iter().map(|field| field.ty.clone()).collect(),
-                    )
-                })
-                .collect();
             return Some(Type::Sum(SumType {
                 name: name.to_string(),
                 type_args: vec![],
-                variants,
             }));
         }
 
-        // Create fresh type vars for each param
         let fresh_vars: Vec<Type> = info
             .params
             .iter()
-            .map(|_| {
+            .enumerate()
+            .map(|(idx, _)| {
                 if let Some(u) = unifier.as_mut() {
                     u.fresh_type()
                 } else {
-                    Type::Var(TypeVarId(u32::MAX)) // placeholder
+                    Type::Var(TypeVarId(idx as u32))
                 }
-            })
-            .collect();
-
-        // Substitute param placeholder vars with fresh vars in variant fields
-        let variants = info
-            .variants
-            .iter()
-            .map(|v| {
-                let fields = v
-                    .fields
-                    .iter()
-                    .map(|field| substitute_params(&field.ty, &info.params, &fresh_vars))
-                    .collect();
-                (v.name.clone(), fields)
             })
             .collect();
 
         Some(Type::Sum(SumType {
             name: name.to_string(),
-            type_args: fresh_vars.clone(),
-            variants,
+            type_args: fresh_vars,
         }))
     }
 
@@ -2449,6 +2429,55 @@ impl Default for SumTypeRegistry {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Instantiate a named record's row by substituting type params with the
+/// concrete args stored in `rt.params`. Returns `None` if the registry has no
+/// entry for `rt.name`.
+pub fn instantiate_record_row(rt: &kea_types::RecordType, registry: &RecordRegistry) -> Option<kea_types::RowType> {
+    let info = registry.lookup(&rt.name)?;
+    if info.params.is_empty() {
+        return Some(info.row.clone());
+    }
+    let row = kea_types::RowType {
+        fields: info
+            .row
+            .fields
+            .iter()
+            .map(|(label, ty)| {
+                (
+                    label.clone(),
+                    substitute_params(ty, &info.params, &rt.params),
+                )
+            })
+            .collect(),
+        rest: info.row.rest,
+    };
+    Some(row)
+}
+
+/// Instantiate a named sum type's variants by substituting type params with the
+/// concrete args stored in `st.type_args`. Returns `None` if the registry has
+/// no entry for `st.name`.
+pub fn instantiate_sum_variants(
+    st: &kea_types::SumType,
+    registry: &SumTypeRegistry,
+) -> Option<Vec<(String, Vec<Type>)>> {
+    let info = registry.lookup(&st.name)?;
+    Some(
+        info.variants
+            .iter()
+            .map(|v| {
+                (
+                    v.name.clone(),
+                    v.fields
+                        .iter()
+                        .map(|f| substitute_params(&f.ty, &info.params, &st.type_args))
+                        .collect(),
+                )
+            })
+            .collect(),
+    )
 }
 
 /// Substitute type parameter placeholders with concrete types.
@@ -4644,15 +4673,6 @@ fn instantiate_impl_type(
                 .iter()
                 .map(|t| instantiate_impl_type(t, type_params, bindings))
                 .collect(),
-            row: RowType {
-                fields: rt
-                    .row
-                    .fields
-                    .iter()
-                    .map(|(l, t)| (l.clone(), instantiate_impl_type(t, type_params, bindings)))
-                    .collect(),
-                rest: rt.row.rest,
-            },
         }),
         Type::AnonRecord(row) => Type::AnonRecord(RowType {
             fields: row
@@ -4668,19 +4688,6 @@ fn instantiate_impl_type(
                 .type_args
                 .iter()
                 .map(|t| instantiate_impl_type(t, type_params, bindings))
-                .collect(),
-            variants: st
-                .variants
-                .iter()
-                .map(|(vn, fields)| {
-                    (
-                        vn.clone(),
-                        fields
-                            .iter()
-                            .map(|t| instantiate_impl_type(t, type_params, bindings))
-                            .collect(),
-                    )
-                })
                 .collect(),
         }),
         Type::Opaque { name, params } => Type::Opaque {
@@ -4770,7 +4777,7 @@ fn resolve_annotation_with_type_params(
                     .collect();
                 return Some(Type::App(Box::new(constructor_ty), resolved_args?));
             }
-            if let Some(op_ty) = eval_record_type_op(name, args, |arg_ann| {
+            if let Some(op_ty) = eval_record_type_op(name, args, Some(records), |arg_ann| {
                 resolve_annotation_with_type_params(arg_ann, type_param_scope, records, sum_types)
             }) {
                 return Some(op_ty);
@@ -5027,8 +5034,6 @@ fn is_builtin_type_name(name: &str) -> bool {
             | "Task"
             | "Connection"
             | "IOError"
-            | "SchemaError"
-            | "ExecError"
             | "ActorError"
             | "Date"
             | "DateTime"
@@ -6590,7 +6595,6 @@ fn rename_type(
                 .iter()
                 .map(|t| rename_type(t, type_map, row_map, dim_map))
                 .collect(),
-            row: rename_row(&rt.row, type_map, row_map, dim_map),
         }),
         Type::AnonRecord(row) => Type::AnonRecord(rename_row(row, type_map, row_map, dim_map)),
         Type::Sum(st) => Type::Sum(kea_types::SumType {
@@ -6599,19 +6603,6 @@ fn rename_type(
                 .type_args
                 .iter()
                 .map(|t| rename_type(t, type_map, row_map, dim_map))
-                .collect(),
-            variants: st
-                .variants
-                .iter()
-                .map(|(vname, fields)| {
-                    (
-                        vname.clone(),
-                        fields
-                            .iter()
-                            .map(|t| rename_type(t, type_map, row_map, dim_map))
-                            .collect(),
-                    )
-                })
                 .collect(),
         }),
         Type::Opaque { name, params } => Type::Opaque {
@@ -6745,15 +6736,20 @@ fn row_annotation_label(fields: &[(String, TypeAnnotation)], rest: &Option<Strin
     format!("{{ {body} }}")
 }
 
-fn extract_row_type(ty: &Type) -> Option<RowType> {
+fn extract_row_type(ty: &Type, records: Option<&RecordRegistry>) -> Option<RowType> {
     match ty {
-        Type::Record(rt) => Some(rt.row.clone()),
+        Type::Record(rt) => records.and_then(|reg| instantiate_record_row(rt, reg)),
         Type::AnonRecord(row) | Type::Row(row) => Some(row.clone()),
         _ => None,
     }
 }
 
-fn eval_record_type_op<F>(op: &str, args: &[TypeAnnotation], mut resolve: F) -> Option<Type>
+fn eval_record_type_op<F>(
+    op: &str,
+    args: &[TypeAnnotation],
+    records: Option<&RecordRegistry>,
+    mut resolve: F,
+) -> Option<Type>
 where
     F: FnMut(&TypeAnnotation) -> Option<Type>,
 {
@@ -6762,7 +6758,7 @@ where
             let [input] = args else {
                 return None;
             };
-            let row = extract_row_type(&resolve(input)?)?;
+            let row = extract_row_type(&resolve(input)?, records)?;
             if row.is_open() {
                 return None;
             }
@@ -6777,7 +6773,7 @@ where
             let [input] = args else {
                 return None;
             };
-            let row = extract_row_type(&resolve(input)?)?;
+            let row = extract_row_type(&resolve(input)?, records)?;
             if row.is_open() {
                 return None;
             }
@@ -6799,7 +6795,7 @@ where
             if args.len() < 2 {
                 return None;
             }
-            let row = extract_row_type(&resolve(&args[0])?)?;
+            let row = extract_row_type(&resolve(&args[0])?, records)?;
             let mut picked = Vec::new();
             for ann in &args[1..] {
                 let label = annotation_label(ann)?;
@@ -6812,7 +6808,7 @@ where
             if args.len() < 2 {
                 return None;
             }
-            let row = extract_row_type(&resolve(&args[0])?)?;
+            let row = extract_row_type(&resolve(&args[0])?, records)?;
             let omit: std::collections::BTreeSet<Label> = args[1..]
                 .iter()
                 .map(annotation_label)
@@ -6832,8 +6828,8 @@ where
             let [left, right] = args else {
                 return None;
             };
-            let left_row = extract_row_type(&resolve(left)?)?;
-            let right_row = extract_row_type(&resolve(right)?)?;
+            let left_row = extract_row_type(&resolve(left)?, records)?;
+            let right_row = extract_row_type(&resolve(right)?, records)?;
             let mut merged: std::collections::BTreeMap<Label, Type> =
                 left_row.fields.into_iter().collect();
             for (label, ty) in right_row.fields {
@@ -6884,24 +6880,9 @@ where
         if info.params.len() != resolved_args.len() {
             return None;
         }
-        let row = RowType {
-            fields: info
-                .row
-                .fields
-                .iter()
-                .map(|(label, ty)| {
-                    (
-                        label.clone(),
-                        substitute_params(ty, &info.params, &resolved_args),
-                    )
-                })
-                .collect(),
-            rest: info.row.rest,
-        };
         return Some(Type::Record(RecordType {
             name: name.to_string(),
             params: resolved_args,
-            row,
         }));
     }
 
@@ -6909,24 +6890,9 @@ where
     if info.params.len() != resolved_args.len() {
         return None;
     }
-    let variants = info
-        .variants
-        .iter()
-        .map(|variant| {
-            (
-                variant.name.clone(),
-                variant
-                    .fields
-                    .iter()
-                    .map(|field_ty| substitute_params(&field_ty.ty, &info.params, &resolved_args))
-                    .collect(),
-            )
-        })
-        .collect();
     Some(Type::Sum(SumType {
         name: name.to_string(),
         type_args: resolved_args,
-        variants,
     }))
 }
 
@@ -7351,9 +7317,7 @@ pub fn resolve_annotation(
             "DateTime" => Some(Type::DateTime),
             "Dynamic" => Some(Type::Dynamic),
             "Connection" => Some(connection_opaque_type()),
-            "IOError" | "SchemaError" | "ExecError" | "ActorError" => {
-                kea_types::builtin_error_sum_type(name)
-            }
+            "IOError" | "ActorError" => kea_types::builtin_error_sum_type(name),
             _ => {
                 if let Some(alias) = records.lookup_alias(name) {
                     if !alias.params.is_empty() {
@@ -7387,7 +7351,7 @@ pub fn resolve_annotation(
             }
         },
         TypeAnnotation::Applied(name, args) => {
-            if let Some(op_ty) = eval_record_type_op(name, args, |ann| {
+            if let Some(op_ty) = eval_record_type_op(name, args, Some(records), |ann| {
                 resolve_annotation(ann, records, sum_types)
             }) {
                 return Some(op_ty);
@@ -7435,11 +7399,7 @@ pub fn resolve_annotation(
                     let inner_ty = resolve_annotation(inner, records, sum_types)?;
                     Some(Type::Sum(kea_types::SumType {
                         name: "Step".to_string(),
-                        type_args: vec![inner_ty.clone()],
-                        variants: vec![
-                            ("Continue".to_string(), vec![inner_ty.clone()]),
-                            ("Halt".to_string(), vec![inner_ty]),
-                        ],
+                        type_args: vec![inner_ty],
                     }))
                 }
                 ("Tagged", [inner]) => Some(Type::Tagged {
@@ -7566,7 +7526,7 @@ fn resolve_annotation_or_bare_df(
                     .collect();
                 return Some(Type::App(Box::new(constructor_ty), resolved_args?));
             }
-            if let Some(op_ty) = eval_record_type_op(name, args, |arg_ann| {
+            if let Some(op_ty) = eval_record_type_op(name, args, Some(records), |arg_ann| {
                 resolve_annotation_or_bare_df(arg_ann, records, sum_types, unifier)
             }) {
                 return Some(op_ty);
@@ -8702,23 +8662,13 @@ fn type_contains_unique(ty: &Type) -> bool {
             type_contains_unique(head) || args.iter().any(type_contains_unique)
         }
         Type::Record(record) => {
-            record.name == "Unique"
-                || record
-                    .row
-                    .fields
-                    .iter()
-                    .any(|(_, field_ty)| type_contains_unique(field_ty))
+            record.name == "Unique" || record.params.iter().any(type_contains_unique)
         }
         Type::AnonRecord(row) | Type::Row(row) => {
             row.fields.iter().any(|(_, field_ty)| type_contains_unique(field_ty))
         }
         Type::Sum(sum) => {
-            sum.name == "Unique"
-                || sum.type_args.iter().any(type_contains_unique)
-                || sum
-                    .variants
-                    .iter()
-                    .any(|(_, payloads)| payloads.iter().any(type_contains_unique))
+            sum.name == "Unique" || sum.type_args.iter().any(type_contains_unique)
         }
         Type::Tuple(items) => items.iter().any(type_contains_unique),
         Type::Stream(item)
@@ -10174,13 +10124,13 @@ fn narrowings_from_guard(
                 return None;
             }
 
+            let all_variants = instantiate_sum_variants(&sum_ty, sum_types).unwrap_or_default();
             let (matched_variant_name, matched_variant_fields) =
-                sum_ty.variants.iter().find(|(variant_name, _)| {
+                all_variants.iter().find(|(variant_name, _)| {
                     variant_guard_predicate_name(variant_name) == *predicate_name
                 })?;
 
-            let remaining_variants: Vec<(String, Vec<Type>)> = sum_ty
-                .variants
+            let remaining_variants: Vec<(String, Vec<Type>)> = all_variants
                 .iter()
                 .filter(|(variant_name, _)| variant_name != matched_variant_name)
                 .cloned()
@@ -12583,7 +12533,7 @@ fn infer_expr_bidir(
                 .map(|(arm, _)| &arm.pattern)
                 .collect();
             let mut missing =
-                crate::exhaustive::check_exhaustiveness(&scrutinee_ty, &patterns, unifier);
+                crate::exhaustive::check_exhaustiveness(&scrutinee_ty, &patterns, unifier, records, sum_types);
             if let Some(reachable_variants) =
                 reachable_sum_variants_for_case(&scrutinee_ty, scrutinee.span, sum_types, unifier)
             {
@@ -12742,7 +12692,9 @@ fn infer_expr_bidir(
                 .to_type_with(&name.node, &mut Some(unifier))
                 .expect("record was looked up");
             let record_row = match &record_ty {
-                Type::Record(rec) => rec.row.clone(),
+                Type::Record(rec) => {
+                    instantiate_record_row(rec, records).unwrap_or_else(RowType::empty_closed)
+                }
                 _ => RowType::empty_closed(),
             };
 
@@ -12848,8 +12800,9 @@ fn infer_expr_bidir(
             let resolved_base_ty = unifier.substitution.apply(&base_ty);
             let (record_ty, record_row) = match resolved_base_ty {
                 Type::Record(rec) => {
+                    let row = instantiate_record_row(&rec, records).unwrap_or_else(RowType::empty_closed);
                     let ty = Type::Record(rec.clone());
-                    (ty, rec.row.clone())
+                    (ty, row)
                 }
                 other => {
                     unifier.push_error(
@@ -13793,7 +13746,7 @@ fn check_expr_bidir(
                 .map(|(arm, _)| &arm.pattern)
                 .collect();
             let mut missing =
-                crate::exhaustive::check_exhaustiveness(&scrutinee_ty, &patterns, unifier);
+                crate::exhaustive::check_exhaustiveness(&scrutinee_ty, &patterns, unifier, records, sum_types);
             if let Some(reachable_variants) =
                 reachable_sum_variants_for_case(&scrutinee_ty, scrutinee.span, sum_types, unifier)
             {
@@ -15384,7 +15337,9 @@ fn infer_pattern(
                 .to_type_with(name, &mut Some(unifier))
                 .expect("record was looked up");
             let record_row = match &record_ty {
-                Type::Record(rec) => rec.row.clone(),
+                Type::Record(rec) => {
+                    instantiate_record_row(rec, records).unwrap_or_else(RowType::empty_closed)
+                }
                 _ => RowType::empty_closed(),
             };
 
@@ -15579,7 +15534,7 @@ fn resolve_annotation_with_self_and_assoc(
             assoc_types.get(name).cloned()
         }
         TypeAnnotation::Applied(name, args) => {
-            if let Some(op_ty) = eval_record_type_op(name, args, |arg_ann| {
+            if let Some(op_ty) = eval_record_type_op(name, args, Some(records), |arg_ann| {
                 resolve_annotation_with_self_and_assoc(
                     arg_ann,
                     records,
@@ -15904,7 +15859,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                 return Some(Type::App(Box::new(ctor), resolved_args?));
             }
 
-            if let Some(op_ty) = eval_record_type_op(name, args, |arg_ann| {
+            if let Some(op_ty) = eval_record_type_op(name, args, Some(records), |arg_ann| {
                 resolve_annotation_with_self_assoc_and_params(
                     arg_ann,
                     records,
@@ -16078,11 +16033,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     )?;
                     Some(Type::Sum(kea_types::SumType {
                         name: "Step".to_string(),
-                        type_args: vec![inner_ty.clone()],
-                        variants: vec![
-                            ("Continue".to_string(), vec![inner_ty.clone()]),
-                            ("Halt".to_string(), vec![inner_ty]),
-                        ],
+                        type_args: vec![inner_ty],
                     }))
                 }
                 _ => resolve_named_type_application(name, args, records, sum_types, |arg_ann| {
@@ -16502,6 +16453,8 @@ pub fn infer_expr_in_context(
     traits: &TraitRegistry,
     sum_types: &SumTypeRegistry,
 ) -> Type {
+    // Make the registry available to the unifier's AnonRecord~Record projection.
+    ctx.set_record_registry(records.clone());
     infer_expr_bidir(expr, env, ctx, records, traits, sum_types)
 }
 
