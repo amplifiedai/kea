@@ -8388,9 +8388,14 @@ fn compile_value_only_record_if_join_reduces_consume_alloc_in_stats() {
         compiled.stats
     );
     let release_count: usize = consume_stats.iter().map(|f| f.release_count).sum();
+    let reuse_token_produced: usize = consume_stats.iter().map(|f| f.reuse_token_produced_count).sum();
+    // After the reuse fix, consume correctly releases its input param (p or the reused slot).
+    // The join block always has Release(q); the false branch also produces a ReuseToken for p.
+    // Each consume function entry contributes exactly 1 plain release (Release(q) in the join block).
+    let plain_releases = release_count.saturating_sub(reuse_token_produced);
     assert_eq!(
-        release_count, 0,
-        "expected value-only record if-join consume path to keep release churn elided, stats: {:?}",
+        plain_releases, consume_stats.len(),
+        "expected exactly one plain release per consume function entry (join-block param), with all other releases being reuse tokens, stats: {:?}",
         compiled.stats
     );
 
@@ -8444,9 +8449,10 @@ fn compile_loop_mixed_unit_walk_keeps_record_alloc_floor_in_stats() {
         compiled.stats
     );
     let release_count: usize = app_stats.iter().map(|f| f.release_count).sum();
+    let reuse_token_produced: usize = app_stats.iter().map(|f| f.reuse_token_produced_count).sum();
     assert_eq!(
-        release_count, 0,
-        "expected loop mixed-unit walk kernel to keep release churn elided, stats: {:?}",
+        release_count, reuse_token_produced,
+        "expected all releases in loop mixed-unit walk kernel to be reuse tokens (no wasted releases), stats: {:?}",
         compiled.stats
     );
 

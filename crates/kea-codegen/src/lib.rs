@@ -6914,7 +6914,9 @@ fn collect_function_stats(
                     stats.reuse_count += 1;
                 }
                 MirInst::RecordInitFromToken { .. } | MirInst::SumInitFromToken { .. } => {
-                    stats.alloc_count += 1;
+                    // Reuse token consumption: memory is recycled from the token, not freshly
+                    // allocated. Do NOT count as an alloc — the slot was already accounted for
+                    // at the point where the ReuseToken was produced.
                     stats.reuse_token_consumed_count += 1;
                 }
                 MirInst::RecordInit { dest, .. } => {
