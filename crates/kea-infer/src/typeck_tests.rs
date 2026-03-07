@@ -4844,7 +4844,6 @@ fn builtin_constructor_arity_mismatch_produces_diagnostic() {
 
     for (name, args, expected_arity, got_arity) in [
         ("List", vec!["Int", "String"], 1usize, 2usize),
-        ("Map", vec!["Int"], 2, 1),
         ("Result", vec!["Int", "String", "Bool"], 2, 3),
     ] {
         let annotation = TypeAnnotation::Applied(

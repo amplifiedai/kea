@@ -4807,26 +4807,6 @@ fn resolve_annotation_with_type_params(
                     let err_ty = resolve_annotation_with_type_params(err, type_param_scope, records, sum_types)?;
                     Some(Type::result(ok_ty, err_ty))
                 }
-                ("Map", [key, val]) => Some(Type::Map(
-                    Box::new(resolve_annotation_with_type_params(
-                        key,
-                        type_param_scope,
-                        records,
-                        sum_types,
-                    )?),
-                    Box::new(resolve_annotation_with_type_params(
-                        val,
-                        type_param_scope,
-                        records,
-                        sum_types,
-                    )?),
-                )),
-                ("Set", [elem]) => Some(Type::Set(Box::new(resolve_annotation_with_type_params(
-                    elem,
-                    type_param_scope,
-                    records,
-                    sum_types,
-                )?))),
                 ("Actor", [inner]) => {
                     Some(Type::Actor(Box::new(resolve_annotation_with_type_params(
                         inner,
@@ -6991,8 +6971,6 @@ const BUILTIN_ARITIES: &[(&str, usize)] = &[
     ("List", 1),
     ("Option", 1),
     ("Result", 2),
-    ("Map", 2),
-    ("Set", 1),
     ("Task", 1),
     ("Actor", 1),
     ("Arc", 1),
@@ -7373,13 +7351,6 @@ pub fn resolve_annotation(
                     resolve_annotation(ok, records, sum_types)?,
                     resolve_annotation(err, records, sum_types)?,
                 )),
-                ("Map", [key, val]) => Some(Type::Map(
-                    Box::new(resolve_annotation(key, records, sum_types)?),
-                    Box::new(resolve_annotation(val, records, sum_types)?),
-                )),
-                ("Set", [elem]) => Some(Type::Set(Box::new(resolve_annotation(
-                    elem, records, sum_types,
-                )?))),
                 ("Actor", [inner]) => Some(Type::Actor(Box::new(resolve_annotation(
                     inner, records, sum_types,
                 )?))),
@@ -7552,17 +7523,6 @@ fn resolve_annotation_or_bare_df(
                     resolve_annotation_or_bare_df(ok, records, sum_types, unifier)?,
                     resolve_annotation_or_bare_df(err, records, sum_types, unifier)?,
                 )),
-                ("Map", [key, val]) => Some(Type::Map(
-                    Box::new(resolve_annotation_or_bare_df(
-                        key, records, sum_types, unifier,
-                    )?),
-                    Box::new(resolve_annotation_or_bare_df(
-                        val, records, sum_types, unifier,
-                    )?),
-                )),
-                ("Set", [elem]) => Some(Type::Set(Box::new(resolve_annotation_or_bare_df(
-                    elem, records, sum_types, unifier,
-                )?))),
                 ("Actor", [inner]) => Some(Type::Actor(Box::new(resolve_annotation_or_bare_df(
                     inner, records, sum_types, unifier,
                 )?))),
@@ -15588,31 +15548,6 @@ fn resolve_annotation_with_self_and_assoc(
                         )?,
                     ))
                 }
-                ("Map", [key, val]) => Some(Type::Map(
-                    Box::new(resolve_annotation_with_self_and_assoc(
-                        key,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?),
-                    Box::new(resolve_annotation_with_self_and_assoc(
-                        val,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?),
-                )),
-                ("Set", [inner]) => {
-                    Some(Type::Set(Box::new(resolve_annotation_with_self_and_assoc(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?)))
-                }
                 ("Actor", [inner]) => Some(Type::Actor(Box::new(
                     resolve_annotation_with_self_and_assoc(
                         inner,
@@ -15923,37 +15858,6 @@ fn resolve_annotation_with_self_assoc_and_params(
                         )?,
                     ))
                 }
-                ("Map", [key, val]) => Some(Type::Map(
-                    Box::new(resolve_annotation_with_self_assoc_and_params(
-                        key,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                        type_params,
-                        placeholder_id,
-                    )?),
-                    Box::new(resolve_annotation_with_self_assoc_and_params(
-                        val,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                        type_params,
-                        placeholder_id,
-                    )?),
-                )),
-                ("Set", [inner]) => Some(Type::Set(Box::new(
-                    resolve_annotation_with_self_assoc_and_params(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                        type_params,
-                        placeholder_id,
-                    )?,
-                ))),
                 ("Actor", [inner]) => Some(Type::Actor(Box::new(
                     resolve_annotation_with_self_assoc_and_params(
                         inner,
