@@ -10870,6 +10870,20 @@ fn infer_handle_expr_type(
                 .at(span_to_loc(clause.span)),
             );
         }
+        // `Never`-returning operations don't yield a value back to the caller,
+        // so the handler clause must not call `resume` (there's nothing to resume to).
+        if *op_fn.ret == Type::Never && resume_count > 0 {
+            usage_diags.push(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!(
+                        "`{target_effect}.{}` returns `Never` — handler clause must not call `resume`",
+                        clause.operation.node,
+                    ),
+                )
+                .at(span_to_loc(clause.span)),
+            );
+        }
         for diag in usage_diags {
             unifier.push_error(diag);
         }
@@ -10899,6 +10913,14 @@ fn infer_handle_expr_type(
         let missing = all_ops
             .into_iter()
             .filter(|op| !seen_ops.contains(op))
+            // Never-returning operations cannot have well-typed handler clauses
+            // until zero-resume lowering is implemented, so they are optional.
+            .filter(|op| {
+                let Some(scheme) = env.lookup_module_type_scheme(&module_path, op) else {
+                    return true;
+                };
+                !matches!(&scheme.ty, Type::Function(f) if *f.ret == Type::Never)
+            })
             .collect::<Vec<_>>();
         if !missing.is_empty() {
             unifier.push_error(

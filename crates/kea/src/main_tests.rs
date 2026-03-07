@@ -10982,11 +10982,10 @@ fn compile_and_execute_evidence_through_closure_exit_code() {
 fn compile_and_execute_capability_mock_io_stdout_exit_code() {
     // user handler intercepts IO.stdout, proving capability mocking works
     let source_path = write_temp_source(
-        // TODO: IO.exit should be a zero-resume clause (`IO.exit(code) -> code`) once
-        // the codegen supports non-resuming handler clauses for Never-returning operations.
-        // For now, `resume ()` is a type-unsound placeholder that works because this
-        // test never calls IO.exit. See: zero-resume handler clause lowering gap.
-        "use IO\n\nfn program() -[IO]> Int\n  IO.stdout(\"intercepted\")\n  42\n\nfn main() -> Int\n  handle program()\n    IO.stdout(msg) -> resume ()\n    IO.stderr(msg) -> resume ()\n    IO.read_file(path) -> resume \"\"\n    IO.write_file(path, data) -> resume ()\n    IO.exit(code) -> resume ()\n    IO.file_exists(path) -> resume True\n    IO.env_var(name) -> resume \"\"\n    IO.mkdir(path) -> resume ()\n",
+        // IO.exit is omitted: Never-returning operations are optional in handlers
+        // (they can't be well-typed until zero-resume clause lowering is implemented).
+        // If IO.exit were called here it would fall through to the Direct runtime path.
+        "use IO\n\nfn program() -[IO]> Int\n  IO.stdout(\"intercepted\")\n  42\n\nfn main() -> Int\n  handle program()\n    IO.stdout(msg) -> resume ()\n    IO.stderr(msg) -> resume ()\n    IO.read_file(path) -> resume \"\"\n    IO.write_file(path, data) -> resume ()\n    IO.file_exists(path) -> resume True\n    IO.env_var(name) -> resume \"\"\n    IO.mkdir(path) -> resume ()\n",
         "kea-cli-capability-mock-io-stdout",
         "kea",
     );

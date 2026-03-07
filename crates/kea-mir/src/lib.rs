@@ -3055,16 +3055,15 @@ fn insert_releases_for_dead_params(function: &mut MirFunction, layouts: &MirLayo
             continue;
         };
         if let Some(record_name) = key.strip_prefix("record:") {
-            // If a layout is registered, check whether it's unboxed or all-primitive
-            // (stack-allocated). Releasing such params is a no-op at runtime but
-            // triggers reuse analysis that turns stack RecordInits into RecordInitReuse.
-            // Records with no registered layout (e.g. in isolated unit tests, or forward
-            // references) are treated as heap-managed by default.
+            // Skip only explicitly unboxed records — those are stack-allocated and
+            // never heap-managed. Records whose fields happen to be all-primitives
+            // are still heap-allocated when passed as function parameters (the caller
+            // boxed them), so they DO need a Release here.
             if layouts
                 .records
                 .iter()
                 .find(|l| l.name == record_name)
-                .is_some_and(|layout| layout.is_unboxed || mir_record_has_only_primitive_fields(layout))
+                .is_some_and(|layout| layout.is_unboxed)
             {
                 continue;
             }
@@ -3563,17 +3562,6 @@ fn infer_heap_layout_keys(function: &MirFunction) -> BTreeMap<MirValueId, String
     keys
 }
 
-/// Returns true if every field of the record layout has a primitive (non-managed-heap)
-/// annotation. Records with only primitive fields are stack-lowered by codegen, so inserting
-/// a Release for such a parameter would be a no-op at runtime — but the Release instruction
-/// triggers the reuse analysis which converts a stack-eligible `RecordInit` into a
-/// `RecordInitReuse`, adding spurious alloc stats.
-fn mir_record_has_only_primitive_fields(layout: &MirRecordLayout) -> bool {
-    const PRIMITIVES: &[&str] = &["Int", "Bool", "Unit", "Char", "Float", "Dynamic"];
-    layout.fields.iter().all(|f| {
-        matches!(&f.annotation, kea_ast::TypeAnnotation::Named(n) if PRIMITIVES.contains(&n.as_str()))
-    })
-}
 
 fn type_layout_key(ty: &Type) -> Option<String> {
     match ty {
@@ -3981,10 +3969,15 @@ struct EffectOperationInfo {
     operation: String,
     arity: usize,
     returns_unit: bool,
+    returns_never: bool,
 }
 
 fn is_unit_type_annotation(annotation: &TypeAnnotation) -> bool {
     matches!(annotation, TypeAnnotation::Named(name) if name == "Unit")
+}
+
+fn is_never_type_annotation(annotation: &TypeAnnotation) -> bool {
+    matches!(annotation, TypeAnnotation::Named(name) if name == "Never")
 }
 
 fn collect_effect_operations(module: &HirModule) -> BTreeMap<String, EffectOperationInfo> {
@@ -4002,6 +3995,7 @@ fn collect_effect_operations(module: &HirModule) -> BTreeMap<String, EffectOpera
                 operation: operation.clone(),
                 arity: op.params.len(),
                 returns_unit: is_unit_type_annotation(&op.return_annotation.node),
+                returns_never: is_never_type_annotation(&op.return_annotation.node),
             };
             operations.insert(format!("{effect}.{operation}"), info.clone());
             operations.insert(format!("{module_path}.{operation}"), info);
@@ -4030,7 +4024,12 @@ fn handler_plan_for_effect(
     // handler_cell_lowering_for_operation always returns InvokeCallback, so
     // the plan is the same for all effects — capability, stateful, or reader.
     let mut operation_lowering = BTreeMap::new();
-    for op in effect_operations.values().filter(|op| op.effect == effect) {
+    for op in effect_operations
+        .values()
+        .filter(|op| op.effect == effect)
+        // Never-returning ops don't use the callback/cell dispatch mechanism.
+        .filter(|op| !op.returns_never)
+    {
         let Some(lowering) = handler_cell_lowering_for_operation(op) else {
             continue;
         };
@@ -4075,7 +4074,13 @@ fn collect_function_dispatch_effects(
             .collect::<Vec<_>>();
         let mut dispatch_ops = BTreeSet::new();
         for effect in effects {
-            for op in effect_operations.values().filter(|op| op.effect == effect) {
+            for op in effect_operations
+                .values()
+                .filter(|op| op.effect == effect)
+                // Never-returning ops don't participate in the dispatch/callback
+                // mechanism: they use the Direct path (or trap). No cell needed.
+                .filter(|op| !op.returns_never)
+            {
                 dispatch_ops.insert(format!("{effect}.{}", op.operation));
             }
         }
@@ -4965,7 +4970,12 @@ fn lower_hir_function(
             if !is_direct_capability_effect(effect) {
                 continue;
             }
-            for op in effect_operations.values().filter(|op| op.effect == effect) {
+            for op in effect_operations
+                .values()
+                .filter(|op| op.effect == effect)
+                // Never-returning ops use the Direct path; no default cell needed.
+                .filter(|op| !op.returns_never)
+            {
                 let wrapper_name = default_capability_wrapper_name(effect, &op.operation);
                 let fn_ref = ctx.new_value();
                 ctx.emit_inst(MirInst::FunctionRef {
@@ -7626,29 +7636,29 @@ impl FunctionLoweringCtx {
             return result;
         }
         if let HirExprKind::Var(name) = &func.kind
-            && name == "Fail.fail"
-            && !capture_fail_result
-        {
-            let mut lowered_args = Vec::with_capacity(args.len());
-            for arg in args {
-                lowered_args.push(self.lower_expr(arg)?);
-            }
-            self.emit_inst(MirInst::EffectOp {
-                class: MirEffectOpClass::ZeroResume,
-                effect: "Fail".to_string(),
-                operation: "fail".to_string(),
-                args: lowered_args,
-                result: None,
-            });
-            self.set_terminator(MirTerminator::Unreachable);
-            return None;
-        }
-        if let HirExprKind::Var(name) = &func.kind
             && !capture_fail_result
             && let Some(op_info) = self.effect_operations.get(name).cloned()
         {
             let effect = op_info.effect;
             let operation = op_info.operation;
+            // Zero-resume: Never-returning operations don't yield a value back to
+            // the caller and have no continuation to resume. Emit ZeroResume and
+            // mark the block unreachable regardless of whether a handler cell exists.
+            if op_info.returns_never {
+                let mut lowered_args = Vec::with_capacity(args.len());
+                for arg in args {
+                    lowered_args.push(self.lower_expr(arg)?);
+                }
+                self.emit_inst(MirInst::EffectOp {
+                    class: MirEffectOpClass::ZeroResume,
+                    effect: effect.clone(),
+                    operation: operation.clone(),
+                    args: lowered_args,
+                    result: None,
+                });
+                self.set_terminator(MirTerminator::Unreachable);
+                return None;
+            }
             if let Some(cell) = self.lookup_effect_cell(&effect, &operation) {
                 let lowering = {
                     let Some(plan) = self.active_effect_handlers.get(&effect) else {
@@ -8952,7 +8962,8 @@ fn is_heap_managed_type(ty: &Type, layouts: &MirLayoutCatalog) -> bool {
 mod tests {
     use super::*;
     use kea_ast::{
-        Argument, DeclKind, ExprKind, Lit, RecordDef, Spanned, TypeAnnotation, TypeDef,
+        Argument, DeclKind, EffectDecl, EffectOperation, ExprKind, Lit, RecordDef, Span,
+        Spanned, TypeAnnotation, TypeDef,
         TypeVariant, VariantField,
     };
     use kea_hir::{HirExpr, HirExprKind, HirFunction, HirParam};
@@ -10994,8 +11005,24 @@ mod tests {
 
     #[test]
     fn lower_hir_module_lowers_fail_qualified_call_to_zero_resume_effect_op() {
+        let fail_decl = HirDecl::Raw(DeclKind::EffectDecl(EffectDecl {
+            public: false,
+            name: Spanned { node: "Fail".to_string(), span: Span::synthetic() },
+            doc: None,
+            type_params: vec!["E".to_string()],
+            operations: vec![EffectOperation {
+                name: Spanned { node: "fail".to_string(), span: Span::synthetic() },
+                params: vec![],
+                return_annotation: Spanned {
+                    node: TypeAnnotation::Named("Never".to_string()),
+                    span: Span::synthetic(),
+                },
+                doc: None,
+                span: Span::synthetic(),
+            }],
+        }));
         let hir = HirModule {
-            declarations: vec![HirDecl::Function(HirFunction {
+            declarations: vec![fail_decl, HirDecl::Function(HirFunction {
                 name: "boom".to_string(),
                 params: vec![],
                 body: HirExpr {

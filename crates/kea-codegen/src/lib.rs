@@ -5510,24 +5510,21 @@ fn lower_instruction<M: Module>(
                         ),
                     })
                 }
-            } else if *class == MirEffectOpClass::ZeroResume
-                && effect == "Fail"
-                && operation == "fail"
-            {
+            } else if *class == MirEffectOpClass::ZeroResume {
                 if result.is_some() {
                     return Err(CodegenError::UnsupportedMir {
                         function: function_name.to_string(),
-                        detail:
-                            "Fail.zero-resume operation must not produce a value in 0d lowering"
-                                .to_string(),
+                        detail: format!(
+                            "`{effect}.{operation}` zero-resume operation must not produce a value in 0d lowering"
+                        ),
                     });
                 }
                 if let Some((_, err_ty)) = ctx.current_runtime_sig.runtime_return.as_result() {
                     let payload_value_id = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
                         function: function_name.to_string(),
-                        detail:
-                            "Fail.zero-resume operation in Result-returning function requires one payload argument"
-                                .to_string(),
+                        detail: format!(
+                            "`{effect}.{operation}` zero-resume operation in Result-returning function requires one payload argument"
+                        ),
                     })?;
                     let payload = get_value(values, function_name, payload_value_id)?;
                     let result_ptr = lower_result_allocation(
@@ -7298,6 +7295,7 @@ pub fn default_abi_manifest(module: &MirModule) -> AbiManifest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kea_ast::{DeclKind, EffectDecl, EffectOperation, Spanned, Span, TypeAnnotation};
     use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirParam};
     use kea_mir::{
         MirBlock, MirBlockId, MirBlockParam, MirFunctionSignature, MirLayoutCatalog,
@@ -12085,10 +12083,29 @@ mod tests {
         assert_eq!(exit_code, 11);
     }
 
+    fn fail_effect_decl() -> HirDecl {
+        HirDecl::Raw(DeclKind::EffectDecl(EffectDecl {
+            public: false,
+            name: Spanned { node: "Fail".to_string(), span: Span::synthetic() },
+            doc: None,
+            type_params: vec!["E".to_string()],
+            operations: vec![EffectOperation {
+                name: Spanned { node: "fail".to_string(), span: Span::synthetic() },
+                params: vec![],
+                return_annotation: Spanned {
+                    node: TypeAnnotation::Named("Never".to_string()),
+                    span: Span::synthetic(),
+                },
+                doc: None,
+                span: Span::synthetic(),
+            }],
+        }))
+    }
+
     #[test]
     fn execute_hir_main_jit_reports_fail_only_main_err_path() {
         let hir = HirModule {
-            declarations: vec![HirDecl::Function(HirFunction {
+            declarations: vec![fail_effect_decl(), HirDecl::Function(HirFunction {
                 name: "main".to_string(),
                 params: vec![],
                 body: HirExpr {
