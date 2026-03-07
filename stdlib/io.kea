@@ -25,10 +25,10 @@ effect IO
       IO.read_file("out.txt")   -- => "data"
   fn read_file(path: String) -[IO]> String
   doc
-    Terminate the process with an exit code.
+    Terminate the process with an exit code. Does not return.
 
       IO.exit(1)
-  fn exit(code: Int) -[IO]> Unit
+  fn exit(code: Int) -[IO]> Never
   doc
     Check whether a file or directory exists.
 
