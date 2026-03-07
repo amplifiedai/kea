@@ -8140,7 +8140,10 @@ impl FunctionLoweringCtx {
             _ => expr.ty.clone(),
         };
 
-        let result = if call_ret_type == Type::Unit {
+        // When capturing the Fail-ABI result (catch), always allocate a result
+        // variable even for Unit-returning callees — the variable holds the
+        // runtime Result handle (a pointer), not the logical return value.
+        let result = if call_ret_type == Type::Unit && !capture_fail_result {
             None
         } else {
             Some(self.new_value())
