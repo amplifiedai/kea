@@ -3072,9 +3072,35 @@ fn insert_releases_for_dead_params(function: &mut MirFunction, layouts: &MirLayo
             managed_sum_params.push(param_id);
         }
     }
+    // Locally-defined sum-typed Call results are uniquely owned by this function
+    // (freshly allocated return values, RC=1 at the call site). Case 1 is therefore
+    // safe for them — unlike sum params — but ONLY in blocks reachable from the
+    // defining block. An SSA Call result only exists on control-flow paths that
+    // pass through its defining block; inserting a Release on a disjoint path
+    // (e.g. the `if n<=0` base-case branch when the Call is in the `else` branch)
+    // would reference an undefined value.
+    let mut managed_local_sum_calls: Vec<MirValueId> = Vec::new();
+    // Maps each local sum Call result to the block where it is defined, for the
+    // Case 1 reachability constraint.
+    let mut def_block_for_case1: BTreeMap<MirValueId, MirBlockId> = BTreeMap::new();
+    for block in &function.blocks {
+        for inst in &block.instructions {
+            if let MirInst::Call { result: Some(dest), .. } = inst {
+                if heap_layout_keys
+                    .get(dest)
+                    .is_some_and(|k| k.starts_with("sum:"))
+                {
+                    managed_local_sum_calls.push(dest.clone());
+                    def_block_for_case1.insert(dest.clone(), block.id.clone());
+                }
+            }
+        }
+    }
+
     let managed_params: Vec<MirValueId> = managed_record_params
         .iter()
         .chain(managed_sum_params.iter())
+        .chain(managed_local_sum_calls.iter())
         .cloned()
         .collect();
 
@@ -3182,6 +3208,30 @@ fn insert_releases_for_dead_params(function: &mut MirFunction, layouts: &MirLayo
 
         // --- Step 3: Compute release insertion points (before inserting anything) --- //
         //
+        // For locally-defined Call results (not function params), precompute which
+        // blocks are reachable from the defining block via a forward BFS. A Case 1
+        // Release is only valid in a block reachable from the defining block — the
+        // SSA value does not exist on control-flow paths that bypass its definition.
+        let reachable_from_def: Option<BTreeSet<MirBlockId>> =
+            if let Some(def_block) = def_block_for_case1.get(param_id) {
+                let mut reachable = BTreeSet::new();
+                let mut stack = vec![def_block.clone()];
+                while let Some(bid) = stack.pop() {
+                    if reachable.insert(bid.clone()) {
+                        if let Some(succs) = successors.get(&bid) {
+                            for s in succs {
+                                if !reachable.contains(s) {
+                                    stack.push(s.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                Some(reachable)
+            } else {
+                None
+            };
+
         // Case 1 — death boundary: param is live in predecessor but dead in this block.
         // Release is inserted at the head of the first dead block on each path.
         let case1_candidates: BTreeSet<MirBlockId> = function
@@ -3196,6 +3246,9 @@ fn insert_releases_for_dead_params(function: &mut MirFunction, layouts: &MirLayo
                 && !block.instructions.iter().any(|inst| {
                     matches!(inst, MirInst::Release { value } if value == param_id)
                 })
+                // For locally-defined Call results: only in blocks reachable from the
+                // defining block. The value is undefined on disjoint CFG paths.
+                && reachable_from_def.as_ref().map(|r| r.contains(&block.id)).unwrap_or(true)
                 // Must have ALL predecessors live at entry.
                 // If any predecessor is dead, that dead predecessor has its own Case 1
                 // Release for the incoming path. Inserting another Release here would
@@ -3310,12 +3363,12 @@ fn insert_releases_for_dead_params(function: &mut MirFunction, layouts: &MirLayo
             .collect();
 
         // --- Step 4: Insert the releases --- //
-        // Case 1 (dead-boundary release) is only applied to record-typed params.
-        // Sum-typed params skip Case 1 because releasing a sum at the boundary of a dead
-        // successor block is unsafe without Perceus RC=1 uniqueness checks: the caller may
-        // only hold a shallow Retain of the outermost pointer, so freeing an inner node
-        // (e.g. the Nil base-case) while the caller still traverses the chain causes
-        // use-after-free. Case 2 is still applied for sum params (with the Dynamic guard).
+        // Case 1 (dead-boundary release) is applied to record params AND locally-defined
+        // sum Call results (uniquely owned, RC=1 — releasing at a dead boundary is safe).
+        // Sum-typed *function params* skip Case 1: the caller may hold a shallow Retain
+        // of the outermost pointer; releasing at the dead boundary would decrement the
+        // shared RC and free inner nodes still reachable by the caller.
+        // Case 2 is applied to all managed values (with the SumPayloadLoad safety guard).
         if !managed_sum_params.contains(param_id) {
             for block_id in case1_candidates {
                 if let Some(block) = function.blocks.iter_mut().find(|b| b.id == block_id) {
@@ -3557,6 +3610,34 @@ fn infer_heap_layout_keys(function: &MirFunction) -> BTreeMap<MirValueId, String
                 }
                 _ => {}
             }
+        }
+    }
+    // Propagate layout keys through Jump terminator args to block params (fixpoint).
+    // Block params that join if/else branches may have Dynamic type in the HIR when
+    // arm expressions have heterogeneous static types. Propagating the concrete key
+    // from the Jump argument to the block param lets reuse analysis see the correct
+    // layout on join-block params (e.g. `q` in an if/else that produces a Point on
+    // both branches).
+    loop {
+        let mut changed = false;
+        for block_idx in 0..function.blocks.len() {
+            if let MirTerminator::Jump { target, args } = &function.blocks[block_idx].terminator {
+                let target = target.clone();
+                let args = args.clone();
+                if let Some(target_block) = function.blocks.iter().find(|b| b.id == target) {
+                    for (arg_value, block_param) in args.iter().zip(target_block.params.iter()) {
+                        if !keys.contains_key(&block_param.id) {
+                            if let Some(key) = keys.get(arg_value).cloned() {
+                                keys.insert(block_param.id.clone(), key);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !changed {
+            break;
         }
     }
     keys
