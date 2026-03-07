@@ -3085,14 +3085,13 @@ fn insert_releases_for_dead_params(function: &mut MirFunction, layouts: &MirLayo
     let mut def_block_for_case1: BTreeMap<MirValueId, MirBlockId> = BTreeMap::new();
     for block in &function.blocks {
         for inst in &block.instructions {
-            if let MirInst::Call { result: Some(dest), .. } = inst {
-                if heap_layout_keys
+            if let MirInst::Call { result: Some(dest), .. } = inst
+                && heap_layout_keys
                     .get(dest)
                     .is_some_and(|k| k.starts_with("sum:"))
-                {
-                    managed_local_sum_calls.push(dest.clone());
-                    def_block_for_case1.insert(dest.clone(), block.id.clone());
-                }
+            {
+                managed_local_sum_calls.push(dest.clone());
+                def_block_for_case1.insert(dest.clone(), block.id.clone());
             }
         }
     }
@@ -3217,12 +3216,12 @@ fn insert_releases_for_dead_params(function: &mut MirFunction, layouts: &MirLayo
                 let mut reachable = BTreeSet::new();
                 let mut stack = vec![def_block.clone()];
                 while let Some(bid) = stack.pop() {
-                    if reachable.insert(bid.clone()) {
-                        if let Some(succs) = successors.get(&bid) {
-                            for s in succs {
-                                if !reachable.contains(s) {
-                                    stack.push(s.clone());
-                                }
+                    if reachable.insert(bid.clone())
+                        && let Some(succs) = successors.get(&bid)
+                    {
+                        for s in succs {
+                            if !reachable.contains(s) {
+                                stack.push(s.clone());
                             }
                         }
                     }
@@ -3626,11 +3625,11 @@ fn infer_heap_layout_keys(function: &MirFunction) -> BTreeMap<MirValueId, String
                 let args = args.clone();
                 if let Some(target_block) = function.blocks.iter().find(|b| b.id == target) {
                     for (arg_value, block_param) in args.iter().zip(target_block.params.iter()) {
-                        if !keys.contains_key(&block_param.id) {
-                            if let Some(key) = keys.get(arg_value).cloned() {
-                                keys.insert(block_param.id.clone(), key);
-                                changed = true;
-                            }
+                        if !keys.contains_key(&block_param.id)
+                            && let Some(key) = keys.get(arg_value).cloned()
+                        {
+                            keys.insert(block_param.id.clone(), key);
+                            changed = true;
                         }
                     }
                 }
@@ -4703,6 +4702,106 @@ fn collect_hir_dispatch_effect_ops(
     }
 }
 
+/// Collect dispatch effect keys required by directly-called known functions.
+///
+/// When a lambda body calls a named function (e.g. `IO.println`), that function
+/// may itself require dispatch effect cells (e.g. `IO.stdout`) as trailing params.
+/// The calling lambda therefore also needs those cells available, either captured
+/// into the closure or received as trailing params.
+///
+/// This is particularly important for handler clause callbacks whose synthesised
+/// type is `EffectRow::pure()` — `dispatch_effects_for_effect_row` returns nothing
+/// for them, but the body may call IO/Clock/etc. functions that need dispatch cells.
+fn collect_callee_known_dispatch_effects(
+    expr: &HirExpr,
+    known_dispatch_effects: &BTreeMap<String, Vec<String>>,
+    out: &mut BTreeSet<String>,
+) {
+    match &expr.kind {
+        HirExprKind::Lit(_) | HirExprKind::Raw(_) => {}
+        HirExprKind::Var(_) => {}
+        HirExprKind::Binary { left, right, .. } => {
+            collect_callee_known_dispatch_effects(left, known_dispatch_effects, out);
+            collect_callee_known_dispatch_effects(right, known_dispatch_effects, out);
+        }
+        HirExprKind::Unary { operand, .. } => {
+            collect_callee_known_dispatch_effects(operand, known_dispatch_effects, out)
+        }
+        HirExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_callee_known_dispatch_effects(condition, known_dispatch_effects, out);
+            collect_callee_known_dispatch_effects(then_branch, known_dispatch_effects, out);
+            if let Some(else_expr) = else_branch {
+                collect_callee_known_dispatch_effects(else_expr, known_dispatch_effects, out);
+            }
+        }
+        HirExprKind::Call { func, args } => {
+            // Add dispatch effects of the directly-called function.
+            if let HirExprKind::Var(name) = &func.kind
+                && let Some(callee_effects) = known_dispatch_effects.get(name)
+            {
+                out.extend(callee_effects.iter().cloned());
+            }
+            collect_callee_known_dispatch_effects(func, known_dispatch_effects, out);
+            for arg in args {
+                collect_callee_known_dispatch_effects(arg, known_dispatch_effects, out);
+            }
+        }
+        HirExprKind::Let { value, .. } => {
+            collect_callee_known_dispatch_effects(value, known_dispatch_effects, out)
+        }
+        HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
+            for item in exprs {
+                collect_callee_known_dispatch_effects(item, known_dispatch_effects, out);
+            }
+        }
+        HirExprKind::Lambda { .. } => {
+            // Don't recurse into nested lambdas — they have their own dispatch context.
+        }
+        HirExprKind::RecordLit { fields, .. } => {
+            for (_, field_expr) in fields {
+                collect_callee_known_dispatch_effects(field_expr, known_dispatch_effects, out);
+            }
+        }
+        HirExprKind::RecordUpdate { base, fields, .. } => {
+            collect_callee_known_dispatch_effects(base, known_dispatch_effects, out);
+            for (_, field_expr) in fields {
+                collect_callee_known_dispatch_effects(field_expr, known_dispatch_effects, out);
+            }
+        }
+        HirExprKind::FieldAccess { expr, .. } | HirExprKind::SumPayloadAccess { expr, .. } => {
+            collect_callee_known_dispatch_effects(expr, known_dispatch_effects, out)
+        }
+        HirExprKind::SumConstructor { fields, .. } => {
+            for field_expr in fields {
+                collect_callee_known_dispatch_effects(field_expr, known_dispatch_effects, out);
+            }
+        }
+        HirExprKind::Catch { expr } => {
+            collect_callee_known_dispatch_effects(expr, known_dispatch_effects, out)
+        }
+        HirExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            collect_callee_known_dispatch_effects(expr, known_dispatch_effects, out);
+            for clause in clauses {
+                collect_callee_known_dispatch_effects(&clause.body, known_dispatch_effects, out);
+            }
+            if let Some(then_expr) = then_clause {
+                collect_callee_known_dispatch_effects(then_expr, known_dispatch_effects, out);
+            }
+        }
+        HirExprKind::Resume { value } => {
+            collect_callee_known_dispatch_effects(value, known_dispatch_effects, out)
+        }
+    }
+}
+
 /// Returns `true` if `body` contains a `Fail` effect call that is not
 /// protected by an inner `catch` or a nested `handle` that handles `Fail`.
 ///
@@ -5193,6 +5292,14 @@ fn lower_hir_function(
         ctx.lower_expr(&function.body)
     };
     let lifted_functions = ctx.lifted_functions.clone();
+    // HIR body types are erased to Dynamic when no type annotation is available.
+    // If the body lowered to None (Unit call) but the declared return type is
+    // Dynamic, promote ret to Unit so that codegen emits the correct void return.
+    let ret = if ret == Type::Dynamic && return_value.is_none() {
+        Type::Unit
+    } else {
+        ret
+    };
     let blocks = ctx.finish(return_value, &ret);
 
     let mut functions = vec![MirFunction {
@@ -6513,6 +6620,15 @@ impl FunctionLoweringCtx {
             .into_iter()
             .collect::<BTreeSet<_>>();
         collect_hir_dispatch_effect_ops(body, &self.effect_operations, &mut lambda_dispatch_set);
+        // Also collect dispatch effects required by directly-called known functions.
+        // This is necessary when the lambda type is pure (e.g. handler clause callbacks)
+        // but the body calls functions like IO.println that require dispatch cells.
+        // Without this, the closure doesn't capture the needed effect cells and crashes.
+        collect_callee_known_dispatch_effects(
+            body,
+            &self.known_function_dispatch_effects,
+            &mut lambda_dispatch_set,
+        );
         let lambda_dispatch_effects = lambda_dispatch_set.into_iter().collect::<Vec<_>>();
         let mut known_dispatch_effects = self.known_function_dispatch_effects.clone();
         if !lambda_dispatch_effects.is_empty() {
@@ -6530,6 +6646,14 @@ impl FunctionLoweringCtx {
             &known_dispatch_effects,
             &self.lambda_factories,
         );
+        // Use the actual return type from the lowered lambda body rather than
+        // resolved_fn_ty.ret. HIR types are erased to Dynamic when no annotation
+        // is available; lower_hir_function promotes Dynamic→Unit when the body
+        // produces no value, so the lowered signature has the correct ret.
+        let actual_ret = lowered_functions
+            .first()
+            .map(|f| f.signature.ret.clone())
+            .unwrap_or_else(|| resolved_fn_ty.ret.as_ref().clone());
         for lowered in lowered_functions {
             self.register_generated_function(lowered);
         }
@@ -6571,7 +6695,7 @@ impl FunctionLoweringCtx {
                 .iter()
                 .map(|(_, ty)| ty.clone())
                 .collect(),
-            resolved_fn_ty.ret.as_ref().clone(),
+            actual_ret,
             resolved_fn_ty.effects.clone(),
             callee_fail_result_abi,
         );
@@ -7192,10 +7316,9 @@ impl FunctionLoweringCtx {
                 };
                 // Bind dispatch effects into the closure environment so that
                 // effect operations inside the lambda body work when the closure
-                // is called indirectly (stored in a variable, returned, etc.).
-                // Argument-position lambdas use false because the caller threads
-                // dispatch params at the call site. Expression-position lambdas
-                // must capture cells because var_types may not preserve effect rows.
+                // is called indirectly. The calling convention for closure variables
+                // (var_types = Dynamic) passes no dispatch trailing args, so the
+                // entry wrapper must have no dispatch params — cells are captured.
                 self.lower_lambda_to_closure_value(
                     expr,
                     params,
@@ -8472,6 +8595,9 @@ impl FunctionLoweringCtx {
                 .effect_operations
                 .values()
                 .filter(|op| op.effect == effect)
+                // Never-returning ops (IO.exit, Fail.fail) use the Direct/ZeroResume path;
+                // they don't participate in the callback dispatch mechanism and have no cell.
+                .filter(|op| !op.returns_never)
             {
                 dispatch_ops.insert(format!("{effect}.{}", op.operation));
             }
