@@ -2078,7 +2078,6 @@ fn infer_mir_value_types(
                         Type::Record(RecordType {
                             name: record_type.clone(),
                             params: Vec::new(),
-                            row: kea_types::RowType::closed(Vec::new()),
                         }),
                     );
                 }
@@ -2090,7 +2089,6 @@ fn infer_mir_value_types(
                         Type::Sum(SumType {
                             name: sum_type.clone(),
                             type_args: Vec::new(),
-                            variants: Vec::new(),
                         }),
                     );
                 }
@@ -2162,7 +2160,6 @@ fn infer_mir_value_types(
                         Type::Record(RecordType {
                             name: record_type.clone(),
                             params: Vec::new(),
-                            row: kea_types::RowType::closed(Vec::new()),
                         })
                     });
                     value_types.insert(dest.clone(), ty);
@@ -6637,12 +6634,10 @@ fn annotation_to_backend_type(
             _ if record_names.contains(name) => Type::Record(RecordType {
                 name: name.clone(),
                 params: Vec::new(),
-                row: kea_types::RowType::closed(Vec::new()),
             }),
             _ if sum_names.contains(name) => Type::Sum(SumType {
                 name: name.clone(),
                 type_args: Vec::new(),
-                variants: Vec::new(),
             }),
             _ => Type::Dynamic,
         },
@@ -6658,13 +6653,11 @@ fn annotation_to_backend_type(
                 Type::Record(RecordType {
                     name: name.clone(),
                     params: Vec::new(),
-                    row: kea_types::RowType::closed(Vec::new()),
                 })
             } else if sum_names.contains(name) {
                 Type::Sum(SumType {
                     name: name.clone(),
                     type_args: Vec::new(),
-                    variants: Vec::new(),
                 })
             } else {
                 Type::Dynamic
@@ -7311,7 +7304,7 @@ mod tests {
         MirRecordFieldLayout, MirRecordLayout, MirSumLayout, MirTerminator, MirVariantFieldLayout,
         MirVariantLayout,
     };
-    use kea_types::{FunctionType, Label, RecordType, RowType, SumType};
+    use kea_types::{FunctionType, Label, RecordType, SumType};
 
     #[test]
     fn clif_type_maps_precision_int_widths() {
@@ -8342,10 +8335,6 @@ mod tests {
                     params: vec![Type::Record(RecordType {
                         name: "User".to_string(),
                         params: vec![],
-                        row: RowType::closed(vec![
-                            (Label::new("age"), Type::Int),
-                            (Label::new("name"), Type::String),
-                        ]),
                     })],
                     ret: Type::Int,
                     effects: EffectRow::pure(),
@@ -8537,10 +8526,6 @@ mod tests {
                             ty: Type::Record(RecordType {
                                 name: "Pair".to_string(),
                                 params: vec![],
-                                row: RowType::closed(vec![
-                                    (Label::new("left"), Type::Int),
-                                    (Label::new("right"), Type::Int),
-                                ]),
                             }),
                         }],
                         instructions: vec![
@@ -8681,10 +8666,6 @@ mod tests {
                     ret: Type::Record(RecordType {
                         name: "Pair".to_string(),
                         params: vec![],
-                        row: RowType::closed(vec![
-                            (Label::new("left"), Type::Int),
-                            (Label::new("right"), Type::Int),
-                        ]),
                     }),
                     effects: EffectRow::pure(),
                 },
@@ -8724,10 +8705,6 @@ mod tests {
                             ty: Type::Record(RecordType {
                                 name: "Pair".to_string(),
                                 params: vec![],
-                                row: RowType::closed(vec![
-                                    (Label::new("left"), Type::Int),
-                                    (Label::new("right"), Type::Int),
-                                ]),
                             }),
                         }],
                         instructions: vec![],
@@ -8802,10 +8779,6 @@ mod tests {
                             ty: Type::Record(RecordType {
                                 name: "Pair".to_string(),
                                 params: vec![],
-                                row: RowType::closed(vec![
-                                    (Label::new("left"), Type::Int),
-                                    (Label::new("right"), Type::Int),
-                                ]),
                             }),
                         }],
                         instructions: vec![MirInst::Call {
@@ -8814,10 +8787,6 @@ mod tests {
                             arg_types: vec![Type::Record(RecordType {
                                 name: "Pair".to_string(),
                                 params: vec![],
-                                row: RowType::closed(vec![
-                                    (Label::new("left"), Type::Int),
-                                    (Label::new("right"), Type::Int),
-                                ]),
                             })],
                             result: Some(MirValueId(4)),
                             ret_type: Type::Int,
@@ -8896,10 +8865,6 @@ mod tests {
                             ty: Type::Record(RecordType {
                                 name: "Pair".to_string(),
                                 params: vec![],
-                                row: RowType::closed(vec![
-                                    (Label::new("left"), Type::Int),
-                                    (Label::new("right"), Type::Int),
-                                ]),
                             }),
                         }],
                         instructions: vec![
@@ -9158,10 +9123,6 @@ mod tests {
                     ret: Type::Sum(SumType {
                         name: "Pairish".to_string(),
                         type_args: vec![],
-                        variants: vec![
-                            ("Pair".to_string(), vec![Type::Int, Type::Int]),
-                            ("Swap".to_string(), vec![Type::Int, Type::Int]),
-                        ],
                     }),
                     effects: EffectRow::pure(),
                 },
@@ -9361,10 +9322,6 @@ mod tests {
                             ty: Type::Sum(SumType {
                                 name: "Pairish".to_string(),
                                 type_args: vec![],
-                                variants: vec![
-                                    ("Pair".to_string(), vec![Type::Int, Type::Int]),
-                                    ("Swap".to_string(), vec![Type::Int, Type::Int]),
-                                ],
                             }),
                         }],
                         instructions: vec![MirInst::SumPayloadLoad {
@@ -9429,10 +9386,6 @@ mod tests {
                     ret: Type::Sum(SumType {
                         name: "Pairish".to_string(),
                         type_args: vec![],
-                        variants: vec![
-                            ("Pair".to_string(), vec![Type::Int, Type::Int]),
-                            ("Swap".to_string(), vec![Type::Int, Type::Int]),
-                        ],
                     }),
                     effects: EffectRow::pure(),
                 },
@@ -9471,10 +9424,6 @@ mod tests {
                             ty: Type::Sum(SumType {
                                 name: "Pairish".to_string(),
                                 type_args: vec![],
-                                variants: vec![
-                                    ("Pair".to_string(), vec![Type::Int, Type::Int]),
-                                    ("Swap".to_string(), vec![Type::Int, Type::Int]),
-                                ],
                             }),
                         }],
                         instructions: vec![],
@@ -9567,10 +9516,6 @@ mod tests {
                             ty: Type::Sum(SumType {
                                 name: "Pairish".to_string(),
                                 type_args: vec![],
-                                variants: vec![
-                                    ("Pair".to_string(), vec![Type::Int, Type::Int]),
-                                    ("Swap".to_string(), vec![Type::Int, Type::Int]),
-                                ],
                             }),
                         }],
                         instructions: vec![MirInst::Call {
@@ -9579,10 +9524,6 @@ mod tests {
                             arg_types: vec![Type::Sum(SumType {
                                 name: "Pairish".to_string(),
                                 type_args: vec![],
-                                variants: vec![
-                                    ("Pair".to_string(), vec![Type::Int, Type::Int]),
-                                    ("Swap".to_string(), vec![Type::Int, Type::Int]),
-                                ],
                             })],
                             result: Some(MirValueId(4)),
                             ret_type: Type::Int,
@@ -9679,10 +9620,6 @@ mod tests {
                             ty: Type::Sum(SumType {
                                 name: "Pairish".to_string(),
                                 type_args: vec![],
-                                variants: vec![
-                                    ("Pair".to_string(), vec![Type::Int, Type::Int]),
-                                    ("Swap".to_string(), vec![Type::Int, Type::Int]),
-                                ],
                             }),
                         }],
                         instructions: vec![
@@ -9849,7 +9786,6 @@ mod tests {
                             ty: Type::Record(RecordType {
                                 name: "User".to_string(),
                                 params: vec![],
-                                row: RowType::closed(vec![(Label::new("age"), Type::Int)]),
                             }),
                         }],
                         instructions: vec![
@@ -9899,10 +9835,6 @@ mod tests {
                     ret: Type::Sum(SumType {
                         name: "Option".to_string(),
                         type_args: vec![Type::Int],
-                        variants: vec![
-                            ("Some".to_string(), vec![Type::Int]),
-                            ("None".to_string(), vec![]),
-                        ],
                     }),
                     effects: EffectRow::pure(),
                 },
@@ -10037,10 +9969,6 @@ mod tests {
                     params: vec![Type::Sum(SumType {
                         name: "Option".to_string(),
                         type_args: vec![Type::Int],
-                        variants: vec![
-                            ("Some".to_string(), vec![Type::Int]),
-                            ("None".to_string(), vec![]),
-                        ],
                     })],
                     ret: Type::Bool,
                     effects: EffectRow::pure(),
@@ -10104,10 +10032,6 @@ mod tests {
                     params: vec![Type::Sum(SumType {
                         name: "Option".to_string(),
                         type_args: vec![Type::Int],
-                        variants: vec![
-                            ("Some".to_string(), vec![Type::Int]),
-                            ("None".to_string(), vec![]),
-                        ],
                     })],
                     ret: Type::Int,
                     effects: EffectRow::pure(),
@@ -10158,10 +10082,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![
-                (Label::new("name"), Type::String),
-                (Label::new("age"), Type::Int),
-            ]),
         });
         MirModule {
             functions: vec![MirFunction {
@@ -10190,10 +10110,6 @@ mod tests {
         let option_ty = Type::Sum(SumType {
             name: "Option".to_string(),
             type_args: vec![Type::Int],
-            variants: vec![
-                ("Some".to_string(), vec![Type::Int]),
-                ("None".to_string(), vec![]),
-            ],
         });
         MirModule {
             functions: vec![MirFunction {
@@ -10846,10 +10762,6 @@ mod tests {
                     params: vec![Type::Sum(SumType {
                         name: "MaybeText".to_string(),
                         type_args: vec![],
-                        variants: vec![
-                            ("Some".to_string(), vec![Type::String]),
-                            ("None".to_string(), vec![]),
-                        ],
                     })],
                     ret: Type::String,
                     effects: EffectRow::pure(),
@@ -10903,10 +10815,6 @@ mod tests {
             Some(&Type::Sum(SumType {
                 name: "MaybeText".to_string(),
                 type_args: vec![],
-                variants: vec![
-                    ("Some".to_string(), vec![Type::String]),
-                    ("None".to_string(), vec![]),
-                ],
             }))
         );
         assert_eq!(value_types.get(&MirValueId(1)), Some(&Type::String));

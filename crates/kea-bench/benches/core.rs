@@ -472,6 +472,7 @@ fn build_numeric_hir_module(terms: usize) -> HirModule {
             body: expr,
             ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
             effects: EffectRow::pure(),
+            is_fip: false,
             span,
         })],
     }
@@ -528,6 +529,7 @@ fn build_allocation_heavy_hir_module(levels: usize) -> HirModule {
             },
             ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
             effects: EffectRow::pure(),
+            is_fip: false,
             span,
         })],
     }
@@ -539,7 +541,6 @@ fn build_linear_heap_alias_chain_hir_module(levels: usize) -> HirModule {
     let box_ty = Type::Record(RecordType {
         name: "Box".to_string(),
         params: vec![],
-        row: RowType::closed(vec![(Label::new("n"), Type::Int)]),
     });
 
     let mut exprs = Vec::with_capacity(depth + 2);
@@ -634,10 +635,6 @@ fn build_record_update_single_hir_module() -> HirModule {
     let user_ty = Type::Record(RecordType {
         name: "User".to_string(),
         params: vec![],
-        row: RowType::closed(vec![
-            (Label::new("age"), Type::Int),
-            (Label::new("score"), Type::Int),
-        ]),
     });
 
     let body = HirExpr {
@@ -681,6 +678,7 @@ fn build_record_update_single_hir_module() -> HirModule {
             body,
             ty: Type::Function(FunctionType::pure(vec![user_ty.clone()], user_ty)),
             effects: EffectRow::pure(),
+            is_fip: false,
             span,
         })],
     }
@@ -691,10 +689,6 @@ fn build_record_update_chain_hir_module() -> HirModule {
     let user_ty = Type::Record(RecordType {
         name: "User".to_string(),
         params: vec![],
-        row: RowType::closed(vec![
-            (Label::new("age"), Type::Int),
-            (Label::new("score"), Type::Int),
-        ]),
     });
 
     let base = HirExpr {
@@ -745,6 +739,7 @@ fn build_record_update_chain_hir_module() -> HirModule {
             body,
             ty: Type::Function(FunctionType::pure(vec![user_ty.clone()], user_ty)),
             effects: EffectRow::pure(),
+            is_fip: false,
             span,
         })],
     }

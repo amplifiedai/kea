@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{BinOp, DeclKind, ExprKind as AstExprKind, TypeAnnotation, UnaryOp};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirHandleClause, HirModule, HirPattern};
-use kea_types::{EffectRow, FunctionType, Label, RecordType, RowType, SumType, Type};
+use kea_types::{EffectRow, FunctionType, Label, RecordType, SumType, Type};
 
 /// Configuration for MIR lowering passes.
 #[derive(Debug, Clone, Default)]
@@ -8051,7 +8051,6 @@ impl FunctionLoweringCtx {
                     return Type::Record(RecordType {
                         name: record_type.clone(),
                         params: vec![],
-                        row: RowType::empty_closed(),
                     });
                 }
                 if let Some(value_id) = self.vars.get(name)
@@ -8060,7 +8059,6 @@ impl FunctionLoweringCtx {
                     return Type::Sum(SumType {
                         name: sum_type.clone(),
                         type_args: vec![],
-                        variants: vec![],
                     });
                 }
                 fallback
@@ -8077,7 +8075,6 @@ impl FunctionLoweringCtx {
                     return Type::Sum(SumType {
                         name: sum_type,
                         type_args: vec![],
-                        variants: vec![],
                     });
                 }
                 expr.ty.clone()
@@ -8806,9 +8803,7 @@ fn is_primitive_equality_type(ty: &Type) -> bool {
 
 fn is_concrete_nominal_equality_type(ty: &Type) -> bool {
     match ty {
-        Type::Record(record) => {
-            !record.row.is_open() && !record.params.iter().any(type_contains_inference_var)
-        }
+        Type::Record(record) => !record.params.iter().any(type_contains_inference_var),
         Type::Sum(sum) => !sum.type_args.iter().any(type_contains_inference_var),
         _ => false,
     }
@@ -8874,22 +8869,8 @@ fn type_contains_inference_var(ty: &Type) -> bool {
             type_contains_inference_var(key) || type_contains_inference_var(value)
         }
         Type::Tuple(items) => items.iter().any(type_contains_inference_var),
-        Type::Record(record) => {
-            record.params.iter().any(type_contains_inference_var)
-                || record
-                    .row
-                    .fields
-                    .iter()
-                    .any(|(_, field_ty)| type_contains_inference_var(field_ty))
-                || record.row.rest.is_some()
-        }
-        Type::Sum(sum) => {
-            sum.type_args.iter().any(type_contains_inference_var)
-                || sum
-                    .variants
-                    .iter()
-                    .any(|(_, fields)| fields.iter().any(type_contains_inference_var))
-        }
+        Type::Record(record) => record.params.iter().any(type_contains_inference_var),
+        Type::Sum(sum) => sum.type_args.iter().any(type_contains_inference_var),
         Type::Opaque { params, .. } => params.iter().any(type_contains_inference_var),
         Type::App(head, args) => {
             type_contains_inference_var(head) || args.iter().any(type_contains_inference_var)
@@ -9279,10 +9260,6 @@ mod tests {
         let sum_ty = Type::Sum(SumType {
             name: "Option".to_string(),
             type_args: vec![Type::Int],
-            variants: vec![
-                ("Some".to_string(), vec![Type::Int]),
-                ("None".to_string(), vec![]),
-            ],
         });
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
@@ -9329,18 +9306,10 @@ mod tests {
         let maybe_int_ty = Type::Sum(SumType {
             name: "Maybe".to_string(),
             type_args: vec![Type::Int],
-            variants: vec![
-                ("Just".to_string(), vec![Type::Int]),
-                ("Nothing".to_string(), vec![]),
-            ],
         });
         let maybe_maybe_ty = Type::Sum(SumType {
             name: "Maybe".to_string(),
             type_args: vec![maybe_int_ty.clone()],
-            variants: vec![
-                ("Just".to_string(), vec![maybe_int_ty.clone()]),
-                ("Nothing".to_string(), vec![]),
-            ],
         });
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
@@ -9672,10 +9641,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![
-                (Label::new("age"), Type::Int),
-                (Label::new("name"), Type::String),
-            ]),
         });
 
         let hir = HirModule {
@@ -9732,10 +9697,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![
-                (Label::new("age"), Type::Int),
-                (Label::new("name"), Type::String),
-            ]),
         });
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
@@ -9777,10 +9738,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "Point".to_string(),
             params: vec![],
-            row: RowType::closed(vec![
-                (Label::new("x"), Type::Int),
-                (Label::new("y"), Type::Int),
-            ]),
         });
         // Register Point as an unboxed record layout.
         let hir = HirModule {
@@ -9843,18 +9800,10 @@ mod tests {
         let list_ty = Type::Sum(kea_types::SumType {
             name: "List".to_string(),
             type_args: vec![Type::Int],
-            variants: vec![
-                ("Cons".to_string(), vec![Type::Int, Type::Dynamic]),
-                ("Nil".to_string(), vec![]),
-            ],
         });
         let option_list_ty = Type::Sum(kea_types::SumType {
             name: "Option".to_string(),
             type_args: vec![list_ty.clone()],
-            variants: vec![
-                ("Some".to_string(), vec![list_ty.clone()]),
-                ("None".to_string(), vec![]),
-            ],
         });
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
@@ -9906,10 +9855,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![
-                (Label::new("age"), Type::Int),
-                (Label::new("name"), Type::String),
-            ]),
         });
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
@@ -9942,10 +9887,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![
-                (Label::new("age"), Type::Int),
-                (Label::new("name"), Type::String),
-            ]),
         });
 
         let hir = HirModule {
@@ -10120,10 +10061,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![
-                (Label::new("age"), Type::Int),
-                (Label::new("score"), Type::Int),
-            ]),
         });
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
@@ -10200,10 +10137,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![
-                (Label::new("age"), Type::Int),
-                (Label::new("score"), Type::Int),
-            ]),
         });
         let base_var = HirExpr {
             kind: HirExprKind::Var("user".to_string()),
@@ -10283,7 +10216,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![(Label::new("age"), Type::Int)]),
         });
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
@@ -10377,7 +10309,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![(Label::new("age"), Type::Int)]),
         });
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
@@ -10514,10 +10445,6 @@ mod tests {
         let option_ty = Type::Sum(kea_types::SumType {
             name: "Option".to_string(),
             type_args: vec![Type::Int],
-            variants: vec![
-                ("Some".to_string(), vec![Type::Int]),
-                ("None".to_string(), vec![]),
-            ],
         });
         let function_decl = HirDecl::Function(HirFunction {
             name: "make_some".to_string(),
@@ -10561,10 +10488,6 @@ mod tests {
         let option_ty = Type::Sum(kea_types::SumType {
             name: "Option".to_string(),
             type_args: vec![Type::Int],
-            variants: vec![
-                ("Some".to_string(), vec![Type::Int]),
-                ("None".to_string(), vec![]),
-            ],
         });
         let function_decl = HirDecl::Function(HirFunction {
             name: "make_some".to_string(),
@@ -10629,10 +10552,6 @@ mod tests {
         let option_ty = Type::Sum(kea_types::SumType {
             name: "Option".to_string(),
             type_args: vec![Type::Int],
-            variants: vec![
-                ("Some".to_string(), vec![Type::Int]),
-                ("None".to_string(), vec![]),
-            ],
         });
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
@@ -10688,7 +10607,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![(Label::new("age"), Type::Int)]),
         });
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
@@ -12901,7 +12819,6 @@ mod tests {
                         ty: Type::Record(RecordType {
                             name: "Point".to_string(),
                             params: vec![],
-                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
                         }),
                     }],
                     instructions: vec![
@@ -12995,7 +12912,6 @@ mod tests {
                         ty: Type::Record(RecordType {
                             name: "Point".to_string(),
                             params: vec![],
-                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
                         }),
                     }],
                     instructions: vec![
@@ -13108,7 +13024,6 @@ mod tests {
                         ty: Type::Record(RecordType {
                             name: "Point".to_string(),
                             params: vec![],
-                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
                         }),
                     }],
                     instructions: vec![
@@ -13224,7 +13139,6 @@ mod tests {
                         ty: Type::Record(RecordType {
                             name: "Point".to_string(),
                             params: vec![],
-                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
                         }),
                     }],
                     instructions: vec![
@@ -13315,7 +13229,6 @@ mod tests {
                         ty: Type::Record(RecordType {
                             name: "Point".to_string(),
                             params: vec![],
-                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
                         }),
                     }],
                     instructions: vec![
@@ -13421,7 +13334,6 @@ mod tests {
                         ty: Type::Record(RecordType {
                             name: "Point".to_string(),
                             params: vec![],
-                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
                         }),
                     }],
                     instructions: vec![
@@ -13535,7 +13447,6 @@ mod tests {
                         ty: Type::Record(RecordType {
                             name: "Point".to_string(),
                             params: vec![],
-                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
                         }),
                     }],
                     instructions: vec![MirInst::Release {
@@ -13553,7 +13464,6 @@ mod tests {
                         ty: Type::Record(RecordType {
                             name: "Point".to_string(),
                             params: vec![],
-                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
                         }),
                     }],
                     instructions: vec![
@@ -13642,12 +13552,10 @@ mod tests {
                 params: vec![Type::Record(RecordType {
                     name: "Point".to_string(),
                     params: vec![],
-                    row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
                 })],
                 ret: Type::Record(RecordType {
                     name: "Point".to_string(),
                     params: vec![],
-                    row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
                 }),
                 effects: EffectRow::pure(),
             },
@@ -15806,7 +15714,6 @@ mod tests {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![(Label::new("age"), Type::Int)]),
         });
         let hir = HirModule {
             declarations: vec![
@@ -16203,10 +16110,6 @@ mod tests {
         let result_ty = Type::Sum(kea_types::SumType {
             name: "Result".to_string(),
             type_args: vec![Type::Int, Type::Int],
-            variants: vec![
-                ("Ok".to_string(), vec![Type::Int]),
-                ("Err".to_string(), vec![Type::Int]),
-            ],
         });
         let hir = HirModule {
             declarations: vec![
@@ -16417,7 +16320,6 @@ mod tests {
         Type::Record(RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: RowType::closed(vec![(Label::new("name"), Type::String)]),
         })
     }
 
@@ -16679,10 +16581,6 @@ mod tests {
         let option_int_ty = Type::Sum(kea_types::SumType {
             name: "Option".to_string(),
             type_args: vec![Type::Int],
-            variants: vec![
-                ("Some".to_string(), vec![Type::Int]),
-                ("None".to_string(), vec![]),
-            ],
         });
         let mut function = MirFunction {
             name: "unwrap_option_int".to_string(),
@@ -16724,10 +16622,6 @@ mod tests {
         let list_ty = Type::Sum(kea_types::SumType {
             name: "List".to_string(),
             type_args: vec![Type::Dynamic],
-            variants: vec![
-                ("Cons".to_string(), vec![Type::Dynamic, Type::Dynamic]),
-                ("Nil".to_string(), vec![]),
-            ],
         });
         let mut function = MirFunction {
             name: "head_list".to_string(),
@@ -16773,10 +16667,6 @@ mod tests {
         let list_ty = Type::Sum(kea_types::SumType {
             name: "List".to_string(),
             type_args: vec![Type::Dynamic],
-            variants: vec![
-                ("Cons".to_string(), vec![Type::Dynamic, Type::Dynamic]),
-                ("Nil".to_string(), vec![]),
-            ],
         });
         // b0: Branch(v1, b1, b2)
         // b1: SumPayloadLoad(v0, Cons, 0, Dynamic) → v2; Return v2

@@ -1124,12 +1124,10 @@ fn lower_pattern_type_annotation_with_seen(
                 _ if known_record_defs.contains(name) => Type::Record(kea_types::RecordType {
                     name: name.clone(),
                     params: vec![],
-                    row: kea_types::RowType::empty_closed(),
                 }),
                 _ if known_sum_defs.contains(name) => Type::Sum(kea_types::SumType {
                     name: name.clone(),
                     type_args: vec![],
-                    variants: vec![],
                 }),
                 _ => Type::Dynamic,
             }
@@ -1150,7 +1148,6 @@ fn lower_pattern_type_annotation_with_seen(
             Type::Record(kea_types::RecordType {
                 name: name.clone(),
                 params,
-                row: kea_types::RowType::empty_closed(),
             })
         }
         TypeAnnotation::Applied(name, args) if known_sum_defs.contains(name) => {
@@ -1169,7 +1166,6 @@ fn lower_pattern_type_annotation_with_seen(
             Type::Sum(kea_types::SumType {
                 name: name.clone(),
                 type_args,
-                variants: vec![],
             })
         }
         TypeAnnotation::Tuple(elems) => Type::Tuple(
@@ -2189,7 +2185,6 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
                 Type::Sum(kea_types::SumType {
                     name: meta.sum_type,
                     type_args: vec![],
-                    variants: vec![(name.node.clone(), meta.field_types)],
                 })
             } else {
                 default_ty
@@ -2217,7 +2212,6 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
             Type::Record(kea_types::RecordType {
                 name: name.node.clone(),
                 params: vec![],
-                row: kea_types::RowType::empty_closed(),
             })
         }
         ExprKind::Update { base, .. } => match &base.node {
@@ -2225,7 +2219,6 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
                 Type::Record(kea_types::RecordType {
                     name: name.node.clone(),
                     params: vec![],
-                    row: kea_types::RowType::empty_closed(),
                 })
             }
             _ => default_ty,
@@ -3354,7 +3347,6 @@ fn collect_constructor_payload_pattern(
                 let sum_ty = Type::Sum(kea_types::SumType {
                     name: meta.sum_type.clone(),
                     type_args: Vec::new(),
-                    variants: Vec::new(),
                 });
                 match last_step {
                     ConstructorPayloadAccessStep::SumPayload { field_ty, .. }
@@ -3668,12 +3660,10 @@ fn access_path_last_type(access_path: &[ConstructorPayloadAccessStep]) -> Option
 
 fn lookup_record_field_type(record_ty: &Type, field_name: &str) -> Option<Type> {
     match record_ty {
-        Type::Record(record) => record
-            .row
-            .fields
-            .iter()
-            .find(|(label, _)| label.as_str() == field_name)
-            .map(|(_, ty)| ty.clone()),
+        // Nominal records no longer carry the row inline — field types live in the
+        // RecordRegistry which is not available in HIR lowering. Callers fall back to
+        // Type::Dynamic, which is the correct conservative choice here.
+        Type::Record(_) => None,
         Type::AnonRecord(row) | Type::Row(row) => row
             .fields
             .iter()
@@ -4012,10 +4002,6 @@ mod tests {
                 vec![Type::Record(kea_types::RecordType {
                     name: "User".to_string(),
                     params: vec![],
-                    row: kea_types::RowType::closed(vec![
-                        (Label::new("age"), Type::Int),
-                        (Label::new("name"), Type::String),
-                    ]),
                 })],
                 Type::Int,
             ))),
@@ -4044,7 +4030,6 @@ mod tests {
                 Type::Record(kea_types::RecordType {
                     name: "User".to_string(),
                     params: vec![],
-                    row: kea_types::RowType::closed(vec![(Label::new("age"), Type::Int)]),
                 }),
             ))),
         );
@@ -4081,10 +4066,6 @@ mod tests {
                 Type::Sum(kea_types::SumType {
                     name: "Flag".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        ("Yep".to_string(), vec![Type::Int]),
-                        ("Nope".to_string(), vec![]),
-                    ],
                 }),
             ))),
         );
@@ -4124,10 +4105,6 @@ mod tests {
                 Type::Sum(kea_types::SumType {
                     name: "Flag".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        ("Yep".to_string(), vec![Type::Int]),
-                        ("Nope".to_string(), vec![]),
-                    ],
                 }),
             ))),
         );
@@ -4167,7 +4144,6 @@ mod tests {
                 Type::Sum(kea_types::SumType {
                     name: "Pair".to_string(),
                     type_args: vec![],
-                    variants: vec![("Pair".to_string(), vec![Type::Int, Type::Int])],
                 }),
             ))),
         );
@@ -4201,10 +4177,6 @@ mod tests {
         let user_ty = Type::Record(kea_types::RecordType {
             name: "User".to_string(),
             params: vec![],
-            row: kea_types::RowType::closed(vec![
-                (Label::new("age"), Type::Int),
-                (Label::new("score"), Type::Int),
-            ]),
         });
         env.bind(
             "tweak".to_string(),
@@ -4462,10 +4434,6 @@ mod tests {
                 vec![Type::Record(kea_types::RecordType {
                     name: "User".to_string(),
                     params: vec![],
-                    row: kea_types::RowType::closed(vec![
-                        (Label::new("age"), Type::Int),
-                        (Label::new("score"), Type::Int),
-                    ]),
                 })],
                 Type::Int,
             ))),
@@ -4510,10 +4478,6 @@ mod tests {
                 vec![Type::Record(kea_types::RecordType {
                     name: "User".to_string(),
                     params: vec![],
-                    row: kea_types::RowType::closed(vec![
-                        (Label::new("age"), Type::Int),
-                        (Label::new("score"), Type::Int),
-                    ]),
                 })],
                 Type::Int,
             ))),
@@ -4554,10 +4518,6 @@ mod tests {
                 vec![Type::Record(kea_types::RecordType {
                     name: "User".to_string(),
                     params: vec![],
-                    row: kea_types::RowType::closed(vec![
-                        (Label::new("age"), Type::Int),
-                        (Label::new("score"), Type::Int),
-                    ]),
                 })],
                 Type::Int,
             ))),
@@ -4600,10 +4560,6 @@ mod tests {
                 vec![Type::Record(kea_types::RecordType {
                     name: "User".to_string(),
                     params: vec![],
-                    row: kea_types::RowType::closed(vec![
-                        (Label::new("age"), Type::Int),
-                        (Label::new("score"), Type::Int),
-                    ]),
                 })],
                 Type::Int,
             ))),
@@ -4843,10 +4799,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Flag".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        ("Yep".to_string(), vec![Type::Int]),
-                        ("Nope".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
@@ -4888,10 +4840,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Flag".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        ("Yep".to_string(), vec![Type::Int]),
-                        ("Nope".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
@@ -4945,10 +4893,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Flag".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        ("Yep".to_string(), vec![Type::Int]),
-                        ("Nope".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
@@ -5011,10 +4955,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Pair".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        ("Pair".to_string(), vec![Type::Int, Type::Int]),
-                        ("Nope".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
@@ -5071,10 +5011,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Flag".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        ("Yep".to_string(), vec![Type::Int]),
-                        ("Nope".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
@@ -5111,10 +5047,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Maybe".to_string(),
                     type_args: vec![Type::Int],
-                    variants: vec![
-                        ("Just".to_string(), vec![Type::Dynamic]),
-                        ("Nothing".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
@@ -5162,20 +5094,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Outer".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        (
-                            "Wrap".to_string(),
-                            vec![Type::Sum(kea_types::SumType {
-                                name: "Inner".to_string(),
-                                type_args: vec![],
-                                variants: vec![
-                                    ("A".to_string(), vec![Type::Int]),
-                                    ("B".to_string(), vec![Type::Int]),
-                                ],
-                            })],
-                        ),
-                        ("End".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
@@ -5209,20 +5127,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Wrap".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        (
-                            "W".to_string(),
-                            vec![Type::Record(kea_types::RecordType {
-                                name: "User".to_string(),
-                                params: vec![],
-                                row: kea_types::RowType::closed(vec![(
-                                    Label::new("age"),
-                                    Type::Int,
-                                )]),
-                            })],
-                        ),
-                        ("N".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
@@ -5273,10 +5177,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Flag".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        ("Yep".to_string(), vec![Type::Int]),
-                        ("Nope".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
@@ -5323,11 +5223,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Either".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        ("Left".to_string(), vec![Type::Int]),
-                        ("Right".to_string(), vec![Type::Int]),
-                        ("Nope".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
@@ -5378,10 +5273,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Flag".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        ("Yep".to_string(), vec![Type::Int]),
-                        ("Nope".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
@@ -5445,11 +5336,6 @@ mod tests {
                 vec![Type::Sum(kea_types::SumType {
                     name: "Either".to_string(),
                     type_args: vec![],
-                    variants: vec![
-                        ("Left".to_string(), vec![Type::Int]),
-                        ("Right".to_string(), vec![Type::Int]),
-                        ("Nope".to_string(), vec![]),
-                    ],
                 })],
                 Type::Int,
             ))),
