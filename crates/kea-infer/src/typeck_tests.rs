@@ -4453,7 +4453,7 @@ fn record_registry_to_type() {
     match ty {
         Type::Record(rec) => {
             assert_eq!(rec.name, "Point");
-            assert_eq!(rec.row.fields.len(), 2);
+            assert_eq!(registry.lookup("Point").unwrap().row.fields.len(), 2);
         }
         _ => panic!("expected Record type, got {:?}", ty),
     }
@@ -4635,7 +4635,8 @@ fn annotation_resolves_parametric_record_application() {
         Type::Record(rec) => {
             assert_eq!(rec.name, "Box");
             assert_eq!(rec.params, vec![Type::Int]);
-            assert_eq!(rec.row.get(&Label::new("value")), Some(&Type::Int));
+            let row = instantiate_record_row(&rec, &registry).expect("row should resolve");
+            assert_eq!(row.get(&Label::new("value")), Some(&Type::Int));
         }
         other => panic!("expected record type, got {other:?}"),
     }
@@ -5569,7 +5570,8 @@ fn parametric_record_construction_infers_type_argument() {
         Type::Record(rec) => {
             assert_eq!(rec.name, "Box");
             assert_eq!(rec.params, vec![Type::Int]);
-            assert_eq!(rec.row.get(&Label::new("value")), Some(&Type::Int));
+            let row = instantiate_record_row(&rec, &registry).expect("row should resolve");
+            assert_eq!(row.get(&Label::new("value")), Some(&Type::Int));
         }
         other => panic!("expected Record, got {other:?}"),
     }
@@ -7564,7 +7566,6 @@ fn trait_lookup_method_for_type_unique() {
             params: vec![Type::Record(RecordType {
                 name: "Point".to_string(),
                 params: vec![],
-                row: RowType::closed(vec![]),
             })],
             ret: Box::new(Type::String),
             effects: EffectRow::pure(),
@@ -7608,7 +7609,6 @@ fn trait_lookup_method_for_type_ambiguous() {
                 params: vec![Type::Record(RecordType {
                     name: "Point".to_string(),
                     params: vec![],
-                    row: RowType::closed(vec![]),
                 })],
                 ret: Box::new(Type::String),
                 effects: EffectRow::pure(),
@@ -10019,7 +10019,6 @@ fn setup_actor_test(impl_actor: bool) -> (TypeEnv, RecordRegistry, TraitRegistry
         kea_types::TypeScheme::mono(Type::Record(kea_types::RecordType {
             name: "Counter".to_string(),
             params: vec![],
-            row: kea_types::RowType::closed(vec![(Label::new("count"), Type::Int)]),
         })),
     );
 
@@ -10045,7 +10044,6 @@ fn dispatch_semantics_self_return_is_send() {
     let counter = Type::Record(RecordType {
         name: "Counter".to_string(),
         params: vec![],
-        row: RowType::closed(vec![(Label::new("count"), Type::Int)]),
     });
     assert_eq!(
         derive_dispatch_semantics("Counter", &counter),
@@ -10066,7 +10064,6 @@ fn dispatch_semantics_tuple_self_return_is_call_with_state() {
     let counter = Type::Record(RecordType {
         name: "Counter".to_string(),
         params: vec![],
-        row: RowType::closed(vec![(Label::new("count"), Type::Int)]),
     });
     let ret = Type::Tuple(vec![counter.clone(), Type::Int]);
     assert_eq!(
@@ -10089,7 +10086,6 @@ fn build_protocol_strips_self_param() {
     let counter = Type::Record(RecordType {
         name: "Counter".to_string(),
         params: vec![],
-        row: RowType::closed(vec![(Label::new("count"), Type::Int)]),
     });
     let mut methods = BTreeMap::new();
     // fn inc(self) -> Counter
@@ -10136,7 +10132,6 @@ fn register_and_find_protocol_roundtrip() {
     let counter = Type::Record(RecordType {
         name: "Counter".to_string(),
         params: vec![],
-        row: RowType::closed(vec![(Label::new("count"), Type::Int)]),
     });
     let mut methods = BTreeMap::new();
     methods.insert(
@@ -10169,7 +10164,6 @@ fn setup_actor_protocol_test() -> (TypeEnv, RecordRegistry, TraitRegistry) {
     let counter_ty = Type::Record(RecordType {
         name: "Counter".to_string(),
         params: vec![],
-        row: RowType::closed(vec![(Label::new("count"), Type::Int)]),
     });
 
     let mut methods = BTreeMap::new();
@@ -10503,7 +10497,6 @@ fn send_on_concrete_type_without_protocol_is_error() {
     let counter_ty = Type::Record(RecordType {
         name: "Counter".to_string(),
         params: vec![],
-        row: RowType::closed(vec![(Label::new("count"), Type::Int)]),
     });
     env.bind(
         "a".into(),
@@ -10535,7 +10528,6 @@ fn call_on_concrete_type_without_protocol_is_error() {
     let counter_ty = Type::Record(RecordType {
         name: "Counter".to_string(),
         params: vec![],
-        row: RowType::closed(vec![(Label::new("count"), Type::Int)]),
     });
     env.bind(
         "a".into(),
@@ -13010,4 +13002,106 @@ fn infer_char_literal() {
     let (ty, u) = infer(&lit_char('A'));
     assert!(!u.has_errors());
     assert_eq!(ty, Type::Char);
+}
+
+// ---------------------------------------------------------------------------
+// Regression tests: nominal type representation (recursive structs/sums)
+// ---------------------------------------------------------------------------
+
+/// Regression: `struct Nest { next: Option(Nest) }` must typecheck without
+/// "extra field" errors. The old structural representation would capture the
+/// empty-closed placeholder row during two-phase registration and then fail
+/// when unifying a Nest with itself (thinking it had an unknown extra field).
+#[test]
+fn recursive_struct_registers_and_unifies() {
+    let mut records = RecordRegistry::new();
+    let def = make_record_def(
+        "Nest",
+        vec![(
+            "next",
+            TypeAnnotation::Applied(
+                "Option".to_string(),
+                vec![TypeAnnotation::Named("Nest".to_string())],
+            ),
+        )],
+    );
+    records.register(&def).expect("recursive struct should register");
+    let ty = records.to_type("Nest").expect("Nest type should exist");
+    match ty {
+        Type::Record(rec) => assert_eq!(rec.name, "Nest"),
+        other => panic!("expected Record, got {other:?}"),
+    }
+}
+
+/// Regression: mutual recursive structs `A { b: B }` and `B { a: Option(A) }`
+/// must both register and produce nominal types without structural leakage.
+#[test]
+fn mutual_recursive_structs_register() {
+    let mut records = RecordRegistry::new();
+    let def_a = make_record_def(
+        "RA",
+        vec![("b", TypeAnnotation::Named("RB".to_string()))],
+    );
+    let def_b = make_record_def(
+        "RB",
+        vec![(
+            "a",
+            TypeAnnotation::Applied(
+                "Option".to_string(),
+                vec![TypeAnnotation::Named("RA".to_string())],
+            ),
+        )],
+    );
+    // Two-phase: reserve names first, then resolve fields (allows cross-references).
+    records.register_names(&[&def_a, &def_b]).expect("names should reserve");
+    records.resolve_registered_fields(&[&def_a, &def_b], None).expect("fields should resolve");
+    assert!(records.to_type("RA").is_some());
+    assert!(records.to_type("RB").is_some());
+}
+
+/// Regression: a generic recursive sum `Tree a = Leaf | Node(Tree a, a, Tree a)`
+/// must produce a Sum type with type_args only, no inline variants on SumType.
+#[test]
+fn recursive_sum_generic_registers() {
+    let mut sums = SumTypeRegistry::new();
+    let tree_var = Type::Var(TypeVarId(0));
+    sums.register_raw(
+        "Tree",
+        SumTypeInfo {
+            params: vec!["a".to_string()],
+            variants: vec![
+                VariantInfo {
+                    name: "Leaf".to_string(),
+                    fields: vec![],
+                    where_constraints: vec![],
+                    recursive_fields: vec![],
+                    definition_span: None,
+                },
+                VariantInfo {
+                    name: "Node".to_string(),
+                    fields: vec![
+                        VariantFieldInfo { name: None, ty: Type::Sum(kea_types::SumType { name: "Tree".to_string(), type_args: vec![tree_var.clone()] }) },
+                        VariantFieldInfo { name: None, ty: tree_var.clone() },
+                        VariantFieldInfo { name: None, ty: Type::Sum(kea_types::SumType { name: "Tree".to_string(), type_args: vec![tree_var.clone()] }) },
+                    ],
+                    where_constraints: vec![],
+                    recursive_fields: vec![true, false, true],
+                    definition_span: None,
+                },
+            ],
+            is_recursive: true,
+            definition_span: None,
+            doc: None,
+            public: false,
+        },
+    );
+    let ty = sums.to_type("Tree");
+    assert!(ty.is_some(), "Tree should produce a type");
+    match ty.unwrap() {
+        Type::Sum(st) => {
+            assert_eq!(st.name, "Tree");
+            assert_eq!(st.type_args.len(), 1);
+        }
+        other => panic!("expected Sum, got {other:?}"),
+    }
 }

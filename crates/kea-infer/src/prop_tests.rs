@@ -37,14 +37,8 @@ fn contains_dynamic(ty: &Type) -> bool {
         Type::Map(a, b) => contains_dynamic(a) || contains_dynamic(b),
         Type::Tuple(elems) => elems.iter().any(contains_dynamic),
         Type::Function(ft) => ft.params.iter().any(contains_dynamic) || contains_dynamic(&ft.ret),
-        Type::Record(rt) => rt.row.fields.iter().any(|(_, ty)| contains_dynamic(ty)),
-        Type::Sum(st) => {
-            st.type_args.iter().any(contains_dynamic)
-                || st
-                    .variants
-                    .iter()
-                    .any(|(_, fields)| fields.iter().any(contains_dynamic))
-        }
+        Type::Record(rt) => rt.params.iter().any(contains_dynamic),
+        Type::Sum(st) => st.type_args.iter().any(contains_dynamic),
         _ => false,
     }
 }
@@ -87,8 +81,6 @@ fn arb_ground_type() -> impl Strategy<Value = Type> {
         Just(Type::String),
         Just(Type::Unit),
         Just(kea_types::builtin_error_sum_type("IOError").expect("builtin error type")),
-        Just(kea_types::builtin_error_sum_type("SchemaError").expect("builtin error type")),
-        Just(kea_types::builtin_error_sum_type("ExecError").expect("builtin error type")),
         Just(kea_types::builtin_error_sum_type("ActorError").expect("builtin error type")),
         Just(Type::Atom),
         Just(Type::Date),
@@ -949,18 +941,12 @@ fn contains_var(ty: &Type, var: TypeVarId) -> bool {
         Type::Var(v) => *v == var,
         Type::Set(inner) => contains_var(inner, var),
         Type::Map(k, v) => contains_var(k, var) || contains_var(v, var),
-        Type::Sum(st) => {
-            st.type_args.iter().any(|t| contains_var(t, var))
-                || st
-                    .variants
-                    .iter()
-                    .any(|(_, fields)| fields.iter().any(|t| contains_var(t, var)))
-        }
+        Type::Sum(st) => st.type_args.iter().any(|t| contains_var(t, var)),
         Type::Tuple(elems) => elems.iter().any(|t| contains_var(t, var)),
         Type::Function(ft) => {
             ft.params.iter().any(|t| contains_var(t, var)) || contains_var(&ft.ret, var)
         }
-        Type::Record(rt) => rt.row.fields.iter().any(|(_, t)| contains_var(t, var)),
+        Type::Record(rt) => rt.params.iter().any(|t| contains_var(t, var)),
         Type::AnonRecord(row) | Type::Row(row) => {
             row.fields.iter().any(|(_, t)| contains_var(t, var))
         }
@@ -1169,15 +1155,9 @@ fn contains_function(ty: &Type) -> bool {
         Type::Function(_) => true,
         Type::Set(inner) => contains_function(inner),
         Type::Map(k, v) => contains_function(k) || contains_function(v),
-        Type::Sum(st) => {
-            st.type_args.iter().any(contains_function)
-                || st
-                    .variants
-                    .iter()
-                    .any(|(_, fields)| fields.iter().any(contains_function))
-        }
+        Type::Sum(st) => st.type_args.iter().any(contains_function),
         Type::Tuple(elems) => elems.iter().any(contains_function),
-        Type::Record(rt) => rt.row.fields.iter().any(|(_, t)| contains_function(t)),
+        Type::Record(rt) => rt.params.iter().any(contains_function),
         Type::AnonRecord(row) | Type::Row(row) => {
             row.fields.iter().any(|(_, t)| contains_function(t))
         }
@@ -1231,11 +1211,10 @@ fn arb_nested_type(depth: u32) -> BoxedStrategy<Type> {
                 .prop_map(|(a, b)| Type::result(a, b)),
             1 => prop::collection::vec(inner.clone(), 2..=4)
                 .prop_map(Type::Tuple),
-            1 => (arb_label(), inner.clone())
-                .prop_map(|(label, ty)| Type::Record(RecordType {
+            1 => inner.clone()
+                .prop_map(|_ty| Type::Record(RecordType {
                     name: "TestRecord".to_string(),
                     params: vec![],
-                    row: RowType::closed(vec![(label, ty)]),
                 })),
         ]
         .boxed()
