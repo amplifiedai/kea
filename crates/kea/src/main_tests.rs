@@ -10724,6 +10724,50 @@ fn compile_and_execute_recursive_handler_installation_depth_exit_code() {
 }
 
 #[test]
+fn compile_handler_clause_with_direct_fail_call_is_rejected() {
+    // A handler clause body that calls Fail.fail cannot propagate the failure
+    // through the pure callback ABI — it would silently trap at runtime.
+    // The compiler must diagnose this with a clear error.
+    //
+    // Wrapping in `catch` so the residual Fail is valid at the type level,
+    // letting the type checker pass and the MIR lowering guard fire.
+    let source_path = write_temp_source(
+        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Int\n  Echo.say(\"hello\")\n  42\n\nfn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      Fail.fail(\"no says allowed\")\n      resume ()\n  case r\n    Ok(v) -> v\n    Err(_) -> -1\n",
+        "kea-cli-handler-clause-residual-fail",
+        "kea",
+    );
+
+    let err = compile_file(&source_path, CodegenMode::Aot)
+        .expect_err("residual Fail in handler clause must be rejected");
+    assert!(
+        err.contains("Fail")
+            && (err.contains("callback ABI")
+                || err.contains("declared pure")
+                || err.contains("effects")),
+        "expected residual-Fail-in-callback diagnostic, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_handler_clause_fail_inside_catch_is_allowed() {
+    // Fail.fail inside a `catch` within the handler clause body is fine:
+    // the catch swallows the failure before it can escape the callback.
+    // Echo.say returns Unit so resume must provide Unit; computation returns 42.
+    let source_path = write_temp_source(
+        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Int\n  Echo.say(\"hello\")\n  42\n\nfn main() -> Int\n  handle computation()\n    Echo.say(s) ->\n      let _ = catch Fail.fail(\"swallowed\")\n      resume ()\n",
+        "kea-cli-handler-clause-fail-inside-catch",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("Fail inside catch in handler clause should succeed");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_and_reject_fail_triggered_after_resume_in_current_lowering() {
     let source_path = write_temp_source(
         "effect Fail\n  fn fail(err: Int) -> Never\n\neffect Gate\n  fn read() -> Int\n\nfn program() -[Gate, Fail Int]> Int\n  let n = Gate.read()\n  if n == 0\n    fail 9\n  else\n    n\n\nfn main() -> Int\n  let r = catch handle program()\n    Gate.read() -> resume 0\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",

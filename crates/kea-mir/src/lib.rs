@@ -4703,6 +4703,92 @@ fn collect_hir_dispatch_effect_ops(
     }
 }
 
+/// Returns `true` if `body` contains a `Fail` effect call that is not
+/// protected by an inner `catch` or a nested `handle` that handles `Fail`.
+///
+/// Used to detect handler clause callbacks whose bodies would silently trap
+/// at runtime: `Fail` operations cannot propagate upward through the pure
+/// callback ABI (the callback is synthesised with `EffectRow::pure()`).
+fn hir_body_has_residual_fail(
+    body: &HirExpr,
+    effect_ops: &BTreeMap<String, EffectOperationInfo>,
+) -> bool {
+    match &body.kind {
+        // A call is the primary detection point.
+        HirExprKind::Call { func, args } => {
+            let func_calls_fail = match &func.kind {
+                // Direct effect-op call: Fail.fail or any other Fail-labelled op.
+                HirExprKind::Var(name) => {
+                    effect_ops.get(name).is_some_and(|op| op.effect == "Fail")
+                        || uses_fail_result_abi_from_type(&func.ty)
+                }
+                _ => uses_fail_result_abi_from_type(&func.ty),
+            };
+            func_calls_fail
+                || hir_body_has_residual_fail(func, effect_ops)
+                || args.iter().any(|a| hir_body_has_residual_fail(a, effect_ops))
+        }
+        // `catch` swallows Fail — do NOT recurse into it.
+        HirExprKind::Catch { .. } => false,
+        // Leaves with no sub-expressions.
+        HirExprKind::Lit(_) | HirExprKind::Var(_) | HirExprKind::Raw(_) => false,
+        // Structural / compound forms — recurse.
+        HirExprKind::Binary { left, right, .. } => {
+            hir_body_has_residual_fail(left, effect_ops)
+                || hir_body_has_residual_fail(right, effect_ops)
+        }
+        HirExprKind::Unary { operand, .. } => hir_body_has_residual_fail(operand, effect_ops),
+        HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
+            exprs.iter().any(|e| hir_body_has_residual_fail(e, effect_ops))
+        }
+        HirExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            hir_body_has_residual_fail(condition, effect_ops)
+                || hir_body_has_residual_fail(then_branch, effect_ops)
+                || else_branch
+                    .as_ref()
+                    .is_some_and(|e| hir_body_has_residual_fail(e, effect_ops))
+        }
+        HirExprKind::Let { value, .. } => hir_body_has_residual_fail(value, effect_ops),
+        HirExprKind::Lambda { body, .. } => hir_body_has_residual_fail(body, effect_ops),
+        HirExprKind::Resume { value } => hir_body_has_residual_fail(value, effect_ops),
+        HirExprKind::RecordLit { fields, .. } => {
+            fields.iter().any(|(_, e)| hir_body_has_residual_fail(e, effect_ops))
+        }
+        HirExprKind::RecordUpdate { base, fields, .. } => {
+            hir_body_has_residual_fail(base, effect_ops)
+                || fields.iter().any(|(_, e)| hir_body_has_residual_fail(e, effect_ops))
+        }
+        HirExprKind::FieldAccess { expr, .. } | HirExprKind::SumPayloadAccess { expr, .. } => {
+            hir_body_has_residual_fail(expr, effect_ops)
+        }
+        HirExprKind::SumConstructor { fields, .. } => {
+            fields.iter().any(|e| hir_body_has_residual_fail(e, effect_ops))
+        }
+        // Nested handle: if any clause handles Fail, the handled expression's
+        // Fail calls are captured there — don't recurse into `expr`.  Clause
+        // bodies and the then-clause are still scanned.
+        HirExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            let inner_handles_fail = clauses.iter().any(|c| c.effect == "Fail");
+            (!inner_handles_fail && hir_body_has_residual_fail(expr, effect_ops))
+                || clauses
+                    .iter()
+                    .filter(|c| c.effect != "Fail")
+                    .any(|c| hir_body_has_residual_fail(&c.body, effect_ops))
+                || then_clause
+                    .as_ref()
+                    .is_some_and(|t| hir_body_has_residual_fail(t, effect_ops))
+        }
+    }
+}
+
 fn block_tail_ref_sets(exprs: &[HirExpr]) -> Vec<BTreeSet<String>> {
     let mut suffix = vec![BTreeSet::new(); exprs.len() + 1];
     for idx in (0..exprs.len()).rev() {
@@ -7255,6 +7341,27 @@ impl FunctionLoweringCtx {
                         return None;
                     }
                 };
+
+            // Guard: Fail-effected calls inside a handler clause callback cannot
+            // propagate through the pure callback ABI — they would silently trap
+            // at runtime. Diagnose early with a clear error instead.
+            //
+            // The fix requires threading Fail through the callback dispatch ABI,
+            // which is a non-trivial change tracked separately. For now users
+            // should wrap the handler body in `catch`, or restructure so that
+            // Fail-effectful calls happen outside the handler clause.
+            if hir_body_has_residual_fail(&clause.body, &self.effect_operations) {
+                self.emit_inst(MirInst::Unsupported {
+                    detail: format!(
+                        "handler clause `{target_effect}.{}` body calls `Fail`-effectful \
+                         operations, which cannot propagate through the callback ABI; \
+                         wrap the handler body in `catch` or move `Fail`-effectful calls \
+                         outside the handler clause",
+                        clause.operation,
+                    ),
+                });
+                return None;
+            }
 
             let pre_resume_capture_cells = match &classification {
                 ClauseBodyClassification::NonTail(split) => {
