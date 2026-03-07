@@ -4467,6 +4467,9 @@ enum ClauseBodyClassification {
     TailResumptive { callback_body: HirExpr },
     /// Body uses non-tail resume: `let x = resume val; post_code`.
     NonTail(NonTailResumeSplit),
+    /// Body handles a Never-returning operation — no `resume`, the body's
+    /// value becomes the result of the enclosing `handle` expression.
+    ZeroResume { callback_body: HirExpr },
 }
 
 /// Classify a handler clause body for callback lowering.
@@ -4475,7 +4478,14 @@ fn classify_clause_body(
     body: &HirExpr,
     clause_arg_names: &BTreeSet<String>,
     span: kea_ast::Span,
+    returns_never: bool,
 ) -> Option<ClauseBodyClassification> {
+    // Never-returning ops can't resume — body value exits the handle expression directly.
+    if returns_never {
+        return Some(ClauseBodyClassification::ZeroResume {
+            callback_body: body.clone(),
+        });
+    }
     // Direct `resume value` → tail-resumptive, callback returns value
     if let HirExprKind::Resume { value } = &body.kind {
         return Some(ClauseBodyClassification::TailResumptive {
@@ -5086,6 +5096,11 @@ struct FunctionLoweringCtx {
     /// extracted child is released — a conservative "safe but leaky" mode until full
     /// Perceus RC=1 uniqueness analysis is implemented.
     sum_payload_load_dests: BTreeSet<MirValueId>,
+    /// Exit block for zero-resume handler clauses (Never-returning ops whose handler clause
+    /// intercepts the abort and returns a value from the handle expression).
+    /// Set by `lower_handle_expr` when any clause handles a Never-returning op.
+    /// Dispatch code jumps here after invoking a zero-resume callback.
+    active_zero_resume_exit: Option<(MirBlockId, MirValueId)>,
 }
 
 #[derive(Debug, Clone)]
@@ -5223,6 +5238,7 @@ impl FunctionLoweringCtx {
             const_owner_stack: Vec::new(),
             stacking_chains: BTreeMap::new(),
             sum_payload_load_dests: BTreeSet::new(),
+            active_zero_resume_exit: None,
         }
     }
 
@@ -5484,6 +5500,8 @@ impl FunctionLoweringCtx {
                     ClauseBodyClassification::NonTail(split) => {
                         matches!(split.resume_value.kind, HirExprKind::Lit(kea_ast::Lit::Unit))
                     }
+                    // Never-returning ops can't be state-put; fall through to general path.
+                    ClauseBodyClassification::ZeroResume { .. } => false,
                 };
                 if resumes_unit {
                     let callback = self.build_state_put_callback(state_cell.clone())?;
@@ -5495,7 +5513,8 @@ impl FunctionLoweringCtx {
 
         // General path: build callback from classification
         let callback_body = match classification {
-            ClauseBodyClassification::TailResumptive { callback_body } => callback_body.clone(),
+            ClauseBodyClassification::TailResumptive { callback_body }
+            | ClauseBodyClassification::ZeroResume { callback_body } => callback_body.clone(),
             ClauseBodyClassification::NonTail(split) => {
                 let mut block_exprs = split.pre_resume_stmts.clone();
                 // Inject capture_store calls for captured bindings
@@ -7132,8 +7151,17 @@ impl FunctionLoweringCtx {
                 })
                 .collect();
 
+            let op_returns_never = self
+                .effect_operations
+                .get(&format!("{target_effect}.{}", clause.operation))
+                .is_some_and(|op| op.returns_never);
             let classification =
-                match classify_clause_body(&clause.body, &clause_arg_names, clause.span) {
+                match classify_clause_body(
+                    &clause.body,
+                    &clause_arg_names,
+                    clause.span,
+                    op_returns_never,
+                ) {
                     Some(c) => c,
                     None => {
                         self.emit_inst(MirInst::Unsupported {
@@ -7218,11 +7246,78 @@ impl FunctionLoweringCtx {
         // cause the optimizer to free it before the handler body executes
         // (schedule_trailing_releases_after_last_use sees the ClosureInit as
         // the last direct use, not the indirect use via the closure call).
+        // Zero-resume setup: if any clause handles a Never-returning op, create an
+        // exit block with a result param. Both the normal-completion path and each
+        // zero-resume dispatch will jump to this block.
+        let zero_resume_exit: Option<(MirBlockId, MirValueId)> = {
+            let has_zero_resume = clauses.iter().any(|c| {
+                self.effect_operations
+                    .get(&format!("{target_effect}.{}", c.operation))
+                    .is_some_and(|op| op.returns_never)
+            });
+            if has_zero_resume {
+                let result_param = self.new_value();
+                let exit_block = self.new_block_with_params(vec![MirBlockParam {
+                    id: result_param.clone(),
+                    ty: handle_expr.ty.clone(),
+                }]);
+                Some((exit_block, result_param))
+            } else {
+                None
+            }
+        };
+        let prev_zero_resume_exit = self.active_zero_resume_exit.clone();
+        self.active_zero_resume_exit = zero_resume_exit.clone();
+
+        // For Direct capability effects (IO, Clock, etc.), if the handler only
+        // covers some ops (e.g. just IO.exit), install default capability wrapper
+        // cells for the uncovered non-Never ops so callee dispatch still works.
+        let covered_ops: BTreeSet<String> =
+            operation_cells.iter().map(|(op, _)| op.clone()).collect();
+        let mut default_cells: Vec<(String, MirValueId)> = Vec::new();
+        if is_direct_capability_effect(&target_effect) {
+            let uncovered_ops: Vec<EffectOperationInfo> = self
+                .effect_operations
+                .values()
+                .filter(|op| op.effect == target_effect && !op.returns_never)
+                .filter(|op| !covered_ops.contains(&op.operation))
+                .cloned()
+                .collect();
+            for op in uncovered_ops {
+                if self
+                    .active_effect_cells
+                    .contains_key(&(target_effect.clone(), op.operation.clone()))
+                {
+                    // Already registered (e.g. from outer handle or main default).
+                    continue;
+                }
+                let wrapper_name =
+                    default_capability_wrapper_name(&target_effect, &op.operation);
+                let fn_ref = self.new_value();
+                self.emit_inst(MirInst::FunctionRef {
+                    dest: fn_ref.clone(),
+                    function: wrapper_name,
+                });
+                let closure = self.new_value();
+                self.emit_inst(MirInst::ClosureInit {
+                    dest: closure.clone(),
+                    entry: fn_ref,
+                    captures: vec![],
+                    capture_types: vec![],
+                });
+                default_cells.push((op.operation.clone(), closure));
+            }
+        }
+
         self.emit_inst(MirInst::HandlerEnter {
             effect: target_effect.clone(),
         });
         let incoming_scope = self.snapshot_var_scope();
         for (operation, cell) in &operation_cells {
+            self.active_effect_cells
+                .insert((target_effect.clone(), operation.clone()), cell.clone());
+        }
+        for (operation, cell) in &default_cells {
             self.active_effect_cells
                 .insert((target_effect.clone(), operation.clone()), cell.clone());
         }
@@ -7234,10 +7329,38 @@ impl FunctionLoweringCtx {
             self.active_effect_cells
                 .insert((target_effect.clone(), operation.clone()), cell.clone());
         }
+        for (operation, cell) in &default_cells {
+            self.active_effect_cells
+                .insert((target_effect.clone(), operation.clone()), cell.clone());
+        }
         self.active_effect_handlers
             .insert(target_effect.clone(), plan);
 
-        let mut lowered_result = result.clone();
+        // Normal-completion: if zero-resume clauses exist, jump to exit block.
+        let mut lowered_result = if let Some((exit_block, result_param)) = &zero_resume_exit {
+            if self.current_block().terminator.is_none() {
+                let body_val = result.clone().or_else(|| {
+                    if handled.ty == Type::Unit {
+                        let u = self.new_value();
+                        self.emit_inst(MirInst::Const {
+                            dest: u.clone(),
+                            literal: MirLiteral::Unit,
+                        });
+                        Some(u)
+                    } else {
+                        None
+                    }
+                });
+                if let Some(v) = body_val {
+                    self.ensure_jump_to(exit_block.clone(), vec![v]);
+                }
+            }
+            self.switch_to(exit_block.clone());
+            Some(result_param.clone())
+        } else {
+            result.clone()
+        };
+        self.active_zero_resume_exit = prev_zero_resume_exit;
 
         // Callback stacking: unwind the chain after handle returns.
         // The chain closure was built up per-invocation inside the callback.
@@ -7641,22 +7764,45 @@ impl FunctionLoweringCtx {
         {
             let effect = op_info.effect;
             let operation = op_info.operation;
-            // Zero-resume: Never-returning operations don't yield a value back to
-            // the caller and have no continuation to resume. Emit ZeroResume and
-            // mark the block unreachable regardless of whether a handler cell exists.
+            // Zero-resume: Never-returning operations have no continuation to resume.
+            // If a handler clause registered a cell for this op, invoke the callback
+            // and jump to the exit block (the clause body becomes the handle result).
+            // Otherwise fall through to the runtime abort path.
             if op_info.returns_never {
                 let mut lowered_args = Vec::with_capacity(args.len());
                 for arg in args {
                     lowered_args.push(self.lower_expr(arg)?);
                 }
-                self.emit_inst(MirInst::EffectOp {
-                    class: MirEffectOpClass::ZeroResume,
-                    effect: effect.clone(),
-                    operation: operation.clone(),
-                    args: lowered_args,
-                    result: None,
-                });
-                self.set_terminator(MirTerminator::Unreachable);
+                if let Some(cell) = self.lookup_effect_cell(&effect, &operation) {
+                    // Zero-resume handler clause: invoke callback, jump to exit block.
+                    let callback_result = self.new_value();
+                    self.emit_inst(MirInst::Call {
+                        callee: MirCallee::Value(cell),
+                        args: lowered_args,
+                        arg_types: vec![Type::Dynamic; op_info.arity],
+                        result: Some(callback_result.clone()),
+                        ret_type: Type::Dynamic,
+                        callee_fail_result_abi: false,
+                        capture_fail_result: false,
+                        cc_manifest_id: "default".to_string(),
+                    });
+                    if let Some((exit_block, _)) = self.active_zero_resume_exit.clone() {
+                        self.set_terminator(MirTerminator::Jump {
+                            target: exit_block,
+                            args: vec![callback_result],
+                        });
+                    }
+                } else {
+                    // No handler: runtime abort path.
+                    self.emit_inst(MirInst::EffectOp {
+                        class: MirEffectOpClass::ZeroResume,
+                        effect: effect.clone(),
+                        operation: operation.clone(),
+                        args: lowered_args,
+                        result: None,
+                    });
+                    self.set_terminator(MirTerminator::Unreachable);
+                }
                 return None;
             }
             if let Some(cell) = self.lookup_effect_cell(&effect, &operation) {

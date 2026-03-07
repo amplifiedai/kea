@@ -10988,16 +10988,52 @@ fn compile_and_execute_evidence_through_closure_exit_code() {
 fn compile_and_execute_capability_mock_io_stdout_exit_code() {
     // user handler intercepts IO.stdout, proving capability mocking works
     let source_path = write_temp_source(
-        // IO.exit is omitted: Never-returning operations are optional in handlers
-        // (they can't be well-typed until zero-resume clause lowering is implemented).
-        // If IO.exit were called here it would fall through to the Direct runtime path.
-        "use IO\n\nfn program() -[IO]> Int\n  IO.stdout(\"intercepted\")\n  42\n\nfn main() -> Int\n  handle program()\n    IO.stdout(msg) -> resume ()\n    IO.stderr(msg) -> resume ()\n    IO.read_file(path) -> resume \"\"\n    IO.write_file(path, data) -> resume ()\n    IO.file_exists(path) -> resume True\n    IO.env_var(name) -> resume \"\"\n    IO.mkdir(path) -> resume ()\n",
+        // IO.exit is included as a zero-resume clause: Never-returning ops don't call
+        // resume — the clause body value becomes the handle expression result directly.
+        "use IO\n\nfn program() -[IO]> Int\n  IO.stdout(\"intercepted\")\n  42\n\nfn main() -> Int\n  handle program()\n    IO.stdout(msg) -> resume ()\n    IO.stderr(msg) -> resume ()\n    IO.read_file(path) -> resume \"\"\n    IO.write_file(path, data) -> resume ()\n    IO.file_exists(path) -> resume True\n    IO.env_var(name) -> resume \"\"\n    IO.mkdir(path) -> resume ()\n    IO.exit(code) -> code\n",
         "kea-cli-capability-mock-io-stdout",
         "kea",
     );
 
     let run = run_file(&source_path).expect("capability mock IO.stdout should work");
     assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+// ── Zero-resume handler clause tests ────────────────────────────────
+// Never-returning ops (IO.exit, Fail.fail) can be intercepted by a handler
+// clause whose body becomes the result of the handle expression directly —
+// no `resume` call, the computation is cut short at the op invocation.
+
+#[test]
+fn compile_and_execute_zero_resume_io_exit_intercepted_by_handler() {
+    // IO.exit is a Never-returning op; its handler clause body (code) becomes
+    // the handle expression result, intercepting the abort and returning 42.
+    let source_path = write_temp_source(
+        "use IO\n\nfn program() -[IO]> Int\n  IO.exit(42)\n\nfn main() -> Int\n  handle program()\n    IO.exit(code) -> code\n",
+        "kea-cli-zero-resume-io-exit",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("zero-resume IO.exit handler should compile and execute");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_zero_resume_normal_completion_path() {
+    // When the handled body completes without calling the Never-returning op,
+    // the handle expression returns the body's normal result (not the clause body).
+    let source_path = write_temp_source(
+        "use IO\n\nfn program() -[IO]> Int\n  99\n\nfn main() -> Int\n  handle program()\n    IO.exit(code) -> code\n",
+        "kea-cli-zero-resume-normal-completion",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("zero-resume normal completion should work");
+    assert_eq!(run.exit_code, 99);
 
     let _ = std::fs::remove_file(source_path);
 }
