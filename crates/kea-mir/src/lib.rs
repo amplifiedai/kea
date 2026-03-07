@@ -4937,6 +4937,12 @@ fn lower_hir_function(
                             ctx.var_record_types.insert(name.clone(), record_type);
                         }
                     }
+                    Type::Tuple(items) => {
+                        ctx.var_record_types
+                            .insert(name.clone(), tuple_layout_name(items.len()));
+                        ctx.tuple_value_types
+                            .insert(MirValueId(index as u32), items.clone());
+                    }
                     _ => {}
                 }
             }

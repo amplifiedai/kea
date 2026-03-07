@@ -3189,6 +3189,39 @@ fn literal_case_values_from_pattern(
                 inner_payload_checks,
             ))
         }
+        PatternKind::List { elements, rest } => {
+            // Desugar [a, b, ..tail] into Cons(a, Cons(b, tail)) / Nil constructor patterns.
+            // Only works when Nil/Cons are registered in pattern_variant_tags (i.e. stdlib List is loaded).
+            let syn = Span::synthetic();
+            let tail_kind = if let Some(rest_pat) = rest {
+                rest_pat.node.clone()
+            } else {
+                PatternKind::Constructor {
+                    name: "Nil".to_string(),
+                    qualifier: None,
+                    args: vec![],
+                    rest: false,
+                }
+            };
+            let desugared = elements.iter().rev().fold(tail_kind, |acc, element| {
+                PatternKind::Constructor {
+                    name: "Cons".to_string(),
+                    qualifier: None,
+                    args: vec![
+                        kea_ast::ConstructorFieldPattern {
+                            name: None,
+                            pattern: element.clone(),
+                        },
+                        kea_ast::ConstructorFieldPattern {
+                            name: None,
+                            pattern: Spanned::new(acc, syn),
+                        },
+                    ],
+                    rest: false,
+                }
+            });
+            literal_case_values_from_pattern(&desugared, pattern_variant_tags, pattern_qualified_tags)
+        }
         _ => None,
     }
 }
@@ -3446,6 +3479,31 @@ fn collect_constructor_payload_pattern(
                 });
                 collect_constructor_payload_pattern(
                     &field_pattern.node,
+                    nested_access_path,
+                    payload_binds,
+                    payload_checks,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                )?;
+            }
+            Some(())
+        }
+        PatternKind::Tuple(pats) => {
+            let tuple_ty = access_path_last_type(&access_path).unwrap_or(Type::Dynamic);
+            for (idx, pat) in pats.iter().enumerate() {
+                let field_name = idx.to_string();
+                let field_ty = if let Type::Tuple(items) = &tuple_ty {
+                    items.get(idx).cloned().unwrap_or(Type::Dynamic)
+                } else {
+                    Type::Dynamic
+                };
+                let mut nested_access_path = access_path.clone();
+                nested_access_path.push(ConstructorPayloadAccessStep::RecordField {
+                    field: field_name,
+                    field_ty,
+                });
+                collect_constructor_payload_pattern(
+                    &pat.node,
                     nested_access_path,
                     payload_binds,
                     payload_checks,
