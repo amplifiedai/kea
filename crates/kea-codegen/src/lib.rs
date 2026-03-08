@@ -18,7 +18,7 @@ use cranelift::prelude::{
     AbiParam, Configurable, FunctionBuilder, FunctionBuilderContext, InstBuilder, Value, types,
 };
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
-use cranelift_codegen::ir::{MemFlags, StackSlotData, StackSlotKind, TrapCode};
+use cranelift_codegen::ir::{BlockArg, MemFlags, StackSlotData, StackSlotKind, TrapCode};
 use cranelift_codegen::isa::CallConv;
 use cranelift_codegen::{isa, settings};
 use cranelift_jit::{JITBuilder, JITModule};
@@ -2740,13 +2740,13 @@ fn emit_state_cell_flag_and_retain(
 
             builder.switch_to_block(immediate_block);
             let unmanaged = builder.ins().iconst(types::I8, 0);
-            builder.ins().jump(join_block, &[unmanaged]);
+            builder.ins().jump(join_block, &[BlockArg::from(unmanaged)]);
 
             builder.switch_to_block(managed_block);
             let payload_ptr = coerce_value_to_clif_type(builder, payload_value, ptr_ty);
             emit_retain(builder, payload_ptr);
             let managed = builder.ins().iconst(types::I8, 1);
-            builder.ins().jump(join_block, &[managed]);
+            builder.ins().jump(join_block, &[BlockArg::from(managed)]);
 
             builder.switch_to_block(join_block);
             builder
@@ -3203,7 +3203,7 @@ fn define_sum_drop_function<M: Module>(
     if iterative_self_chain_supported {
         let loop_block = builder.create_block();
         builder.append_block_param(loop_block, ptr_ty);
-        builder.ins().jump(loop_block, &[payload_ptr]);
+        builder.ins().jump(loop_block, &[BlockArg::from(payload_ptr)]);
         builder.switch_to_block(loop_block);
         let current_payload_ptr = builder
             .block_params(loop_block)
@@ -3317,7 +3317,7 @@ fn define_sum_drop_function<M: Module>(
                         .brif(is_immediate, ret_block, &[], loop_continue_block, &[]);
                     builder.switch_to_block(loop_continue_block);
                 }
-                builder.ins().jump(loop_block, &[next_chain_payload]);
+                builder.ins().jump(loop_block, &[BlockArg::from(next_chain_payload)]);
             } else {
                 builder.ins().jump(ret_block, &[]);
             }
@@ -3356,7 +3356,7 @@ fn define_sum_drop_function<M: Module>(
             .load(types::I32, MemFlags::new(), payload_ptr, tag_offset);
 
         if variants.is_empty() {
-            builder.ins().jump(free_block, &[rc_ptr]);
+            builder.ins().jump(free_block, &[BlockArg::from(rc_ptr)]);
         } else {
             let mut check_block = unique_block;
             for (idx, (variant_tag, field_types, _self_count, _self_field_index)) in
@@ -3413,12 +3413,12 @@ fn define_sum_drop_function<M: Module>(
                         imports,
                     )?;
                 }
-                builder.ins().jump(free_block, &[rc_ptr]);
+                builder.ins().jump(free_block, &[BlockArg::from(rc_ptr)]);
                 check_block = next_check_or_free;
             }
 
             builder.switch_to_block(check_block);
-            builder.ins().jump(free_block, &[rc_ptr]);
+            builder.ins().jump(free_block, &[BlockArg::from(rc_ptr)]);
         }
     }
 
@@ -3570,7 +3570,7 @@ fn define_sum_retain_function<M: Module>(
         // Build an iterative loop that traverses the chain without stack recursion.
         let loop_block = builder.create_block();
         builder.append_block_param(loop_block, ptr_ty);
-        builder.ins().jump(loop_block, &[payload_ptr]);
+        builder.ins().jump(loop_block, &[BlockArg::from(payload_ptr)]);
         builder.switch_to_block(loop_block);
         let current_payload_ptr = builder
             .block_params(loop_block)
@@ -3688,7 +3688,7 @@ fn define_sum_retain_function<M: Module>(
                         .brif(is_immediate, ret_block, &[], loop_continue_block, &[]);
                     builder.switch_to_block(loop_continue_block);
                 }
-                builder.ins().jump(loop_block, &[next_chain_payload]);
+                builder.ins().jump(loop_block, &[BlockArg::from(next_chain_payload)]);
             } else {
                 builder.ins().jump(ret_block, &[]);
             }
@@ -4002,7 +4002,7 @@ fn lower_instruction<M: Module>(
                 fields,
                 values,
             )?;
-            builder.ins().jump(join_block, &[source_ptr]);
+            builder.ins().jump(join_block, &[BlockArg::from(source_ptr)]);
 
             builder.switch_to_block(alloc_block);
             let source_ty = ctx.value_types.get(source);
@@ -4032,7 +4032,7 @@ fn lower_instruction<M: Module>(
                 fields,
                 values,
             )?;
-            builder.ins().jump(join_block, &[fresh_ptr]);
+            builder.ins().jump(join_block, &[BlockArg::from(fresh_ptr)]);
 
             builder.switch_to_block(join_block);
             let result_ptr = builder
@@ -4082,7 +4082,7 @@ fn lower_instruction<M: Module>(
                 fields,
                 values,
             )?;
-            builder.ins().jump(join_block, &[token_ptr]);
+            builder.ins().jump(join_block, &[BlockArg::from(token_ptr)]);
 
             builder.switch_to_block(alloc_block);
             let fresh_ptr = allocate_heap_payload(
@@ -4101,7 +4101,7 @@ fn lower_instruction<M: Module>(
                 fields,
                 values,
             )?;
-            builder.ins().jump(join_block, &[fresh_ptr]);
+            builder.ins().jump(join_block, &[BlockArg::from(fresh_ptr)]);
 
             builder.switch_to_block(join_block);
             let result_ptr = builder
@@ -4232,7 +4232,7 @@ fn lower_instruction<M: Module>(
                 values,
                 source_ptr,
             )?;
-            builder.ins().jump(join_block, &[source_ptr]);
+            builder.ins().jump(join_block, &[BlockArg::from(source_ptr)]);
 
             builder.switch_to_block(alloc_block);
             let source_ty = ctx.value_types.get(source);
@@ -4266,7 +4266,7 @@ fn lower_instruction<M: Module>(
                 values,
                 fresh_ptr,
             )?;
-            builder.ins().jump(join_block, &[fresh_ptr]);
+            builder.ins().jump(join_block, &[BlockArg::from(fresh_ptr)]);
 
             builder.switch_to_block(join_block);
             let result_ptr = builder
@@ -4336,7 +4336,7 @@ fn lower_instruction<M: Module>(
                 values,
                 token_ptr,
             )?;
-            builder.ins().jump(join_block, &[token_ptr]);
+            builder.ins().jump(join_block, &[BlockArg::from(token_ptr)]);
 
             builder.switch_to_block(alloc_block);
             let fresh_ptr = allocate_heap_payload(
@@ -4359,7 +4359,7 @@ fn lower_instruction<M: Module>(
                 values,
                 fresh_ptr,
             )?;
-            builder.ins().jump(join_block, &[fresh_ptr]);
+            builder.ins().jump(join_block, &[BlockArg::from(fresh_ptr)]);
 
             builder.switch_to_block(join_block);
             let result_ptr = builder
@@ -4426,7 +4426,7 @@ fn lower_instruction<M: Module>(
                     .brif(is_immediate, immediate_block, &[], pointer_block, &[]);
 
                 builder.switch_to_block(immediate_block);
-                builder.ins().jump(continue_block, &[base]);
+                builder.ins().jump(continue_block, &[BlockArg::from(base)]);
 
                 builder.switch_to_block(pointer_block);
                 let tag_offset =
@@ -4438,7 +4438,7 @@ fn lower_instruction<M: Module>(
                     .ins()
                     .load(types::I32, MemFlags::new(), base, tag_offset);
                 let tag_i64 = builder.ins().uextend(types::I64, tag_i32);
-                builder.ins().jump(continue_block, &[tag_i64]);
+                builder.ins().jump(continue_block, &[BlockArg::from(tag_i64)]);
 
                 builder.switch_to_block(continue_block);
                 let tag = builder
@@ -5662,7 +5662,7 @@ fn lower_instruction<M: Module>(
                 .brif(is_unique, unique_block, &[], release_block, &[]);
 
             builder.switch_to_block(unique_block);
-            builder.ins().jump(join_block, &[source_ptr]);
+            builder.ins().jump(join_block, &[BlockArg::from(source_ptr)]);
 
             builder.switch_to_block(release_block);
             let source_ty = ctx.value_types.get(source);
@@ -5677,7 +5677,7 @@ fn lower_instruction<M: Module>(
                 imports,
             )?;
             let null_token = builder.ins().iconst(ptr_ty, 0);
-            builder.ins().jump(join_block, &[null_token]);
+            builder.ins().jump(join_block, &[BlockArg::from(null_token)]);
 
             builder.switch_to_block(join_block);
             let token_ptr = builder
@@ -5774,7 +5774,7 @@ fn lower_instruction<M: Module>(
                     .ins()
                     .store(MemFlags::new(), value, target_ptr, offset);
             }
-            builder.ins().jump(join_block, &[target_ptr]);
+            builder.ins().jump(join_block, &[BlockArg::from(target_ptr)]);
 
             builder.switch_to_block(copy_block);
             let out_ptr = allocate_heap_payload(
@@ -5824,7 +5824,7 @@ fn lower_instruction<M: Module>(
                 ctx.drop_func_ids,
                 imports,
             )?;
-            builder.ins().jump(join_block, &[out_ptr]);
+            builder.ins().jump(join_block, &[BlockArg::from(out_ptr)]);
 
             builder.switch_to_block(join_block);
             let merged = builder.block_params(join_block)[0];
@@ -6270,7 +6270,7 @@ fn lower_terminator(
                 .iter()
                 .map(|&v| builder.func.dfg.value_type(v))
                 .collect();
-            let mut lowered_args = Vec::with_capacity(args.len());
+            let mut lowered_args: Vec<BlockArg> = Vec::with_capacity(args.len());
             for (arg, expected_ty) in args
                 .iter()
                 .zip(expected_param_types.iter().copied().map(Some).chain(std::iter::repeat(None)))
@@ -6281,7 +6281,7 @@ fn lower_terminator(
                 } else {
                     val
                 };
-                lowered_args.push(coerced);
+                lowered_args.push(BlockArg::from(coerced));
             }
             builder.ins().jump(target_block, &lowered_args);
             Ok(())

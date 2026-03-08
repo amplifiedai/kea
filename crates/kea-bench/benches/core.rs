@@ -14,7 +14,7 @@ use kea_infer::typeck::{
 };
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
-use kea_types::{EffectRow, FunctionType, Label, RecordType, RowType, Type};
+use kea_types::{EffectRow, FunctionType, RecordType, Type};
 
 #[global_allocator]
 static ALLOC: AllocProfiler = AllocProfiler::system();
@@ -624,6 +624,7 @@ fn build_linear_heap_alias_chain_hir_module(levels: usize) -> HirModule {
                 },
                 ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
                 effects: EffectRow::pure(),
+                is_fip: false,
                 span,
             }),
         ],
