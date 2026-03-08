@@ -13135,6 +13135,27 @@ fn compile_and_execute_gadt_branch_local_refinement_exit_code() {
     let _ = std::fs::remove_file(source_path);
 }
 
+#[test]
+fn compile_and_execute_generic_eq_via_monomorphization_exit_code() {
+    // Step 5 verification: generic == works via monomorphization.
+    // The monomorphize pass specializes `contains` for each concrete type,
+    // so evidence threading for Eq is handled automatically.
+    let source = concat!(
+        "fn contains(list: List a, x: a) -> Bool where a: Eq\n",
+        "  case list\n",
+        "    [] -> false\n",
+        "    [h, ..t] -> Eq.eq(h, x) or contains(t, x)\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  if contains([1, 2, 3], 2) and not contains([1, 2, 3], 4) then 42 else 0\n",
+    );
+    let source_path = write_temp_source(source, "kea-generic-eq", "kea");
+    let run = run_file(&source_path)
+        .expect("generic Eq via monomorphization should compile and run");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
 fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
     let path = temp_artifact_path(prefix, extension);
     std::fs::write(&path, contents).expect("temp source write should succeed");
