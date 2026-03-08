@@ -88,6 +88,30 @@ impl<'a> MonoPass<'a> {
             })
             .collect();
 
+        // Pre-scan: collect bare (unqualified) MONOMORPHIC function names.
+        // Used below to guard mono_names short-name insertion: only short names
+        // that have a bare MONOMORPHIC definition in this module should block the
+        // polymorphic routing table.  Without this guard, qualified trait-dispatch
+        // functions like `HasItem.fold` add `"fold"` to mono_names (because the
+        // stdlib's bare `fold` is in bare_fn_names), incorrectly removing the
+        // `fold → List.fold` routing and breaking recursive stdlib calls.
+        // The stdlib's bare `fold` is POLYMORPHIC, so it is excluded here.
+        let bare_mono_fn_names: BTreeSet<String> = module
+            .declarations
+            .iter()
+            .filter_map(|d| {
+                if let HirDecl::Function(f) = d {
+                    if !f.name.contains('.') && free_type_vars(&f.ty).is_empty() {
+                        Some(f.name.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         for decl in &module.declarations {
             if let HirDecl::Function(f) = decl {
                 // Skip bare overlay functions: any bare (unqualified) name
@@ -114,7 +138,16 @@ impl<'a> MonoPass<'a> {
                     // Monomorphic function: record its unqualified name so we can
                     // remove it from the routing table after the scan.
                     mono_names.insert(f.name.clone());
-                    if let Some((_, short)) = f.name.rsplit_once('.') {
+                    // Only add the short name when a bare function with that name
+                    // actually exists in the module.  Without this guard, qualified
+                    // trait-dispatch functions (e.g., `HasItem.fold`,
+                    // `HasItem.NumberList.fold`) would add their short name `fold`
+                    // to mono_names even when no bare `fold` is defined, causing
+                    // the stdlib's `fold → List.fold` routing to be incorrectly
+                    // removed and breaking recursive stdlib calls.
+                    if let Some((_, short)) = f.name.rsplit_once('.')
+                        && bare_mono_fn_names.contains(short)
+                    {
                         mono_names.insert(short.to_string());
                     }
                 }

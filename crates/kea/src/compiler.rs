@@ -2291,7 +2291,18 @@ fn merge_modules_for_codegen(modules: &[(String, Module)], entry_module_path: &s
                     // Vector.length) would otherwise compile the bare `length`
                     // declaration against the wrong type-environment binding,
                     // producing a broken empty function body.
-                    if is_entry {
+                    //
+                    // Exception: synthesized trait bare aliases (marked with
+                    // @kea_trait_bare_alias by expand_impl_methods_for_codegen)
+                    // are never allowed to override stdlib/prelude names, even
+                    // in the entry module.  A user trait named `Foldable` with
+                    // a method named `fold` would otherwise override the
+                    // stdlib's `List.fold` recursive definition, corrupting it.
+                    let is_trait_bare_alias = fn_decl
+                        .annotations
+                        .iter()
+                        .any(|a| a.name.node == "kea_trait_bare_alias");
+                    if is_entry && !is_trait_bare_alias {
                         upsert_function_decl(
                             fn_decl.name.node.clone(),
                             decl.clone(),
@@ -2308,6 +2319,17 @@ fn merge_modules_for_codegen(modules: &[(String, Module)], entry_module_path: &s
                     }
 
                     if fn_decl.name.node.contains('.') {
+                        continue;
+                    }
+
+                    // Trait bare aliases (synthesized by expand_impl_methods_for_codegen)
+                    // must not be re-qualified as `EntryModule.method` because the
+                    // resulting short name (e.g. `fold` from `TestModule.fold`) would
+                    // contaminate the monomorphization routing table and prevent
+                    // stdlib functions with the same name from resolving correctly.
+                    // The real dispatch targets (`Trait.fold`, `Trait.Type.fold`) are
+                    // already registered above.
+                    if is_trait_bare_alias {
                         continue;
                     }
 
@@ -2469,8 +2491,27 @@ fn typecheck_loaded_modules(
         // so those calls resolve in user modules without explicit imports.
         apply_hardcoded_prelude_reexports(&mut env, &traits);
 
+        // Bare trait method aliases (tagged @kea_trait_bare_alias) must not be
+        // typechecked here: their bodies are identical to the qualified variant
+        // (e.g. HasItem.fold) which is already typechecked. Letting them through
+        // causes env["fold"] to be overwritten with the entry-module's monomorphic
+        // type, corrupting type lookup for stdlib functions with the same name.
+        let expanded_for_typeck = if is_entry_module {
+            let mut filtered = expanded.clone();
+            filtered.declarations.retain(|d| {
+                let anns = match &d.node {
+                    DeclKind::Function(f) => &f.annotations,
+                    DeclKind::ExprFn(f) => &f.annotations,
+                    _ => return true,
+                };
+                !has_annotation_named(anns, "kea_trait_bare_alias")
+            });
+            filtered
+        } else {
+            expanded.clone()
+        };
         let expr_types = typecheck_functions(
-            &expanded,
+            &expanded_for_typeck,
             &mut env,
             &mut records,
             &mut traits,
@@ -2965,7 +3006,19 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
                 && existing_function_names.insert(method_name.clone())
             {
                 let mut bare = method.clone();
-                bare.name.node = method_name;
+                bare.name.node = method_name.clone();
+                // Mark as a synthesized trait alias so merge_modules_for_codegen
+                // treats it as non-overriding (insert_bare_if_absent).  This
+                // prevents bare method names like `fold` from overriding stdlib
+                // functions of the same name and corrupting their recursive calls.
+                bare.annotations.push(kea_ast::Annotation {
+                    name: kea_ast::Spanned::new(
+                        "kea_trait_bare_alias".to_string(),
+                        method.span,
+                    ),
+                    args: vec![],
+                    span: method.span,
+                });
                 declarations.push(kea_ast::Spanned::new(DeclKind::Function(bare), method.span));
             }
         }

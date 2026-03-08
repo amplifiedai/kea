@@ -5578,7 +5578,7 @@ fn annotation_name_known(name: &str) -> bool {
     matches!(
         name,
         "rename" | "default" | "skip_if" | "tagged" | "deprecated" | "intrinsic" | "fip"
-            | "unsafe" | "unboxed" | "derive"
+            | "unsafe" | "unboxed" | "derive" | "kea_trait_bare_alias"
     )
 }
 
@@ -14775,197 +14775,6 @@ fn binop_name(op: BinOp) -> &'static str {
 }
 
 
-/// Resolve a type annotation with `Self` and associated types in scope.
-///
-/// `Self` maps to `self_type`. `Self.Name` resolves via `assoc_types`.
-fn resolve_annotation_with_self_and_assoc(
-    ann: &TypeAnnotation,
-    records: &RecordRegistry,
-    sum_types: Option<&SumTypeRegistry>,
-    self_type: &Type,
-    assoc_types: &BTreeMap<String, Type>,
-) -> Option<Type> {
-    match ann {
-        TypeAnnotation::Named(name) if name == "Self" => Some(self_type.clone()),
-        TypeAnnotation::Projection { base, name } if base == "Self" => {
-            assoc_types.get(name).cloned()
-        }
-        TypeAnnotation::Applied(name, args) => {
-            if let Some(op_ty) = eval_record_type_op(name, args, Some(records), |arg_ann| {
-                resolve_annotation_with_self_and_assoc(
-                    arg_ann,
-                    records,
-                    sum_types,
-                    self_type,
-                    assoc_types,
-                )
-            }) {
-                return Some(op_ty);
-            }
-            if builtin_arity_mismatch(name, args.len()).is_some() {
-                return None;
-            }
-            match (name.as_str(), args.as_slice()) {
-                ("Option", [inner]) => Some(Type::option(
-                    resolve_annotation_with_self_and_assoc(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?,
-                )),
-                ("Result", [ok, err]) => Some(Type::result(
-                    resolve_annotation_with_self_and_assoc(
-                        ok,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?,
-                    resolve_annotation_with_self_and_assoc(
-                        err,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?,
-                )),
-                ("List", [inner]) => {
-                    Some(Type::list(
-                        resolve_annotation_with_self_and_assoc(
-                            inner,
-                            records,
-                            sum_types,
-                            self_type,
-                            assoc_types,
-                        )?,
-                    ))
-                }
-                ("Ptr", [inner]) => Some(ptr_opaque_type(
-                    resolve_annotation_with_self_and_assoc(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?,
-                )),
-                _ => resolve_named_type_application(name, args, records, sum_types, |arg_ann| {
-                    resolve_annotation_with_self_and_assoc(
-                        arg_ann,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )
-                }),
-            }
-        }
-        TypeAnnotation::Tuple(elems) => {
-            let resolved: Vec<Type> = elems
-                .iter()
-                .map(|elem| {
-                    resolve_annotation_with_self_and_assoc(
-                        elem,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )
-                })
-                .collect::<Option<Vec<_>>>()?;
-            Some(Type::Tuple(resolved))
-        }
-        TypeAnnotation::Function(params, ret) => {
-            let resolved_params: Vec<Type> = params
-                .iter()
-                .map(|param| {
-                    resolve_annotation_with_self_and_assoc(
-                        param,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )
-                })
-                .collect::<Option<Vec<_>>>()?;
-            let resolved_ret = resolve_annotation_with_self_and_assoc(
-                ret,
-                records,
-                sum_types,
-                self_type,
-                assoc_types,
-            )?;
-            Some(Type::Function(FunctionType {
-                params: resolved_params,
-                ret: Box::new(resolved_ret),
-                effects: EffectRow::pure(),
-            }))
-        }
-        TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
-            let resolved_params: Vec<Type> = params
-                .iter()
-                .map(|param| {
-                    resolve_annotation_with_self_and_assoc(
-                        param,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )
-                })
-                .collect::<Option<Vec<_>>>()?;
-            let resolved_ret = resolve_annotation_with_self_and_assoc(
-                ret,
-                records,
-                sum_types,
-                self_type,
-                assoc_types,
-            )?;
-            let effects = effect_annotation_to_compat_row(&effect.node, Some(records))
-                .unwrap_or_else(pure_effect_row);
-            Some(Type::Function(FunctionType {
-                params: resolved_params,
-                ret: Box::new(resolved_ret),
-                effects,
-            }))
-        }
-        TypeAnnotation::Optional(inner) => {
-            let resolved = resolve_annotation_with_self_and_assoc(
-                inner,
-                records,
-                sum_types,
-                self_type,
-                assoc_types,
-            )?;
-            Some(Type::option(resolved))
-        }
-        TypeAnnotation::Existential {
-            bounds,
-            associated_types,
-        } => {
-            let resolved_assoc: Option<BTreeMap<String, Type>> = associated_types
-                .iter()
-                .map(|(name, ann)| {
-                    resolve_annotation_with_self_and_assoc(
-                        ann,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )
-                    .map(|ty| (name.clone(), ty))
-                })
-                .collect();
-            Some(Type::Existential {
-                bounds: bounds.clone(),
-                associated_types: resolved_assoc?,
-            })
-        }
-        _ => resolve_annotation(ann, records, sum_types),
-    }
-}
 
 /// Resolve a type annotation with `Self`, associated types, and in-scope
 /// type-parameter placeholders (including constructor-kinded parameters).
@@ -15326,6 +15135,11 @@ pub fn concrete_method_types_from_decls(
 
     let mut result = BTreeMap::new();
     for method in methods {
+        // Method-level type variables (e.g. `b` in `fn fold(init: b, f: fn(b, a) -> b) -> b`)
+        // are fresh across each method but shared within a single method's signature.
+        let mut method_type_params: BTreeMap<String, Type> = BTreeMap::new();
+        let mut placeholder_id: u32 = u32::MAX;
+
         // Build parameter types from annotations
         let mut params = Vec::new();
         for param in &method.params {
@@ -15334,12 +15148,14 @@ pub fn concrete_method_types_from_decls(
                 params.push(self_type.clone());
             } else if let Some(ann) = &param.annotation {
                 params.push(
-                    resolve_annotation_with_self_and_assoc(
+                    resolve_annotation_with_self_assoc_and_params(
                         &ann.node,
                         records,
                         sum_types,
                         &self_type,
                         &BTreeMap::new(),
+                        &mut method_type_params,
+                        &mut placeholder_id,
                     )
                         .unwrap_or(Type::Dynamic),
                 );
@@ -15354,12 +15170,14 @@ pub fn concrete_method_types_from_decls(
             .return_annotation
             .as_ref()
             .and_then(|ann| {
-                resolve_annotation_with_self_and_assoc(
+                resolve_annotation_with_self_assoc_and_params(
                     &ann.node,
                     records,
                     sum_types,
                     &self_type,
                     &BTreeMap::new(),
+                    &mut method_type_params,
+                    &mut placeholder_id,
                 )
             })
             .unwrap_or(Type::Unit);
