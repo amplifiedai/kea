@@ -11195,15 +11195,24 @@ fn infer_expr_bidir(
             {
                 // Unconstrained — pure lambda.
                 EffectRow::pure()
-            } else if resolved_effects.row.rest.is_some() {
-                // Has concrete effects but an unconstrained tail from the
-                // ambient.  Close the row so the function type has a precise
-                // effect signature (monomorphic functions need closed rows).
-                EffectRow {
-                    row: RowType {
-                        fields: resolved_effects.row.fields,
-                        rest: None,
-                    },
+            } else if let Some(rest_id) = resolved_effects.row.rest {
+                // Has concrete effects with an open tail.
+                // If the tail variable was created *before* the lambda's ambient
+                // variable (i.e., it originates from the outer scope — e.g., a
+                // row variable `e` from a parameter's effect type), keep it so
+                // that effect polymorphism propagates correctly through
+                // higher-order functions like `State.with_state`.
+                // If the tail is lambda-local (created inside this lambda),
+                // close the row for a precise monomorphic effect signature.
+                if rest_id.0 < lambda_ambient.0 {
+                    resolved_effects
+                } else {
+                    EffectRow {
+                        row: RowType {
+                            fields: resolved_effects.row.fields,
+                            rest: None,
+                        },
+                    }
                 }
             } else {
                 resolved_effects
