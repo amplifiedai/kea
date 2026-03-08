@@ -3087,8 +3087,8 @@ fn check_type_block_method_collisions(
             }
             seen_in_block.insert(m.name.node.clone(), m.span);
 
-            if is_merged {
-                if let Some(&fs_span) = file_scope_fns.get(&m.name.node) {
+            if is_merged
+                && let Some(&fs_span) = file_scope_fns.get(&m.name.node) {
                     diagnostics.push(
                         Diagnostic::error(
                             Category::TypeError,
@@ -3104,7 +3104,6 @@ fn check_type_block_method_collisions(
                     );
                     return;
                 }
-            }
         }
     }
 }
@@ -3722,6 +3721,7 @@ fn register_record_const_fields(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn typecheck_functions(
     module: &Module,
     env: &mut TypeEnv,

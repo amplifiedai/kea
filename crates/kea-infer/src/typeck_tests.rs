@@ -211,6 +211,7 @@ fn resume(value: Expr) -> Expr {
 }
 
 
+#[allow(dead_code)]
 fn actor_send(actor: Expr, method: &str, args: Vec<Expr>) -> Expr {
     sp(ExprKind::ActorSend {
         actor: Box::new(actor),
@@ -220,6 +221,7 @@ fn actor_send(actor: Expr, method: &str, args: Vec<Expr>) -> Expr {
     })
 }
 
+#[allow(dead_code)]
 fn actor_try_send(actor: Expr, method: &str, args: Vec<Expr>) -> Expr {
     sp(ExprKind::ActorSend {
         actor: Box::new(actor),
@@ -229,6 +231,7 @@ fn actor_try_send(actor: Expr, method: &str, args: Vec<Expr>) -> Expr {
     })
 }
 
+#[allow(dead_code)]
 fn actor_call(actor: Expr, method: &str, args: Vec<Expr>) -> Expr {
     sp(ExprKind::ActorCall {
         actor: Box::new(actor),
@@ -238,6 +241,7 @@ fn actor_call(actor: Expr, method: &str, args: Vec<Expr>) -> Expr {
     })
 }
 
+#[allow(dead_code)]
 fn actor_call_safe(actor: Expr, method: &str, args: Vec<Expr>) -> Expr {
     sp(ExprKind::ActorCall {
         actor: Box::new(actor),
@@ -4803,6 +4807,7 @@ fn annotation_resolves_precision_numeric_names() {
         Some(Type::FloatN(kea_types::FloatWidth::F32))
     );
 }
+#[allow(dead_code)]
 fn dim_literal_in_non_dim_constructor_emits_diagnostic() {
     // List(1) should produce a clear error, not silently become a type variable.
     let ann = TypeAnnotation::Applied("List".to_string(), vec![TypeAnnotation::DimLiteral(1)]);
