@@ -13156,6 +13156,55 @@ fn compile_and_execute_generic_eq_via_monomorphization_exit_code() {
     let _ = std::fs::remove_file(source_path);
 }
 
+#[test]
+fn compile_and_execute_supertrait_dispatch_exit_code() {
+    // Step 3 verification: supertrait methods are available when a supertrait bound is in scope.
+    // `Ord` declares `compare`; we use a generic function bounded on `Ord` which transitively
+    // requires `Eq`. The solver must check supertrait obligations when resolving `Ord`.
+    let source = concat!(
+        "fn max_of(a: a, b: a) -> a where a: Ord\n",
+        "  case Ord.compare(a, b)\n",
+        "    Less -> b\n",
+        "    _ -> a\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  max_of(37, 42)\n",
+    );
+    let source_path = write_temp_source(source, "kea-supertrait", "kea");
+    let run = run_file(&source_path)
+        .expect("supertrait dispatch should compile and run");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_associated_type_via_foldable_exit_code() {
+    // Step 3 verification: associated types work end-to-end.
+    // Define a Wrap trait with associated type Inner, implement for a struct,
+    // use it generically to access the associated type.
+    let source = concat!(
+        "trait Wrap\n",
+        "  type Inner\n",
+        "  fn unwrap(_ self: Self) -> Int\n",
+        "\n",
+        "struct MyBox\n",
+        "  value: Int\n",
+        "\n",
+        "MyBox as Wrap where Inner = Int\n",
+        "  fn unwrap(_ self: MyBox) -> Int\n",
+        "    self.value\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  let b = MyBox { value: 42 }\n",
+        "  Wrap.unwrap(b)\n",
+    );
+    let source_path = write_temp_source(source, "kea-assoc-type", "kea");
+    let run = run_file(&source_path)
+        .expect("associated type impl should compile and run");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
 fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
     let path = temp_artifact_path(prefix, extension);
     std::fs::write(&path, contents).expect("temp source write should succeed");
