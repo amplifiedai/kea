@@ -126,6 +126,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
         ));
     }
 
+    let (module, block_method_owners) = lift_type_block_methods(&module);
     register_top_level_declarations(
         &module,
         &mut env,
@@ -144,6 +145,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
         &mut sum_types,
         &mut diagnostics,
         None,
+        &block_method_owners,
     )?;
 
     let hir = lower_module(&module, &env, &expr_types);
@@ -1044,6 +1046,7 @@ pub fn process_module_in_env(
         return Err(diagnostics);
     }
 
+    let (module, block_method_owners) = lift_type_block_methods(&module);
     if register_top_level_declarations(
         &module,
         env,
@@ -1066,6 +1069,7 @@ pub fn process_module_in_env(
         sum_types,
         &mut diagnostics,
         None,
+        &block_method_owners,
     ) {
         Ok(et) => et,
         Err(_) => return Err(diagnostics),
@@ -2432,6 +2436,15 @@ fn typecheck_loaded_modules(
             ));
         }
 
+        check_type_block_method_collisions(&expanded, Some(&loaded.module_path), &mut diagnostics);
+        if has_errors(&diagnostics) {
+            if !is_entry_module {
+                env.pop_scope();
+            }
+            return Err(format_diagnostics("method collision", &diagnostics));
+        }
+        let (expanded, block_method_owners) = lift_type_block_methods(&expanded);
+
         register_top_level_declarations(
             &expanded,
             &mut env,
@@ -2464,6 +2477,7 @@ fn typecheck_loaded_modules(
             &mut sum_types,
             &mut diagnostics,
             Some(&loaded.module_path),
+            &block_method_owners,
         )?;
 
         all_expr_types.extend(expr_types);
@@ -2962,6 +2976,136 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
         annotations: module.annotations.clone(),
         declarations,
         span: module.span,
+    }
+}
+
+/// Lift type-block methods (fn declarations inside struct/enum bodies) to
+/// top-level `DeclKind::Function` entries so that the rest of the pipeline
+/// (registration, type-checking, HIR lowering, MIR, codegen) sees them as
+/// ordinary callable functions.
+///
+/// Returns the augmented module plus a map from method name → owner type name
+/// so that `typecheck_functions` can register each method as inherent on its
+/// nominal type rather than on the implicit module struct.
+fn lift_type_block_methods(module: &Module) -> (Module, BTreeMap<String, String>) {
+    let mut extra_decls: Vec<kea_ast::Decl> = Vec::new();
+    let mut block_method_owners: BTreeMap<String, String> = BTreeMap::new();
+
+    for decl in &module.declarations {
+        let (type_name, methods): (&str, &[FnDecl]) = match &decl.node {
+            DeclKind::RecordDef(r) => (&r.name.node, &r.methods),
+            DeclKind::TypeDef(t) => (&t.name.node, &t.methods),
+            _ => continue,
+        };
+        for method in methods {
+            // Qualified-name lift only: enables static calls (`TypeName.method()` → `Var("TypeName.method")` in HIR).
+            // The bare name (`"method"`) is registered in the type env for type inference of UMS calls
+            // (`p.method()` → `Var("method")` → rewritten to `Var("TypeName.method")` via type_block_aliases).
+            // We do NOT add a bare DeclKind::Function to avoid namespace collisions with stdlib functions.
+            let mut qualified_method = method.clone();
+            qualified_method.name = kea_ast::Spanned::new(
+                format!("{type_name}.{}", method.name.node),
+                method.name.span,
+            );
+            extra_decls.push(Spanned::new(
+                DeclKind::Function(qualified_method),
+                method.span,
+            ));
+            // Map qualified_name → owner_type_name so typecheck_functions registers it correctly.
+            // Last writer wins for name → type; collision detection happens separately.
+            block_method_owners.insert(
+                format!("{type_name}.{}", method.name.node),
+                type_name.to_string(),
+            );
+        }
+    }
+
+    if extra_decls.is_empty() {
+        return (module.clone(), block_method_owners);
+    }
+
+    let mut declarations = module.declarations.clone();
+    declarations.extend(extra_decls);
+    let lifted = Module {
+        doc: module.doc.clone(),
+        annotations: module.annotations.clone(),
+        declarations,
+        span: module.span,
+    };
+    (lifted, block_method_owners)
+}
+
+/// Check for name collisions among type-block methods:
+/// 1. Duplicate method names within a single type block.
+/// 2. A type-block method name that collides with a file-scope function in a
+///    same-name merged namespace (§11.6).
+///
+/// Returns a list of diagnostics; if any are errors the caller should abort.
+fn check_type_block_method_collisions(
+    module: &Module,
+    module_path: Option<&str>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some(module_path) = module_path else {
+        return;
+    };
+    let struct_name = module_struct_name(module_path);
+
+    let file_scope_fns: BTreeMap<String, Span> = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::Function(f) => Some((f.name.node.clone(), f.span)),
+            DeclKind::ExprFn(e) => Some((e.name.node.clone(), e.span)),
+            _ => None,
+        })
+        .collect();
+
+    for decl in &module.declarations {
+        let (type_name, methods): (&str, &[FnDecl]) = match &decl.node {
+            DeclKind::RecordDef(r) => (&r.name.node, &r.methods),
+            DeclKind::TypeDef(t) => (&t.name.node, &t.methods),
+            _ => continue,
+        };
+        let is_merged = type_name == struct_name;
+        let mut seen_in_block: BTreeMap<String, Span> = BTreeMap::new();
+
+        for m in methods {
+            if let Some(&prev_span) = seen_in_block.get(&m.name.node) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!(
+                            "duplicate method `{}` in `{}` block",
+                            m.name.node, type_name
+                        ),
+                    )
+                    .at(span_to_loc(m.span))
+                    .with_label(span_to_loc(prev_span), "first definition here"),
+                );
+                return;
+            }
+            seen_in_block.insert(m.name.node.clone(), m.span);
+
+            if is_merged {
+                if let Some(&fs_span) = file_scope_fns.get(&m.name.node) {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            Category::TypeError,
+                            format!(
+                                "method `{}` declared in `{}` block conflicts with a \
+                                 file-scope function of the same name in the merged namespace",
+                                m.name.node, type_name
+                            ),
+                        )
+                        .at(span_to_loc(m.span))
+                        .with_label(span_to_loc(fs_span), "file-scope definition here")
+                        .with_help("rename one of the definitions, or remove the duplicate"),
+                    );
+                    return;
+                }
+            }
+        }
     }
 }
 
@@ -3586,107 +3730,10 @@ fn typecheck_functions(
     sum_types: &mut SumTypeRegistry,
     diagnostics: &mut Vec<Diagnostic>,
     module_path: Option<&str>,
+    // Maps method_name → owner_type_name for functions lifted from type blocks (§2.8, §3.5).
+    // These are registered as inherent on their nominal type rather than the module struct.
+    block_method_owners: &BTreeMap<String, String>,
 ) -> Result<std::collections::BTreeMap<Span, Type>, String> {
-    // Collect type-block methods: (owner_type_name, fn_decl, is_same_name_merge).
-    // These are methods declared inside struct/enum blocks (§2.8, §3.5).
-    let struct_name = module_path.map(module_struct_name).unwrap_or("");
-    let type_block_methods: Vec<(String, FnDecl)> = module
-        .declarations
-        .iter()
-        .flat_map(|decl| {
-            let (type_name, methods): (&str, &[FnDecl]) = match &decl.node {
-                DeclKind::RecordDef(r) => (&r.name.node, &r.methods),
-                DeclKind::TypeDef(t) => (&t.name.node, &t.methods),
-                _ => return vec![],
-            };
-            methods
-                .iter()
-                .map(|m| (type_name.to_string(), m.clone()))
-                .collect::<Vec<_>>()
-        })
-        .collect();
-
-    // Collision detection: check for duplicate names within each type block,
-    // and between type-block methods and file-scope functions in the same
-    // merged namespace (§11.6).
-    if module_path.is_some() {
-        // Collect file-scope function names with their spans.
-        let file_scope_fns: BTreeMap<String, Span> = module
-            .declarations
-            .iter()
-            .filter_map(|decl| match &decl.node {
-                DeclKind::Function(f) => Some((f.name.node.clone(), f.span)),
-                DeclKind::ExprFn(e) => Some((e.name.node.clone(), e.span)),
-                _ => None,
-            })
-            .collect();
-
-        // Check each type block for internal duplicates and merged-namespace collisions.
-        for decl in &module.declarations {
-            let (type_name, methods): (&str, &[FnDecl]) = match &decl.node {
-                DeclKind::RecordDef(r) => (&r.name.node, &r.methods),
-                DeclKind::TypeDef(t) => (&t.name.node, &t.methods),
-                _ => continue,
-            };
-            let is_merged = type_name == struct_name;
-
-            // Internal duplicates within this type block.
-            let mut seen_in_block: BTreeMap<String, Span> = BTreeMap::new();
-            for m in methods {
-                if let Some(&prev_span) = seen_in_block.get(&m.name.node) {
-                    diagnostics.push(
-                        Diagnostic::error(
-                            Category::TypeError,
-                            format!(
-                                "duplicate method `{}` in `{}` block",
-                                m.name.node, type_name
-                            ),
-                        )
-                        .at(span_to_loc(m.span))
-                        .with_label(
-                            span_to_loc(prev_span),
-                            "first definition here",
-                        ),
-                    );
-                    return Err(format_diagnostics(
-                        "duplicate method in type block",
-                        diagnostics,
-                    ));
-                }
-                seen_in_block.insert(m.name.node.clone(), m.span);
-
-                // Merged-namespace collision: type-block method vs file-scope fn.
-                if is_merged {
-                    if let Some(&fs_span) = file_scope_fns.get(&m.name.node) {
-                        diagnostics.push(
-                            Diagnostic::error(
-                                Category::TypeError,
-                                format!(
-                                    "method `{}` declared in `{}` block \
-                                     conflicts with a file-scope function of the same name \
-                                     in the merged namespace",
-                                    m.name.node, type_name
-                                ),
-                            )
-                            .at(span_to_loc(m.span))
-                            .with_label(
-                                span_to_loc(fs_span),
-                                "file-scope definition here",
-                            )
-                            .with_help(
-                                "rename one of the definitions, or remove the duplicate",
-                            ),
-                        );
-                        return Err(format_diagnostics(
-                            "method name collision in merged namespace",
-                            diagnostics,
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
     // Pre-register all function names and effect rows so forward references
     // (including mutual recursion) resolve correctly.  This also enables
     // transitive effect inference for forward-referenced effectful callees.
@@ -3709,25 +3756,53 @@ fn typecheck_functions(
                 env.register_module_unsafe_function(module_path, &fn_decl.name.node);
             }
         }
+        // Pre-register type-block methods in their type's namespace immediately so
+        // qualified calls like `Type.method()` resolve during type inference of
+        // subsequent declarations (before the full registration pass runs below).
+        // fn_decl.name.node is the QUALIFIED name ("Point.distance"); extract bare.
+        if let Some(owner_type) = block_method_owners.get(&fn_decl.name.node) {
+            let bare_name = fn_decl
+                .name
+                .node
+                .rsplit_once('.')
+                .map(|(_, m)| m)
+                .unwrap_or(&fn_decl.name.node);
+            if env.resolve_module_path_alias(owner_type).is_none() {
+                env.register_module_alias(owner_type, owner_type);
+            }
+            // Register qualified name under owner's module type schemes.
+            env.register_module_function(owner_type, bare_name);
+            env.register_module_type_scheme_exact(owner_type, bare_name, TypeScheme::mono(ty.clone()));
+            // Register inherent dispatch with BARE method name.
+            env.register_inherent_method(owner_type, bare_name);
+            // Only bind bare name + UMS alias for receiver methods (positional first param).
+            // Static methods (no receiver) must NOT register a bare alias — it would pollute
+            // the global namespace and shadow same-named stdlib functions.
+            let has_receiver = fn_decl
+                .params
+                .first()
+                .map(|p| matches!(p.label, kea_ast::ParamLabel::Positional))
+                .unwrap_or(false);
+            if has_receiver {
+                // Bind bare name for UMS type inference (e.g. `p.distance(q)` → `Var("distance")`).
+                env.bind(bare_name.to_string(), TypeScheme::mono(ty.clone()));
+                // Register bare→qualified alias so HIR lowering rewrites Var("distance")→Var("Point.distance").
+                env.register_block_method_alias(bare_name, &fn_decl.name.node);
+                // Register signature for the bare name so labeled-arg checking works at call sites.
+                let mut bare_fn = fn_decl.clone();
+                bare_fn.name.node = bare_name.to_string();
+                register_fn_signature(&bare_fn, env);
+            }
+            // Always register the qualified-name signature eagerly so that call sites
+            // earlier in the declaration order (e.g. test blocks) can resolve
+            // `Direction.all()` without falling back to a same-named stdlib function.
+            register_fn_signature(&fn_decl, env);
+        }
+
         env.bind(fn_decl.name.node.clone(), TypeScheme::mono(ty));
 
         // Also pre-register the effect row so transitive effect inference
         // sees the declared effects of forward-referenced callees.
-        let effects =
-            resolve_effect_annotation_simple(&fn_decl.effect_annotation, records, sum_types);
-        env.set_function_effect_row(fn_decl.name.node.clone(), effects);
-    }
-
-    // Pre-register type-block methods so they are visible to mutual recursion
-    // and forward references within the same module.
-    for (_, fn_decl) in &type_block_methods {
-        let resolved = resolve_fn_decl_type(fn_decl, records, sum_types);
-        let ty = resolved.unwrap_or_else(|| {
-            let id = placeholder_counter;
-            placeholder_counter = placeholder_counter.wrapping_sub(1);
-            Type::Var(kea_types::TypeVarId(id))
-        });
-        env.bind(fn_decl.name.node.clone(), TypeScheme::mono(ty));
         let effects =
             resolve_effect_annotation_simple(&fn_decl.effect_annotation, records, sum_types);
         env.set_function_effect_row(fn_decl.name.node.clone(), effects);
@@ -3799,104 +3874,30 @@ fn typecheck_functions(
             if env.resolve_module_path_alias(&module_short).is_none() {
                 env.register_module_alias(&module_short, module_path);
             }
-            env.register_module_function(module_path, &fn_decl.name.node);
-            if let Some(scheme) = env.lookup(&fn_decl.name.node).cloned() {
-                env.register_module_type_scheme_exact(module_path, &fn_decl.name.node, scheme);
-            }
-            if !fn_decl.name.node.contains('.') {
-                env.register_inherent_method(&module_short, &fn_decl.name.node);
-            }
 
-            let qualified_name = format!("{module_path}.{}", fn_decl.name.node);
-            if let Some(signature) = env.function_signature(&fn_decl.name.node).cloned() {
-                env.set_function_signature(qualified_name.clone(), signature);
-            }
-            if let Some(effect_row) = env.function_effect_row(&fn_decl.name.node) {
-                env.set_function_effect_row(qualified_name, effect_row);
-            }
-        }
-    }
-
-    // Type-check and register type-block methods (§2.8, §3.5, §11.6).
-    // Each method is type-checked like a file-scope function, then registered
-    // as inherent on its nominal type name and in the type's own namespace
-    // so that both `Type.method(x)` and `x.method()` resolve correctly.
-    for (type_name, fn_decl) in &type_block_methods {
-        let where_diags = validate_where_clause_traits(&fn_decl.where_clause, traits);
-        diagnostics.extend(where_diags.iter().filter(|d| !is_error(d)).cloned());
-        if where_diags.iter().any(is_error) {
-            diagnostics.extend(where_diags);
-            return Err(format_diagnostics(
-                "where-clause validation failed",
-                diagnostics,
-            ));
-        }
-
-        let mut ctx = InferenceContext::new();
-        seed_fn_where_type_params_in_context(fn_decl, traits, &mut ctx);
-        let expr = fn_decl.to_let_expr();
-        let _ = infer_and_resolve_in_context(&expr, env, &mut ctx, records, traits, sum_types);
-
-        if ctx.has_errors() {
-            diagnostics.extend_from_slice(ctx.errors());
-            return Err(format_diagnostics("type inference failed", diagnostics));
-        }
-
-        ctx.check_trait_bounds(traits);
-        if ctx.has_errors() {
-            diagnostics.extend_from_slice(ctx.errors());
-            return Err(format_diagnostics("trait obligations failed", diagnostics));
-        }
-
-        diagnostics.extend(ctx.errors().iter().filter(|d| !is_error(d)).cloned());
-        all_expr_types.extend(ctx.resolve_expr_types());
-
-        if !fn_decl.where_clause.is_empty()
-            && let Some(scheme) = env.lookup(&fn_decl.name.node).cloned()
-        {
-            let mut scheme = scheme;
-            apply_where_clause(&mut scheme, fn_decl, ctx.substitution());
-            env.bind(fn_decl.name.node.clone(), scheme);
-        }
-
-        let effect_row = env
-            .lookup(&fn_decl.name.node)
-            .and_then(|scheme| match &scheme.ty {
-                Type::Function(ft) => Some(ft.effects.clone()),
-                _ => None,
-            })
-            .unwrap_or_else(EffectRow::pure);
-
-        env.set_function_effect_row(fn_decl.name.node.clone(), effect_row);
-        register_fn_signature(fn_decl, env);
-
-        // Register on the nominal type namespace so `Type.method()` works.
-        // For the same-name merge case (type_name == module_short), this also
-        // registers the method under the module path — which is the same key.
-        if env.resolve_module_path_alias(type_name).is_none() {
-            env.register_module_alias(type_name, type_name);
-        }
-        env.register_module_function(type_name, &fn_decl.name.node);
-        if let Some(scheme) = env.lookup(&fn_decl.name.node).cloned() {
-            env.register_module_type_scheme_exact(type_name, &fn_decl.name.node, scheme);
-        }
-        // Register as inherent on the nominal type so `x.method()` (UMS) resolves.
-        env.register_inherent_method(type_name, &fn_decl.name.node);
-
-        // Propagate qualified-name metadata (signatures + effect rows).
-        let qualified_name = format!("{type_name}.{}", fn_decl.name.node);
-        if let Some(signature) = env.function_signature(&fn_decl.name.node).cloned() {
-            env.set_function_signature(qualified_name.clone(), signature);
-        }
-        if let Some(effect_row) = env.function_effect_row(&fn_decl.name.node) {
-            env.set_function_effect_row(qualified_name, effect_row);
-        }
-
-        // For the same-name merge case, also register under the module path so that
-        // existing MIR/codegen lookups by module path still find the method.
-        if let Some(module_path) = module_path {
-            let module_short = module_struct_name(module_path);
-            if module_short == type_name.as_str() && module_path != type_name.as_str() {
+            if let Some(owner_type) = block_method_owners.get(&fn_decl.name.node) {
+                // Type-block method: fn_decl.name.node is the qualified name ("Point.distance").
+                // Extract the bare method name ("distance") for module type scheme keys.
+                let bare_name = fn_decl
+                    .name
+                    .node
+                    .rsplit_once('.')
+                    .map(|(_, m)| m)
+                    .unwrap_or(&fn_decl.name.node);
+                // Update the scheme in owner type's namespace now that type inference has refined it.
+                if let Some(scheme) = env.lookup(&fn_decl.name.node).cloned() {
+                    env.register_module_type_scheme_exact(owner_type, bare_name, scheme);
+                }
+                // Propagate signature and effect row to the qualified name.
+                if let Some(signature) = env.function_signature(&fn_decl.name.node).cloned() {
+                    env.set_function_signature(fn_decl.name.node.clone(), signature);
+                }
+                if let Some(effect_row) = env.function_effect_row(&fn_decl.name.node) {
+                    env.set_function_effect_row(fn_decl.name.node.clone(), effect_row);
+                }
+                // Also register under the module path so that merge_modules_for_codegen's
+                // module-path-qualified copies (e.g. "SomeModule.Point.distance") get the right
+                // type when HIR lowering calls env.resolve_qualified(module_struct_name, name).
                 env.register_module_function(module_path, &fn_decl.name.node);
                 if let Some(scheme) = env.lookup(&fn_decl.name.node).cloned() {
                     env.register_module_type_scheme_exact(
@@ -3904,6 +3905,29 @@ fn typecheck_functions(
                         &fn_decl.name.node,
                         scheme,
                     );
+                }
+                let qname = format!("{module_path}.{}", fn_decl.name.node);
+                if let Some(signature) = env.function_signature(&fn_decl.name.node).cloned() {
+                    env.set_function_signature(qname.clone(), signature);
+                }
+                if let Some(effect_row) = env.function_effect_row(&fn_decl.name.node) {
+                    env.set_function_effect_row(qname, effect_row);
+                }
+            } else {
+                // Normal file-scope function: register on the module struct.
+                env.register_module_function(module_path, &fn_decl.name.node);
+                if let Some(scheme) = env.lookup(&fn_decl.name.node).cloned() {
+                    env.register_module_type_scheme_exact(module_path, &fn_decl.name.node, scheme);
+                }
+                if !fn_decl.name.node.contains('.') {
+                    env.register_inherent_method(&module_short, &fn_decl.name.node);
+                }
+                let qualified_name = format!("{module_path}.{}", fn_decl.name.node);
+                if let Some(signature) = env.function_signature(&fn_decl.name.node).cloned() {
+                    env.set_function_signature(qualified_name.clone(), signature);
+                }
+                if let Some(effect_row) = env.function_effect_row(&fn_decl.name.node) {
+                    env.set_function_effect_row(qualified_name, effect_row);
                 }
             }
         }

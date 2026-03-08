@@ -1531,6 +1531,11 @@ struct LowerCtx<'a> {
     /// `HirHandleClause.arg_types` with concrete operation parameter types
     /// from the type checker.
     expr_types: &'a std::collections::BTreeMap<Span, Type>,
+    /// Bare method name → qualified name for type-block methods (§2.8, §3.5).
+    ///
+    /// Used to rewrite `Var("distance")` to `Var("Point.distance")` so that
+    /// UMS calls (`p.distance(q)`) compile without bare-name namespace pollution.
+    type_block_aliases: &'a std::collections::BTreeMap<String, String>,
 }
 
 fn lower_constructor_fields(
@@ -1577,6 +1582,7 @@ pub fn lower_module(
     let (unit_variant_tags, qualified_variant_tags, pattern_variant_tags, pattern_qualified_tags) =
         collect_variant_tags(module, env);
     let known_record_defs = collect_record_defs(module);
+    let type_block_aliases = env.block_method_aliases();
     let ctx = LowerCtx {
         unit_variant_tags: &unit_variant_tags,
         qualified_variant_tags: &qualified_variant_tags,
@@ -1584,6 +1590,7 @@ pub fn lower_module(
         pattern_qualified_tags: &pattern_qualified_tags,
         known_record_defs: &known_record_defs,
         expr_types,
+        type_block_aliases,
     };
     let mut declarations = Vec::new();
     for decl in &module.declarations {
@@ -1620,6 +1627,7 @@ pub fn lower_function(fn_decl: &FnDecl, env: &TypeEnv) -> HirFunction {
         pattern_qualified_tags: &QualifiedPatternVariantTags::new(),
         known_record_defs: &BTreeSet::new(),
         expr_types: &BTreeMap::new(),
+        type_block_aliases: env.block_method_aliases(),
     };
     lower_function_with_variants(fn_decl, env, &ctx)
 }
@@ -1831,6 +1839,11 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
         ExprKind::Var(name) => {
             if let Some(tag) = ctx.unit_variant_tags.get(name) {
                 HirExprKind::Lit(Lit::Int(*tag))
+            } else if let Some(qualified) = ctx.type_block_aliases.get(name) {
+                // Rewrite UMS bare-name calls to the qualified type-block method name
+                // so that `p.distance(q)` (desugared to `Var("distance")`) resolves
+                // to `Var("Point.distance")` in HIR/MIR without namespace pollution.
+                HirExprKind::Var(qualified.clone())
             } else {
                 HirExprKind::Var(name.clone())
             }

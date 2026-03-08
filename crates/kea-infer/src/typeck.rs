@@ -294,6 +294,13 @@ pub struct TypeEnv {
     /// unification.  This lets handle decompose the body's accumulated effects
     /// and extract concrete effect type parameters (§5.13).
     ambient_effect_rows: Vec<RowVarId>,
+    /// Bare method name → qualified name for type-block methods (§2.8, §3.5).
+    ///
+    /// e.g. `"distance"` → `"Point.distance"`.  HIR lowering rewrites
+    /// `Var("distance")` to `Var("Point.distance")` using this map so that
+    /// UMS calls (`p.distance(q)`) compile correctly without polluting the
+    /// global bare-name namespace with method declarations.
+    block_method_aliases: std::collections::BTreeMap<String, String>,
 }
 
 impl TypeEnv {
@@ -375,6 +382,7 @@ impl TypeEnv {
             actor_context_depth: 0,
             resume_contexts: Vec::new(),
             ambient_effect_rows: Vec::new(),
+            block_method_aliases: std::collections::BTreeMap::new(),
         }
     }
 
@@ -622,6 +630,20 @@ impl TypeEnv {
             .entry(type_name.to_string())
             .or_default()
             .insert(method_name.to_string());
+    }
+
+    /// Register a bare-name → qualified-name alias for a type-block method.
+    ///
+    /// HIR lowering uses this to rewrite `Var("distance")` to `Var("Point.distance")`
+    /// so that UMS calls compile correctly without polluting the global namespace.
+    pub fn register_block_method_alias(&mut self, bare: &str, qualified: &str) {
+        self.block_method_aliases
+            .insert(bare.to_string(), qualified.to_string());
+    }
+
+    /// Return all registered block-method bare→qualified aliases.
+    pub fn block_method_aliases(&self) -> &std::collections::BTreeMap<String, String> {
+        &self.block_method_aliases
     }
 
     /// Return inherent methods known for a nominal type.
