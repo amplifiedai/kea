@@ -1090,25 +1090,6 @@ impl Unifier {
 
             // Structural recursion for compound types.
             (
-                Type::Decimal {
-                    precision: left_precision,
-                    scale: left_scale,
-                },
-                Type::Decimal {
-                    precision: right_precision,
-                    scale: right_scale,
-                },
-            ) => {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    "Decimal(P1,S1) ~ Decimal(P2,S2) → unify dimensions".into(),
-                );
-                self.unify_dim(left_precision, right_precision, provenance);
-                self.unify_dim(left_scale, right_scale, provenance);
-            }
-            (
                 Type::FixedSizeList {
                     element: left_element,
                     size: left_size,
@@ -1259,61 +1240,6 @@ impl Unifier {
                     "Forall ~ Forall → alpha-equal quantified schemes".into(),
                 );
             }
-            (Type::Stream(a), Type::Stream(b)) => {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    "Stream(A) ~ Stream(B) → unify A ~ B".into(),
-                );
-                self.unify_immediate(a, b, provenance);
-            }
-            (Type::Task(a), Type::Task(b)) => {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    "Task(A) ~ Task(B) → unify A ~ B".into(),
-                );
-                self.unify_immediate(a, b, provenance);
-            }
-            (Type::Tagged { inner: a, tags: t1 }, Type::Tagged { inner: b, tags: t2 }) => {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    "Tagged ~ Tagged → unify inner".into(),
-                );
-                self.unify_immediate(a, b, provenance);
-                if t1 != t2 {
-                    self.errors.push(
-                        Diagnostic::error(
-                            Category::TypeMismatch,
-                            format!("incompatible dimensional tags: {t1:?} vs {t2:?}"),
-                        )
-                        .at(span_to_location(provenance.span)),
-                    );
-                }
-            }
-            (Type::Actor(a), Type::Actor(b)) => {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    "Actor(A) ~ Actor(B) → unify A ~ B".into(),
-                );
-                self.unify_immediate(a, b, provenance);
-            }
-            (Type::Arc(a), Type::Arc(b)) => {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    "Arc(A) ~ Arc(B) → unify A ~ B".into(),
-                );
-                self.unify_immediate(a, b, provenance);
-            }
-
             // Row unification.
             (Type::Row(a), Type::Row(b)) => {
                 self.push_unify_step(
@@ -1795,11 +1721,6 @@ impl Unifier {
             Type::AnonRecord(row) | Type::Row(row) => {
                 row.fields.iter().any(|(_, t)| self.occurs_in(var, t))
             }
-            Type::Tagged { inner, .. }
-            | Type::Stream(inner)
-            | Type::Task(inner)
-            | Type::Actor(inner)
-            | Type::Arc(inner) => self.occurs_in(var, inner),
             Type::App(constructor, args) => {
                 self.occurs_in(var, constructor) || args.iter().any(|a| self.occurs_in(var, a))
             }
@@ -2783,51 +2704,6 @@ mod tests {
     }
 
     #[test]
-    fn unify_decimal_unifies_precision_and_scale_dims() {
-        let mut u = Unifier::new();
-        let p = u.fresh_dim_var();
-        let s = u.fresh_dim_var();
-        let left = Type::Decimal {
-            precision: Dim::Var(p),
-            scale: Dim::Var(s),
-        };
-        let right = Type::Decimal {
-            precision: Dim::Known(18),
-            scale: Dim::Known(2),
-        };
-
-        u.unify(&left, &right, &test_prov());
-
-        assert!(
-            !u.has_errors(),
-            "decimal dimensions should unify cleanly: {:?}",
-            u.errors()
-        );
-        assert_eq!(u.resolve_dim(&Dim::Var(p)), Dim::Known(18));
-        assert_eq!(u.resolve_dim(&Dim::Var(s)), Dim::Known(2));
-    }
-
-    #[test]
-    fn unify_decimal_scale_mismatch_reports_error() {
-        let mut u = Unifier::new();
-        let left = Type::Decimal {
-            precision: Dim::Known(18),
-            scale: Dim::Known(2),
-        };
-        let right = Type::Decimal {
-            precision: Dim::Known(18),
-            scale: Dim::Known(4),
-        };
-
-        u.unify(&left, &right, &test_prov());
-
-        assert!(
-            u.has_errors(),
-            "decimal scale mismatch should fail unification"
-        );
-    }
-
-    #[test]
     fn unify_fixed_size_list_unifies_element_and_size_dims() {
         let mut u = Unifier::new();
         let d = u.fresh_dim_var();
@@ -3154,17 +3030,6 @@ mod tests {
                 arity: 2,
             }
         );
-    }
-
-    #[test]
-    fn unify_stream_types() {
-        let mut u = Unifier::new();
-        let var = TypeVarId(0);
-        let expected = Type::Stream(Box::new(Type::Var(var)));
-        let actual = Type::Stream(Box::new(Type::Int));
-        u.unify(&expected, &actual, &test_prov());
-        assert!(!u.has_errors());
-        assert_eq!(u.substitution.apply(&Type::Var(var)), Type::Int);
     }
 
     #[test]

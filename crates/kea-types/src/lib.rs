@@ -119,11 +119,6 @@ pub enum Type {
     Float,
     /// Precision floating point (e.g. Float16, Float32).
     FloatN(FloatWidth),
-    /// Fixed-point decimal with precision and scale (e.g. Decimal(18, 2)).
-    Decimal {
-        precision: Dim,
-        scale: Dim,
-    },
     Bool,
     Char,
     String,
@@ -176,25 +171,6 @@ pub enum Type {
         params: Vec<Type>,
     },
 
-    /// Type with compile-time metadata tags (e.g., future dimensional analysis).
-    /// Tags are erased at runtime.
-    Tagged {
-        inner: Box<Type>,
-        tags: BTreeMap<String, i64>,
-    },
-    /// Lazy typed stream of values.
-    Stream(Box<Type>),
-    /// Handle to a spawned task yielding `T`.
-    Task(Box<Type>),
-
-    // -- Actor (Phase 4, defined now for extensibility) --
-    /// Handle to a spawned actor with state type `T`.
-    Actor(Box<Type>),
-
-    // -- Shared reference --
-    /// `Arc(T)` — the only user-visible shared reference type (KERNEL §1.2).
-    Arc(Box<Type>),
-
     // -- Functions --
     Function(FunctionType),
     /// Explicitly quantified polymorphic type used in nested positions
@@ -222,12 +198,10 @@ pub enum Type {
     Row(RowType),
 }
 
-pub const BUILTIN_ERROR_TYPE_NAMES: [&str; 2] = ["IOError", "ActorError"];
-pub const BUILTIN_PROTOCOL_TYPE_NAMES: [&str; 3] =
-    ["SupervisionAction", "SupervisorStrategy", "ActorSignal"];
+pub const BUILTIN_ERROR_TYPE_NAMES: [&str; 1] = ["IOError"];
 
 pub fn is_builtin_error_type_name(name: &str) -> bool {
-    matches!(name, "IOError" | "ActorError")
+    name == "IOError"
 }
 
 /// Return a nominal reference to a builtin error sum type.
@@ -245,26 +219,8 @@ pub fn builtin_error_sum_type(name: &str) -> Option<Type> {
     }))
 }
 
-pub fn is_builtin_protocol_type_name(name: &str) -> bool {
-    matches!(
-        name,
-        "SupervisionAction" | "SupervisorStrategy" | "ActorSignal"
-    )
-}
-
-/// Return a nominal reference to a builtin protocol sum type.
-pub fn builtin_protocol_sum_type(name: &str) -> Option<Type> {
-    if !is_builtin_protocol_type_name(name) {
-        return None;
-    }
-    Some(Type::Sum(SumType {
-        name: name.to_string(),
-        type_args: vec![],
-    }))
-}
-
 pub fn builtin_sum_type(name: &str) -> Option<Type> {
-    builtin_error_sum_type(name).or_else(|| builtin_protocol_sum_type(name))
+    builtin_error_sum_type(name)
 }
 
 /// Function type: `(params) -[effects]> ret`.
@@ -510,7 +466,6 @@ impl fmt::Display for Type {
                 FloatWidth::F32 => write!(f, "Float32"),
                 FloatWidth::F64 => write!(f, "Float64"),
             },
-            Type::Decimal { precision, scale } => write!(f, "Decimal({precision}, {scale})"),
             Type::Bool => write!(f, "Bool"),
             Type::Char => write!(f, "Char"),
             Type::String => write!(f, "String"),
@@ -626,26 +581,6 @@ impl fmt::Display for Type {
                 }
                 Ok(())
             }
-
-            Type::Tagged { inner, tags } => {
-                if tags.is_empty() {
-                    write!(f, "Tagged({inner})")
-                } else {
-                    write!(f, "{inner} :: {{")?;
-                    for (i, (k, v)) in tags.iter().enumerate() {
-                        if i > 0 {
-                            write!(f, ", ")?;
-                        }
-                        write!(f, "{k}: {v}")?;
-                    }
-                    write!(f, "}}")
-                }
-            }
-            Type::Stream(inner) => write!(f, "Stream({inner})"),
-            Type::Task(inner) => write!(f, "Task({inner})"),
-
-            Type::Actor(inner) => write!(f, "Actor({inner})"),
-            Type::Arc(inner) => write!(f, "Arc({inner})"),
 
             Type::Function(ft) => {
                 write!(f, "(")?;
@@ -888,18 +823,10 @@ fn collect_free_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVarId>) {
                 collect_free_type_vars(arg, vars);
             }
         }
-        Type::Tagged { inner, .. }
-        | Type::Stream(inner)
-        | Type::Task(inner)
-        | Type::Actor(inner)
-        | Type::Arc(inner) => {
-            collect_free_type_vars(inner, vars);
-        }
         Type::Int
         | Type::IntN(_, _)
         | Type::Float
         | Type::FloatN(_)
-        | Type::Decimal { .. }
         | Type::Bool
         | Type::Char
         | Type::String
@@ -983,13 +910,6 @@ fn collect_free_row_vars(ty: &Type, vars: &mut BTreeSet<RowVarId>) {
             }
             vars.extend(inner);
         }
-        Type::Tagged { inner, .. }
-        | Type::Stream(inner)
-        | Type::Task(inner)
-        | Type::Actor(inner)
-        | Type::Arc(inner) => {
-            collect_free_row_vars(inner, vars);
-        }
         Type::App(constructor, args) => {
             collect_free_row_vars(constructor, vars);
             for arg in args {
@@ -1006,7 +926,6 @@ fn collect_free_row_vars(ty: &Type, vars: &mut BTreeSet<RowVarId>) {
         | Type::IntN(_, _)
         | Type::Float
         | Type::FloatN(_)
-        | Type::Decimal { .. }
         | Type::Bool
         | Type::Char
         | Type::String
@@ -1103,21 +1022,6 @@ fn collect_free_dim_vars(ty: &Type, vars: &mut BTreeSet<DimVarId>) {
                 inner.remove(dv);
             }
             vars.extend(inner);
-        }
-        Type::Tagged { inner, .. }
-        | Type::Stream(inner)
-        | Type::Task(inner)
-        | Type::Actor(inner)
-        | Type::Arc(inner) => {
-            collect_free_dim_vars(inner, vars);
-        }
-        Type::Decimal { precision, scale } => {
-            if let Dim::Var(v) = precision {
-                vars.insert(*v);
-            }
-            if let Dim::Var(v) = scale {
-                vars.insert(*v);
-            }
         }
         Type::App(constructor, args) => {
             collect_free_dim_vars(constructor, vars);
@@ -1342,11 +1246,11 @@ fn is_var_token_boundary(ch: Option<char>) -> bool {
 pub fn builtin_type_constructor_arity(name: &str) -> Option<usize> {
     Some(match name {
         "Int" | "Int8" | "Int16" | "Int32" | "Int64" | "UInt8" | "UInt16" | "UInt32" | "UInt64"
-        | "Float" | "Float16" | "Float32" | "Float64" | "Decimal" | "Bool" | "String" | "Html"
+        | "Float" | "Float16" | "Float32" | "Float64" | "Bool" | "String" | "Html"
         | "Markdown" | "Unit" | "Atom" | "Date" | "DateTime" | "Dynamic" => 0,
-        "List" | "Set" | "Option" | "Stream" | "Task" | "Actor" | "Arc" | "Step" | "Seq" => 1,
+        "List" | "Set" | "Option" | "Step" => 1,
         "Map" | "Result" | "Validated" => 2,
-        "Tagged" | "Tuple" => return None,
+        "Tuple" => return None,
         _ => return None,
     })
 }
@@ -1370,7 +1274,6 @@ pub fn type_constructor_for_trait(ty: &Type) -> Option<(String, Vec<Type>)> {
         Type::FloatN(FloatWidth::F16) => Some(("Float16".into(), vec![])),
         Type::FloatN(FloatWidth::F32) => Some(("Float32".into(), vec![])),
         Type::FloatN(FloatWidth::F64) => Some(("Float64".into(), vec![])),
-        Type::Decimal { .. } => Some(("Decimal".into(), vec![])),
         Type::Bool => Some(("Bool".into(), vec![])),
         Type::Char => Some(("Char".into(), vec![])),
         Type::String => Some(("String".into(), vec![])),
@@ -1392,11 +1295,6 @@ pub fn type_constructor_for_trait(ty: &Type) -> Option<(String, Vec<Type>)> {
         Type::Record(rt) => Some((rt.name.clone(), rt.params.clone())),
         Type::Sum(st) => Some((st.name.clone(), st.type_args.clone())),
         Type::Opaque { name, params } => Some((name.clone(), params.clone())),
-        Type::Stream(inner) => Some(("Stream".into(), vec![(**inner).clone()])),
-        Type::Task(inner) => Some(("Task".into(), vec![(**inner).clone()])),
-        Type::Actor(inner) => Some(("Actor".into(), vec![(**inner).clone()])),
-        Type::Arc(inner) => Some(("Arc".into(), vec![(**inner).clone()])),
-        Type::Tagged { inner, .. } => type_constructor_for_trait(inner),
         Type::App(constructor, args) => {
             let normalized = normalize_constructor_application(constructor, args)?;
             if normalized == *ty {
@@ -1513,10 +1411,6 @@ pub fn rebuild_type(constructor: &str, args: &[Type]) -> Option<Type> {
         "Map" if args.len() == 2 => Type::Map(Box::new(args[0].clone()), Box::new(args[1].clone())),
         "Result" if args.len() == 2 => Type::result(args[0].clone(), args[1].clone()),
         "Tuple" => Type::Tuple(args.to_vec()),
-        "Stream" if args.len() == 1 => Type::Stream(Box::new(args[0].clone())),
-        "Task" if args.len() == 1 => Type::Task(Box::new(args[0].clone())),
-        "Actor" if args.len() == 1 => Type::Actor(Box::new(args[0].clone())),
-        "Arc" if args.len() == 1 => Type::Arc(Box::new(args[0].clone())),
         _ => return None,
     })
 }
@@ -1525,11 +1419,10 @@ pub fn rebuild_type(constructor: &str, args: &[Type]) -> Option<Type> {
 // Sendable checking (KERNEL §13.6)
 // ---------------------------------------------------------------------------
 
-/// Check whether a type is Sendable (safe to transfer to an actor task).
+/// Check whether a type is Sendable (safe to transfer across threads/tasks).
 ///
-/// Sendable types: primitives, Actor(T), Task(T), Arc(T), error types, and
-/// compound types whose components are all Sendable.
-/// Functions/closures are NOT Sendable.
+/// Sendable types: primitives, error types, and compound types whose
+/// components are all Sendable. Functions/closures are NOT Sendable.
 pub fn is_sendable(ty: &Type) -> bool {
     match ty {
         // Primitives are always Sendable.
@@ -1537,7 +1430,6 @@ pub fn is_sendable(ty: &Type) -> bool {
         | Type::IntN(_, _)
         | Type::Float
         | Type::FloatN(_)
-        | Type::Decimal { .. }
         | Type::Bool
         | Type::Char
         | Type::String
@@ -1547,17 +1439,8 @@ pub fn is_sendable(ty: &Type) -> bool {
         | Type::Never
         | Type::Atom
         | Type::Date
-        | Type::DateTime => true,
-        // Actor handles and dynamic values are Sendable.
-        Type::Actor(_) | Type::Dynamic => true,
-        // Arc makes anything Sendable (that's its purpose).
-        Type::Arc(_) => true,
-        // Tagged type follows inner.
-        Type::Tagged { inner, .. } => is_sendable(inner),
-        // Stream is Sendable if its element type is.
-        Type::Stream(inner) => is_sendable(inner),
-        // Task is Sendable if its output type is.
-        Type::Task(inner) => is_sendable(inner),
+        | Type::DateTime
+        | Type::Dynamic => true,
         // Compound types: Sendable if all components are Sendable.
         Type::Existential { bounds, .. } => bounds.iter().any(|b| b == "Sendable"),
         Type::Tuple(elems) => elems.iter().all(is_sendable),
@@ -1697,9 +1580,6 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
             None
         }
         Type::Forall(scheme) => sendable_violation_inner(&scheme.ty, path),
-        Type::Tagged { inner, .. } => sendable_violation_inner(inner, path),
-        Type::Stream(inner) => sendable_violation_inner(inner, path),
-        Type::Task(inner) => sendable_violation_inner(inner, path),
         Type::App(constructor, args) => {
             if let Some(normalized) = normalize_constructor_application(constructor, args) {
                 sendable_violation_inner(&normalized, path)
@@ -1742,7 +1622,6 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
         | Type::IntN(_, _)
         | Type::Float
         | Type::FloatN(_)
-        | Type::Decimal { .. }
         | Type::Bool
         | Type::Char
         | Type::String
@@ -1754,8 +1633,6 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
         | Type::Date
         | Type::DateTime
         | Type::Dynamic
-        | Type::Actor(_)
-        | Type::Arc(_)
         | Type::Var(_) => None,
     }
 }
@@ -2000,14 +1877,9 @@ impl Type {
         matches!(self, Type::Float | Type::FloatN(_))
     }
 
-    /// Returns true for fixed-point decimal scalar types.
-    pub fn is_decimal(&self) -> bool {
-        matches!(self, Type::Decimal { .. })
-    }
-
     /// Returns true for numeric scalar types (all integer and float variants).
     pub fn is_numeric(&self) -> bool {
-        self.is_integer() || self.is_float() || self.is_decimal()
+        self.is_integer() || self.is_float()
     }
 
 }
@@ -2157,18 +2029,6 @@ impl Substitution {
                 name: st.name.clone(),
                 type_args: st.type_args.iter().map(|t| self.apply(t)).collect(),
             }),
-            Type::Tagged { inner, tags } => Type::Tagged {
-                inner: Box::new(self.apply(inner)),
-                tags: tags.clone(),
-            },
-            Type::Decimal { precision, scale } => Type::Decimal {
-                precision: self.apply_dim(precision),
-                scale: self.apply_dim(scale),
-            },
-            Type::Stream(inner) => Type::Stream(Box::new(self.apply(inner))),
-            Type::Task(inner) => Type::Task(Box::new(self.apply(inner))),
-            Type::Actor(inner) => Type::Actor(Box::new(self.apply(inner))),
-            Type::Arc(inner) => Type::Arc(Box::new(self.apply(inner))),
             // Leaves: no substitution needed.
             Type::Int
             | Type::IntN(_, _)
@@ -2427,14 +2287,6 @@ mod tests {
     fn display_primitives() {
         assert_eq!(Type::Int.to_string(), "Int");
         assert_eq!(Type::Float.to_string(), "Float");
-        assert_eq!(
-            Type::Decimal {
-                precision: Dim::Known(18),
-                scale: Dim::Known(2)
-            }
-            .to_string(),
-            "Decimal(18, 2)"
-        );
         assert_eq!(Type::Bool.to_string(), "Bool");
         assert_eq!(Type::String.to_string(), "String");
         assert_eq!(Type::Unit.to_string(), "Unit");
@@ -2451,22 +2303,8 @@ mod tests {
         assert!(!Type::IntN(IntWidth::I8, Signedness::Unsigned).is_signed_integer());
         assert!(Type::Float.is_float());
         assert!(Type::FloatN(FloatWidth::F32).is_float());
-        assert!(
-            Type::Decimal {
-                precision: Dim::Known(18),
-                scale: Dim::Known(2)
-            }
-            .is_decimal()
-        );
         assert!(Type::FloatN(FloatWidth::F16).is_numeric());
         assert!(Type::IntN(IntWidth::I32, Signedness::Signed).is_numeric());
-        assert!(
-            Type::Decimal {
-                precision: Dim::Known(18),
-                scale: Dim::Known(2)
-            }
-            .is_numeric()
-        );
         assert!(!Type::String.is_numeric());
     }
 
@@ -2588,44 +2426,6 @@ mod tests {
         ));
         let rendered = sanitize_type_display(&ty);
         assert_eq!(rendered, "#{ x: Int | ra }");
-    }
-
-    #[test]
-    fn sanitize_type_display_sanitizes_dim_vars() {
-        let ty = Type::Decimal {
-            precision: Dim::Var(DimVarId(42)),
-            scale: Dim::Var(DimVarId(99)),
-        };
-        let rendered = sanitize_type_display(&ty);
-        assert_eq!(rendered, "Decimal");
-    }
-
-    #[test]
-    fn sanitize_type_display_collapses_nested_decimal_dim_vars() {
-        let ty = Type::list(Type::Decimal {
-            precision: Dim::Var(DimVarId(3)),
-            scale: Dim::Var(DimVarId(4)),
-        });
-        let rendered = sanitize_type_display(&ty);
-        assert_eq!(rendered, "List(Decimal)");
-    }
-
-    #[test]
-    fn tagged_display_preserves_wrapper() {
-        // Empty-tag Tagged must show Tagged(T), not just T
-        let ty = Type::Tagged {
-            inner: Box::new(Type::Int),
-            tags: BTreeMap::new(),
-        };
-        assert_eq!(ty.to_string(), "Tagged(Int)");
-        assert_eq!(sanitize_type_display(&ty), "Tagged(Int)");
-
-        // Tagged with tags uses the `T :: { k: v }` syntax
-        let ty_with_tags = Type::Tagged {
-            inner: Box::new(Type::Int),
-            tags: BTreeMap::from([("unit".to_string(), 1)]),
-        };
-        assert_eq!(ty_with_tags.to_string(), "Int :: {unit: 1}");
     }
 
     #[test]
@@ -2778,7 +2578,6 @@ mod tests {
             Type::option(Type::Float),
             Type::Map(Box::new(Type::String), Box::new(Type::Int)),
             Type::result(Type::Int, Type::String),
-            Type::Stream(Box::new(Type::Bool)),
             Type::Tuple(vec![Type::Int, Type::String]),
         ];
 
@@ -2808,31 +2607,10 @@ mod tests {
     }
 
     #[test]
-    fn sendable_actor_and_task() {
-        assert!(is_sendable(&Type::Actor(Box::new(Type::Int))));
-        assert!(is_sendable(&Type::Task(Box::new(Type::Int))));
-    }
-
-    #[test]
     fn sendable_error_types() {
         assert!(is_sendable(
             &builtin_error_sum_type("IOError").expect("builtin error type")
         ));
-        assert!(is_sendable(
-            &builtin_error_sum_type("ActorError").expect("builtin error type")
-        ));
-    }
-
-    #[test]
-    fn sendable_arc_wraps_anything() {
-        // Arc(Function) IS Sendable — Arc makes anything Sendable.
-        let closure_type = Type::Function(FunctionType {
-            params: vec![Type::Int],
-            ret: Box::new(Type::Int),
-            effects: EffectRow::pure(),
-        });
-        assert!(!is_sendable(&closure_type));
-        assert!(is_sendable(&Type::Arc(Box::new(closure_type))));
     }
 
     #[test]
@@ -2943,18 +2721,5 @@ mod tests {
     #[test]
     fn sendable_violation_none_for_sendable() {
         assert!(sendable_violation(&Type::Int).is_none());
-        assert!(sendable_violation(&Type::Actor(Box::new(Type::Unit))).is_none());
-    }
-
-    #[test]
-    fn actor_error_is_recognized_builtin() {
-        // Variants live in the SumTypeRegistry (kea-infer), not inline on SumType.
-        // Here we just verify ActorError is recognized as a builtin error type.
-        let ty = builtin_error_sum_type("ActorError").expect("ActorError should exist");
-        let Type::Sum(sum) = ty else {
-            panic!("ActorError should be a Sum type");
-        };
-        assert_eq!(sum.name, "ActorError");
-        assert!(is_builtin_error_type_name("ActorError"));
     }
 }

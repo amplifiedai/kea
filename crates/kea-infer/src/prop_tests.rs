@@ -27,13 +27,8 @@ fn contains_dynamic(ty: &Type) -> bool {
     match ty {
         Type::Dynamic => true,
         Type::Set(inner)
-        | Type::Actor(inner)
-        | Type::Arc(inner)
-        | Type::Stream(inner)
-        | Type::Task(inner)
         | Type::FixedSizeList { element: inner, .. }
         | Type::Tensor { element: inner, .. } => contains_dynamic(inner),
-        Type::Tagged { inner, .. } => contains_dynamic(inner),
         Type::Map(a, b) => contains_dynamic(a) || contains_dynamic(b),
         Type::Tuple(elems) => elems.iter().any(contains_dynamic),
         Type::Function(ft) => ft.params.iter().any(contains_dynamic) || contains_dynamic(&ft.ret),
@@ -63,14 +58,6 @@ fn arb_row_var_id() -> impl Strategy<Value = RowVarId> {
     (0u32..8).prop_map(RowVarId)
 }
 
-fn arb_tags() -> impl Strategy<Value = BTreeMap<String, i64>> {
-    prop::collection::btree_map(
-        prop::sample::select(&["length", "time", "mass", "energy"][..]).prop_map(str::to_string),
-        -3i64..=3i64,
-        0..=3,
-    )
-}
-
 /// Generate ground types (no type variables). Used where we need types
 /// that won't interact with unification variables.
 fn arb_ground_type() -> impl Strategy<Value = Type> {
@@ -81,7 +68,6 @@ fn arb_ground_type() -> impl Strategy<Value = Type> {
         Just(Type::String),
         Just(Type::Unit),
         Just(kea_types::builtin_error_sum_type("IOError").expect("builtin error type")),
-        Just(kea_types::builtin_error_sum_type("ActorError").expect("builtin error type")),
         Just(Type::Atom),
         Just(Type::Date),
         Just(Type::DateTime),
@@ -108,11 +94,6 @@ fn arb_type(depth: u32) -> BoxedStrategy<Type> {
             1 => inner.clone().prop_map(Type::list),
             1 => inner.clone().prop_map(Type::option),
             1 => inner.clone().prop_map(|t| Type::Set(Box::new(t))),
-            1 => inner.clone().prop_map(|t| Type::Actor(Box::new(t))),
-            1 => (inner.clone(), arb_tags()).prop_map(|(inner, tags)| Type::Tagged {
-                inner: Box::new(inner),
-                tags,
-            }),
             1 => (inner.clone(), inner.clone())
                 .prop_map(|(a, b)| Type::result(a, b)),
             1 => prop::collection::vec(inner.clone(), 2..=4)
@@ -128,10 +109,6 @@ fn arb_ground_type_deep() -> BoxedStrategy<Type> {
         4 => arb_ground_type(),
         1 => arb_ground_type().prop_map(Type::list),
         1 => arb_ground_type().prop_map(Type::option),
-        1 => (arb_ground_type(), arb_tags()).prop_map(|(inner, tags)| Type::Tagged {
-            inner: Box::new(inner),
-            tags,
-        }),
         1 => (arb_ground_type(), arb_ground_type())
             .prop_map(|(a, b)| Type::result(a, b)),
     ]
@@ -334,7 +311,7 @@ proptest! {
     #[test]
     fn substitution_chain_idempotent(
         leaf_ty in arb_ground_type(),
-        wrapper_idx in 0u32..4,
+        wrapper_idx in 0u32..3,
         ty in arb_type(2),
     ) {
         let mut subst = Substitution::new();
@@ -344,7 +321,6 @@ proptest! {
             0 => Type::list(Type::Var(TypeVarId(1))),
             1 => Type::option(Type::Var(TypeVarId(1))),
             2 => Type::result(Type::Var(TypeVarId(1)), Type::Unit),
-            3 => Type::Actor(Box::new(Type::Var(TypeVarId(1)))),
             _ => unreachable!(),
         };
         subst.bind_type(TypeVarId(0), intermediate);
@@ -950,9 +926,6 @@ fn contains_var(ty: &Type, var: TypeVarId) -> bool {
         Type::AnonRecord(row) | Type::Row(row) => {
             row.fields.iter().any(|(_, t)| contains_var(t, var))
         }
-        Type::Tagged { inner, .. } | Type::Actor(inner) | Type::Arc(inner) => {
-            contains_var(inner, var)
-        }
         _ => false,
     }
 }
@@ -1043,13 +1016,6 @@ proptest! {
     #[test]
     fn prop_ground_types_are_sendable(ty in arb_ground_type()) {
         prop_assert!(is_sendable(&ty), "ground type {ty} should be Sendable");
-    }
-
-    /// Actor(T) is always Sendable regardless of inner type.
-    #[test]
-    fn prop_actor_is_sendable(inner in arb_ground_type()) {
-        let ty = Type::Actor(Box::new(inner));
-        prop_assert!(is_sendable(&ty), "Actor({ty}) should be Sendable");
     }
 
     /// Function types are never Sendable.
@@ -1161,9 +1127,6 @@ fn contains_function(ty: &Type) -> bool {
         Type::AnonRecord(row) | Type::Row(row) => {
             row.fields.iter().any(|(_, t)| contains_function(t))
         }
-        Type::Tagged { inner, .. } | Type::Actor(inner) | Type::Arc(inner) => {
-            contains_function(inner)
-        }
         _ => false,
     }
 }
@@ -1203,10 +1166,6 @@ fn arb_nested_type(depth: u32) -> BoxedStrategy<Type> {
             3 => leaf,
             1 => inner.clone().prop_map(Type::list),
             1 => inner.clone().prop_map(Type::option),
-            1 => (inner.clone(), arb_tags()).prop_map(|(inner, tags)| Type::Tagged {
-                inner: Box::new(inner),
-                tags,
-            }),
             1 => (inner.clone(), inner.clone())
                 .prop_map(|(a, b)| Type::result(a, b)),
             1 => prop::collection::vec(inner.clone(), 2..=4)

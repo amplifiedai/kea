@@ -9367,11 +9367,7 @@ fn same_nominal_equality_type(query: &Type, candidate: &Type) -> bool {
 fn type_contains_inference_var(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
-        Type::Set(inner)
-        | Type::Stream(inner)
-        | Type::Task(inner)
-        | Type::Actor(inner)
-        | Type::Arc(inner) => type_contains_inference_var(inner),
+        Type::Set(inner) => type_contains_inference_var(inner),
         Type::Map(key, value) => {
             type_contains_inference_var(key) || type_contains_inference_var(value)
         }
@@ -9397,7 +9393,6 @@ fn type_contains_inference_var(ty: &Type) -> bool {
                 .any(|(_, field_ty)| type_contains_inference_var(field_ty))
                 || row.rest.is_some()
         }
-        Type::Tagged { inner, .. } => type_contains_inference_var(inner),
         Type::Forall(scheme) => type_contains_inference_var(&scheme.ty),
         Type::Existential {
             associated_types, ..
@@ -9409,7 +9404,6 @@ fn type_contains_inference_var(ty: &Type) -> bool {
         | Type::IntN(_, _)
         | Type::Float
         | Type::FloatN(_)
-        | Type::Decimal { .. }
         | Type::Bool
         | Type::Char
         | Type::String

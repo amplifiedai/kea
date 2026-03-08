@@ -835,9 +835,6 @@ fn extract_bindings(poly: &Type, concrete: &Type, out: &mut BTreeMap<TypeVarId, 
                 extract_bindings(p, c, out);
             }
         }
-        (Type::Arc(p), Type::Arc(c)) => extract_bindings(p, c, out),
-        (Type::Task(p), Type::Task(c)) => extract_bindings(p, c, out),
-        (Type::Actor(p), Type::Actor(c)) => extract_bindings(p, c, out),
         (Type::Opaque { params: pp, .. }, Type::Opaque { params: cp, .. }) => {
             for (p, c) in pp.iter().zip(cp.iter()) {
                 extract_bindings(p, c, out);

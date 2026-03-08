@@ -20,8 +20,8 @@ use kea_ast::{
 use kea_types::{
     Dim, DimVarId, EffectRow, Effects, FunctionType, Kind, Label, Purity, RecordType, RowType,
     RowVarId, Substitution, SumType, Type, TypeScheme, TypeVarId, Volatility,
-    builtin_type_constructor_arity, free_dim_vars, free_row_vars, free_type_vars, is_sendable,
-    rebuild_type, sendable_violation, type_constructor_for_trait,
+    builtin_type_constructor_arity, free_dim_vars, free_row_vars, free_type_vars,
+    rebuild_type, type_constructor_for_trait,
 };
 
 use crate::{
@@ -1606,55 +1606,8 @@ impl SumTypeRegistry {
                 definition_span: None,
             }
         }
-        fn unit_variant(name: &str) -> VariantInfo {
-            VariantInfo {
-                name: name.to_string(),
-                fields: vec![],
-                where_constraints: vec![],
-                recursive_fields: vec![],
-                definition_span: None,
-            }
-        }
-
         // IOError = IOError(String)
         self.insert_builtin("IOError", vec![], vec![str_variant("IOError")]);
-        // ActorError = Dead(String) | MailboxFull(String) | Timeout(String) | Custom(String)
-        self.insert_builtin(
-            "ActorError",
-            vec![],
-            vec![
-                str_variant("Dead"),
-                str_variant("MailboxFull"),
-                str_variant("Timeout"),
-                str_variant("Custom"),
-            ],
-        );
-        // SupervisionAction = Restart | Stop | Escalate
-        self.insert_builtin(
-            "SupervisionAction",
-            vec![],
-            vec![
-                unit_variant("Restart"),
-                unit_variant("Stop"),
-                unit_variant("Escalate"),
-            ],
-        );
-        // SupervisorStrategy = OneForOne | OneForAll | RestForOne
-        self.insert_builtin(
-            "SupervisorStrategy",
-            vec![],
-            vec![
-                unit_variant("OneForOne"),
-                unit_variant("OneForAll"),
-                unit_variant("RestForOne"),
-            ],
-        );
-        // ActorSignal = Shutdown | Kill
-        self.insert_builtin(
-            "ActorSignal",
-            vec![],
-            vec![unit_variant("Shutdown"), unit_variant("Kill")],
-        );
 
         // Option(T) = None | Some(T)
         let option_variants = vec![
@@ -2700,72 +2653,6 @@ pub enum SolveOutcome {
     NoMatch(Vec<MismatchReason>),
 }
 
-/// How a method is dispatched in the actor message loop.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DispatchSemantics {
-    /// Returns Self → fire-and-forget state update (send).
-    Send,
-    /// Returns a value (not Self) → read-only query (call).
-    CallPure,
-    /// Returns (Self, T) → state update + reply (call).
-    CallWithState,
-}
-
-/// Type information for a single actor method, as seen by send/call dispatch.
-#[derive(Debug, Clone)]
-pub struct MethodProtocol {
-    /// Parameter types excluding `self`.
-    pub params: Vec<Type>,
-    /// The method's return type.
-    pub return_type: Type,
-    /// How this method should be dispatched.
-    pub semantics: DispatchSemantics,
-}
-
-/// The complete protocol (set of methods) for an actor type.
-#[derive(Debug, Clone)]
-pub struct ActorProtocol {
-    pub type_name: String,
-    pub methods: BTreeMap<String, MethodProtocol>,
-    /// The control channel signal type, if `type Control = X` was declared.
-    pub control_type: Option<Type>,
-}
-
-/// Derive dispatch semantics from a method's return type relative to its type name.
-///
-/// Rules (KERNEL.md §13.5):
-/// - Returns `Self` (same named record) → `Send`
-/// - Returns `(Self, T)` → `CallWithState`
-/// - Returns anything else → `CallPure`
-/// - Unresolved `Var(_)` → `CallPure` (safest default)
-///
-/// Takes `type_name` directly rather than the self type, because generalized
-/// method types have structural `AnonRecord` self parameters (from row polymorphism)
-/// while return type annotations preserve nominal `Record` types.
-pub fn derive_dispatch_semantics(type_name: &str, return_type: &Type) -> DispatchSemantics {
-    match return_type {
-        // Returns exactly Self (same named Record type) → Send
-        Type::Record(ret_rec) if ret_rec.name == type_name => DispatchSemantics::Send,
-        // Method inference may erase nominal identity to a structural record;
-        // in actor impls this still represents updated self state.
-        Type::AnonRecord(_) => DispatchSemantics::Send,
-
-        // Returns (Self, T) → CallWithState
-        Type::Tuple(elems)
-            if elems.len() == 2
-                && matches!(&elems[0], Type::Record(first_rec) if first_rec.name == type_name) =>
-        {
-            DispatchSemantics::CallWithState
-        }
-
-        // Unresolved type variable — default to CallPure (safest: no state mutation assumed)
-        Type::Var(_) => DispatchSemantics::CallPure,
-
-        // Anything else → CallPure
-        _ => DispatchSemantics::CallPure,
-    }
-}
-
 fn ast_kind_to_kind(kind: &kea_ast::KindAnnotation) -> Kind {
     match kind {
         kea_ast::KindAnnotation::Star => Kind::Star,
@@ -3138,7 +3025,6 @@ fn infer_impl_target_kind(type_name: &str, type_params: &[String]) -> Kind {
 pub struct TraitRegistry {
     traits: BTreeMap<String, TraitInfo>,
     impls: Vec<ImplInfo>,
-    actor_protocols: Vec<ActorProtocol>,
     trait_owners: BTreeMap<String, String>,
     type_owners: BTreeMap<String, String>,
 }
@@ -3148,7 +3034,6 @@ impl TraitRegistry {
         Self {
             traits: BTreeMap::new(),
             impls: Vec::new(),
-            actor_protocols: Vec::new(),
             trait_owners: BTreeMap::new(),
             type_owners: BTreeMap::new(),
         }
@@ -3568,9 +3453,7 @@ tie it to at least one function-typed parameter effect annotation",
         for item in &block.where_clause {
             match item {
                 kea_ast::WhereItem::TypeAssignment { name, ty } => {
-                    let is_actor_control =
-                        trait_name.node == "Actor" && name.node.as_str() == "Control";
-                    if !declared_assoc_types.contains(&name.node) && !is_actor_control {
+                    if !declared_assoc_types.contains(&name.node) {
                         return Err(Diagnostic::error(
                             Category::TraitBound,
                             format!(
@@ -3913,7 +3796,7 @@ tie it to at least one function-typed parameter effect annotation",
                 methods.keys().map(|s| s.as_str()).collect();
 
             let missing: Vec<_> = required.difference(&provided).collect();
-            if !missing.is_empty() && last.trait_name != "Actor" {
+            if !missing.is_empty() {
                 return Err(Diagnostic::error(
                     Category::TraitBound,
                     format!(
@@ -3929,9 +3812,7 @@ tie it to at least one function-typed parameter effect annotation",
                 ));
             }
 
-            let extra: Vec<_> = if last.trait_name == "Actor" {
-                Vec::new()
-            } else {
+            let extra: Vec<_> = {
                 provided.difference(&expected).collect()
             };
             if !extra.is_empty() {
@@ -4533,29 +4414,6 @@ tie it to at least one function-typed parameter effect annotation",
         self.type_owners.get(name).map(|s| s.as_str())
     }
 
-    /// Register an actor protocol for a type.
-    ///
-    /// Built from the type's `impl Actor for T` methods after they are fully
-    /// type-checked and the substitution has been applied to all signatures.
-    pub fn register_actor_protocol(&mut self, protocol: ActorProtocol) {
-        // Replace if already exists (e.g., re-defined in REPL)
-        self.actor_protocols
-            .retain(|p| p.type_name != protocol.type_name);
-        self.actor_protocols.push(protocol);
-    }
-
-    /// Look up the actor protocol for a type.
-    pub fn find_actor_protocol(&self, type_name: &str) -> Option<&ActorProtocol> {
-        self.actor_protocols
-            .iter()
-            .find(|p| p.type_name == type_name)
-    }
-
-    /// All registered actor protocols.
-    pub fn all_actor_protocols(&self) -> &[ActorProtocol] {
-        &self.actor_protocols
-    }
-
     /// Merge a trait definition from an imported module.
     pub fn merge_trait(&mut self, name: String, info: TraitInfo) -> Result<(), String> {
         if self.traits.contains_key(&name) {
@@ -4719,34 +4577,6 @@ fn instantiate_impl_type(
                 .map(|t| instantiate_impl_type(t, type_params, bindings))
                 .collect(),
         },
-        Type::Tagged { inner, tags } => Type::Tagged {
-            inner: Box::new(instantiate_impl_type(inner, type_params, bindings)),
-            tags: tags.clone(),
-        },
-        Type::Decimal { precision, scale } => Type::Decimal {
-            precision: precision.clone(),
-            scale: scale.clone(),
-        },
-        Type::Stream(inner) => Type::Stream(Box::new(instantiate_impl_type(
-            inner,
-            type_params,
-            bindings,
-        ))),
-        Type::Task(inner) => Type::Task(Box::new(instantiate_impl_type(
-            inner,
-            type_params,
-            bindings,
-        ))),
-        Type::Actor(inner) => Type::Actor(Box::new(instantiate_impl_type(
-            inner,
-            type_params,
-            bindings,
-        ))),
-        Type::Arc(inner) => Type::Arc(Box::new(instantiate_impl_type(
-            inner,
-            type_params,
-            bindings,
-        ))),
         Type::Row(row) => Type::Row(RowType {
             fields: row
                 .fields
@@ -4807,9 +4637,6 @@ fn resolve_annotation_with_type_params(
             if builtin_arity_mismatch(name, args.len()).is_some() {
                 return None;
             }
-            if name == "Decimal" {
-                return resolve_decimal_annotation(args);
-            }
             match (name.as_str(), args.as_slice()) {
                 ("List", [elem]) => {
                     let elem_ty = resolve_annotation_with_type_params(
@@ -4829,51 +4656,12 @@ fn resolve_annotation_with_type_params(
                     let err_ty = resolve_annotation_with_type_params(err, type_param_scope, records, sum_types)?;
                     Some(Type::result(ok_ty, err_ty))
                 }
-                ("Actor", [inner]) => {
-                    Some(Type::Actor(Box::new(resolve_annotation_with_type_params(
-                        inner,
-                        type_param_scope,
-                        records,
-                        sum_types,
-                    )?)))
-                }
                 ("Ptr", [inner]) => Some(ptr_opaque_type(resolve_annotation_with_type_params(
                     inner,
                     type_param_scope,
                     records,
                     sum_types,
                 )?)),
-                ("Arc", [inner]) => Some(Type::Arc(Box::new(resolve_annotation_with_type_params(
-                    inner,
-                    type_param_scope,
-                    records,
-                    sum_types,
-                )?))),
-                ("Stream", [inner]) => {
-                    Some(Type::Stream(Box::new(resolve_annotation_with_type_params(
-                        inner,
-                        type_param_scope,
-                        records,
-                        sum_types,
-                    )?)))
-                }
-                ("Task", [inner]) => {
-                    Some(Type::Task(Box::new(resolve_annotation_with_type_params(
-                        inner,
-                        type_param_scope,
-                        records,
-                        sum_types,
-                    )?)))
-                }
-                ("Tagged", [inner]) => Some(Type::Tagged {
-                    inner: Box::new(resolve_annotation_with_type_params(
-                        inner,
-                        type_param_scope,
-                        records,
-                        sum_types,
-                    )?),
-                    tags: BTreeMap::new(),
-                }),
                 _ => resolve_named_type_application(name, args, records, sum_types, |arg_ann| {
                     resolve_annotation_with_type_params(
                         arg_ann,
@@ -5019,7 +4807,6 @@ fn is_builtin_type_name(name: &str) -> bool {
             | "Float16"
             | "Float32"
             | "Float64"
-            | "Decimal"
             | "Bool"
             | "Char"
             | "String"
@@ -5030,22 +4817,16 @@ fn is_builtin_type_name(name: &str) -> bool {
             | "List"
             | "Map"
             | "Set"
-            | "Actor"
             | "Ptr"
-            | "Stream"
-            | "Task"
             | "Connection"
             | "IOError"
-            | "ActorError"
             | "Date"
             | "DateTime"
             | "Html"
             | "Markdown"
-            | "Arc"
             | "Atom"
             | "Validated"
             | "Step"
-            | "Seq"
     )
 }
 
@@ -6615,20 +6396,6 @@ fn rename_type(
                 .collect(),
         },
         Type::Row(row) => Type::Row(rename_row(row, type_map, row_map, dim_map)),
-        Type::Tagged { inner, tags } => Type::Tagged {
-            inner: Box::new(rename_type(inner, type_map, row_map, dim_map)),
-            tags: tags.clone(),
-        },
-        Type::Decimal { precision, scale } => Type::Decimal {
-            precision: rename_dim(precision, dim_map),
-            scale: rename_dim(scale, dim_map),
-        },
-        Type::Stream(inner) => {
-            Type::Stream(Box::new(rename_type(inner, type_map, row_map, dim_map)))
-        }
-        Type::Task(inner) => Type::Task(Box::new(rename_type(inner, type_map, row_map, dim_map))),
-        Type::Actor(inner) => Type::Actor(Box::new(rename_type(inner, type_map, row_map, dim_map))),
-        Type::Arc(inner) => Type::Arc(Box::new(rename_type(inner, type_map, row_map, dim_map))),
         Type::App(constructor, args) => Type::App(
             Box::new(rename_type(constructor, type_map, row_map, dim_map)),
             args.iter()
@@ -6981,26 +6748,12 @@ fn push_annotation_resolution_error(
     );
 }
 
-fn decimal_dim_from_annotation_arg(arg: &TypeAnnotation) -> Option<Dim> {
-    match arg {
-        TypeAnnotation::DimLiteral(n) => Some(Dim::Known(*n)),
-        _ => None,
-    }
-}
-
 /// Known built-in type constructors and their expected arity.
 const BUILTIN_ARITIES: &[(&str, usize)] = &[
     ("List", 1),
     ("Option", 1),
     ("Result", 2),
-    ("Task", 1),
-    ("Actor", 1),
-    ("Arc", 1),
     ("Ptr", 1),
-    ("Stream", 1),
-    ("Seq", 1),
-    ("Tagged", 1),
-    ("Decimal", 2),
 ];
 
 /// If `name` is a built-in constructor with wrong arity, returns `Some((expected, got))`.
@@ -7017,23 +6770,6 @@ fn builtin_arity_mismatch(name: &str, n_args: usize) -> Option<(usize, usize)> {
         })
 }
 
-fn resolve_decimal_annotation(args: &[TypeAnnotation]) -> Option<Type> {
-    let [precision_ann, scale_ann] = args else {
-        return None;
-    };
-    Some(Type::Decimal {
-        precision: decimal_dim_from_annotation_arg(precision_ann)?,
-        scale: decimal_dim_from_annotation_arg(scale_ann)?,
-    })
-}
-
-fn fresh_decimal_type(unifier: &mut Unifier) -> Type {
-    Type::Decimal {
-        precision: Dim::Var(unifier.fresh_dim_var()),
-        scale: Dim::Var(unifier.fresh_dim_var()),
-    }
-}
-
 fn connection_opaque_type() -> Type {
     Type::Opaque {
         name: "Connection".to_string(),
@@ -7046,52 +6782,6 @@ fn ptr_opaque_type(inner: Type) -> Type {
         name: "Ptr".to_string(),
         params: vec![inner],
     }
-}
-
-fn infer_decimal_binary_result_fallback(
-    op: BinOp,
-    left: &Type,
-    right: &Type,
-    _unifier: &mut Unifier,
-) -> Option<Type> {
-    let left_dec = match left {
-        Type::Decimal {
-            precision: Dim::Known(p),
-            scale: Dim::Known(s),
-        } => Some((*p, *s)),
-        _ => None,
-    }?;
-    let right_dec = match right {
-        Type::Decimal {
-            precision: Dim::Known(p),
-            scale: Dim::Known(s),
-        } => Some((*p, *s)),
-        _ => None,
-    }?;
-    let (lp, ls) = left_dec;
-    let (rp, rs) = right_dec;
-
-    let (precision, scale): (i64, i64) = match op {
-        BinOp::Add | BinOp::Sub => {
-            let int_digits = std::cmp::max(lp - ls, rp - rs);
-            let scale = std::cmp::max(ls, rs);
-            (int_digits + scale + 1, scale)
-        }
-        BinOp::Mul => (lp + rp + 1, ls + rs),
-        BinOp::Div => {
-            let scale = std::cmp::max(6, ls);
-            (lp + rs + scale, scale)
-        }
-        _ => return None,
-    };
-
-    let bounded_precision = precision.clamp(1, 38);
-    let bounded_scale = scale.clamp(0, bounded_precision);
-
-    Some(Type::Decimal {
-        precision: Dim::Known(bounded_precision),
-        scale: Dim::Known(bounded_scale),
-    })
 }
 
 fn instantiate_opaque_target(
@@ -7317,7 +7007,7 @@ pub fn resolve_annotation(
             "DateTime" => Some(Type::DateTime),
             "Dynamic" => Some(Type::Dynamic),
             "Connection" => Some(connection_opaque_type()),
-            "IOError" | "ActorError" => kea_types::builtin_error_sum_type(name),
+            "IOError" => kea_types::builtin_error_sum_type(name),
             _ => {
                 if let Some(alias) = records.lookup_alias(name) {
                     if !alias.params.is_empty() {
@@ -7359,9 +7049,6 @@ pub fn resolve_annotation(
             if builtin_arity_mismatch(name, args.len()).is_some() {
                 return None;
             }
-            if name == "Decimal" {
-                return resolve_decimal_annotation(args);
-            }
             match (name.as_str(), args.as_slice()) {
                 ("List", [elem]) => {
                     Some(Type::list(resolve_annotation(elem, records, sum_types)?))
@@ -7373,21 +7060,9 @@ pub fn resolve_annotation(
                     resolve_annotation(ok, records, sum_types)?,
                     resolve_annotation(err, records, sum_types)?,
                 )),
-                ("Actor", [inner]) => Some(Type::Actor(Box::new(resolve_annotation(
-                    inner, records, sum_types,
-                )?))),
                 ("Ptr", [inner]) => Some(ptr_opaque_type(resolve_annotation(
                     inner, records, sum_types,
                 )?)),
-                ("Arc", [inner]) => Some(Type::Arc(Box::new(resolve_annotation(
-                    inner, records, sum_types,
-                )?))),
-                ("Stream", [inner]) => Some(Type::Stream(Box::new(resolve_annotation(
-                    inner, records, sum_types,
-                )?))),
-                ("Task", [inner]) => Some(Type::Task(Box::new(resolve_annotation(
-                    inner, records, sum_types,
-                )?))),
                 ("Step", [inner]) => {
                     let inner_ty = resolve_annotation(inner, records, sum_types)?;
                     Some(Type::Sum(kea_types::SumType {
@@ -7395,10 +7070,6 @@ pub fn resolve_annotation(
                         type_args: vec![inner_ty],
                     }))
                 }
-                ("Tagged", [inner]) => Some(Type::Tagged {
-                    inner: Box::new(resolve_annotation(inner, records, sum_types)?),
-                    tags: BTreeMap::new(),
-                }),
                 _ => resolve_named_type_application(name, args, records, sum_types, |arg_ann| {
                     resolve_annotation(arg_ann, records, sum_types)
                 }),
@@ -7474,7 +7145,6 @@ pub fn resolve_annotation(
         // Projection (Self.Name) cannot be resolved without trait/impl context.
         // Return None here; callers with context use resolve_annotation_with_self_and_assoc.
         TypeAnnotation::Projection { .. } => None,
-        // DimLiteral only valid inside Applied (handled by resolve_decimal_annotation).
         TypeAnnotation::DimLiteral(_) => None,
     }
 }
@@ -7494,9 +7164,6 @@ fn resolve_annotation_or_bare_df(
                     fields: vec![],
                     rest: Some(row_var),
                 }));
-            }
-            if name == "Decimal" {
-                return Some(fresh_decimal_type(unifier));
             }
             if let Some(ty) = unifier.annotation_type_param(name) {
                 return Some(ty.clone());
@@ -7527,9 +7194,6 @@ fn resolve_annotation_or_bare_df(
             if builtin_arity_mismatch(name, args.len()).is_some() {
                 return None;
             }
-            if name == "Decimal" {
-                return resolve_decimal_annotation(args);
-            }
             match (name.as_str(), args.as_slice()) {
                 ("List", [elem]) => {
                     Some(Type::list(resolve_annotation_or_bare_df(
@@ -7545,27 +7209,9 @@ fn resolve_annotation_or_bare_df(
                     resolve_annotation_or_bare_df(ok, records, sum_types, unifier)?,
                     resolve_annotation_or_bare_df(err, records, sum_types, unifier)?,
                 )),
-                ("Actor", [inner]) => Some(Type::Actor(Box::new(resolve_annotation_or_bare_df(
-                    inner, records, sum_types, unifier,
-                )?))),
                 ("Ptr", [inner]) => Some(ptr_opaque_type(resolve_annotation_or_bare_df(
                     inner, records, sum_types, unifier,
                 )?)),
-                ("Arc", [inner]) => Some(Type::Arc(Box::new(resolve_annotation_or_bare_df(
-                    inner, records, sum_types, unifier,
-                )?))),
-                ("Stream", [inner]) => Some(Type::Stream(Box::new(resolve_annotation_or_bare_df(
-                    inner, records, sum_types, unifier,
-                )?))),
-                ("Task", [inner]) => Some(Type::Task(Box::new(resolve_annotation_or_bare_df(
-                    inner, records, sum_types, unifier,
-                )?))),
-                ("Tagged", [inner]) => Some(Type::Tagged {
-                    inner: Box::new(resolve_annotation_or_bare_df(
-                        inner, records, sum_types, unifier,
-                    )?),
-                    tags: BTreeMap::new(),
-                }),
                 _ => resolve_named_type_application(name, args, records, sum_types, |arg_ann| {
                     resolve_annotation_or_bare_df(arg_ann, records, sum_types, unifier)
                 }),
@@ -8653,11 +8299,6 @@ fn type_contains_unique(ty: &Type) -> bool {
             sum.name == "Unique" || sum.type_args.iter().any(type_contains_unique)
         }
         Type::Tuple(items) => items.iter().any(type_contains_unique),
-        Type::Stream(item)
-        | Type::Task(item)
-        | Type::Actor(item)
-        | Type::Arc(item)
-        | Type::Tagged { inner: item, .. } => type_contains_unique(item),
         Type::Function(ft) => {
             ft.params.iter().any(type_contains_unique)
                 || type_contains_unique(ft.ret.as_ref())
@@ -9213,37 +8854,6 @@ fn is_catch_desugar_shape(clauses: &[kea_ast::HandleClause], then_clause: Option
         && clauses[0].operation.node == "fail"
 }
 
-fn push_ambiguous_trait_impl_error(unifier: &mut Unifier, trait_name: &str, ty: &Type, span: Span) {
-    unifier.push_error(
-        Diagnostic::error(
-            Category::TraitBound,
-            format!("ambiguous impl resolution for trait `{trait_name}` on type `{ty}`"),
-        )
-        .at(span_to_loc(span))
-        .with_help(
-            "add a more specific type annotation or associated-type constraint to disambiguate",
-        ),
-    );
-}
-
-fn solve_trait_impl_with_diag(
-    traits: &TraitRegistry,
-    unifier: &mut Unifier,
-    trait_name: &str,
-    ty: &Type,
-    span: Span,
-) -> SolveOutcome {
-    match traits.solve_goal(&TraitGoal::Implements {
-        trait_name: trait_name.to_string(),
-        ty: ty.clone(),
-    }) {
-        SolveOutcome::Ambiguous(candidates) => {
-            push_ambiguous_trait_impl_error(unifier, trait_name, ty, span);
-            SolveOutcome::Ambiguous(candidates)
-        }
-        other => other,
-    }
-}
 
 fn pattern_is_irrefutable(pattern: &kea_ast::Pattern) -> bool {
     match &pattern.node {
@@ -11625,14 +11235,7 @@ fn infer_expr_bidir(
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
                     let left_resolved = unifier.substitution.apply(&left_ty);
                     let right_resolved = unifier.substitution.apply(&right_ty);
-                    if let Some(decimal_ty) = infer_decimal_binary_result_fallback(
-                        op.node,
-                        &left_resolved,
-                        &right_resolved,
-                        unifier,
-                    ) {
-                        decimal_ty
-                    } else if let Some(widened_ty) =
+                    if let Some(widened_ty) =
                         widened_integer_arithmetic_result_type(&left_resolved, &right_resolved)
                     {
                         widened_ty
@@ -12887,307 +12490,34 @@ fn infer_expr_bidir(
             Type::Unit
         }
 
-        ExprKind::ActorSend {
-            actor,
-            method,
-            args,
-            safe,
-        } => {
-            let actor_ty = infer_expr_bidir(actor, env, unifier, records, traits, sum_types);
-            // Infer and check Sendable on each argument
-            let mut arg_types = Vec::new();
-            for arg in args {
-                let arg_ty = infer_expr_bidir(arg, env, unifier, records, traits, sum_types);
-                let resolved_arg = unifier.substitution.apply(&arg_ty);
-                if !matches!(resolved_arg, Type::Var(_)) {
-                    match resolve_sendable(traits, &resolved_arg, unifier, arg.span) {
-                        SendableSatisfaction::Satisfied => {}
-                        SendableSatisfaction::Ambiguous => {}
-                        SendableSatisfaction::Unsatisfied => {
-                            let detail = sendable_violation(&resolved_arg)
-                                .map(|v| format!(": {}", v.reason))
-                                .unwrap_or_default();
-                            unifier.errors.push(
-                                Diagnostic::error(
-                                    Category::TypeError,
-                                    format!(
-                                        "message argument must be Sendable, but `{resolved_arg}` is not{detail}",
-                                    ),
-                                )
-                                .at(span_to_loc(arg.span)),
-                            );
-                        }
-                    }
-                }
-                arg_types.push(resolved_arg);
+        ExprKind::ActorSend { actor, args, .. }
+        | ExprKind::ActorCall { actor, args, .. } => {
+            // Actor types are not supported in Kea. Infer sub-expressions to
+            // avoid cascading errors, then emit a single unsupported error.
+            let _ = infer_expr_bidir(actor, env, unifier, records, traits, sum_types);
+            for arg in args.iter() {
+                let _ = infer_expr_bidir(arg, env, unifier, records, traits, sum_types);
             }
-            // Unify actor type with Actor(T)
-            let inner_var = unifier.fresh_type();
-            constrain_type_eq(
-                unifier,
-                &actor_ty,
-                &Type::Actor(Box::new(inner_var.clone())),
-                &prov(Reason::ActorOp),
-            );
-            let resolved_inner = unifier.substitution.apply(&inner_var);
-            // Method resolution against protocol
-            if let Some(type_name) = type_name_for_trait_check(&resolved_inner)
-                && let Some(protocol) = traits.find_actor_protocol(&type_name)
-            {
-                if let Some(mp) = protocol.methods.get(&method.node) {
-                    // send/send? are only for Send semantics methods
-                    if mp.semantics != DispatchSemantics::Send {
-                        unifier.errors.push(
-                            Diagnostic::error(
-                                Category::TypeError,
-                                format!(
-                                    "method `{}` returns a value — use `call`/`call?` instead of `send`/`send?`",
-                                    method.node,
-                                ),
-                            )
-                            .at(span_to_loc(method.span)),
-                        );
-                    }
-                    // Check argument count and types
-                    if arg_types.len() != mp.params.len() {
-                        unifier.errors.push(
-                            Diagnostic::error(
-                                Category::TypeError,
-                                format!(
-                                    "method `{}` expects {} argument(s), but {} were provided",
-                                    method.node,
-                                    mp.params.len(),
-                                    arg_types.len(),
-                                ),
-                            )
-                            .at(span_to_loc(method.span)),
-                        );
-                    } else {
-                        for (i, (arg_ty, param_ty)) in arg_types.iter().zip(&mp.params).enumerate()
-                        {
-                            constrain_type_eq(
-                                unifier,
-                                arg_ty,
-                                param_ty,
-                                &prov(Reason::FunctionArg { param_index: i }),
-                            );
-                        }
-                    }
-                } else {
-                    unifier.errors.push(
-                        Diagnostic::error(
-                            Category::TypeError,
-                            format!("actor type `{type_name}` has no method `{}`", method.node,),
-                        )
-                        .at(span_to_loc(method.span)),
-                    );
-                }
-            } else if let Some(type_name) = type_name_for_trait_check(&resolved_inner) {
-                // Concrete type but no protocol registered — likely missing impl Actor
-                unifier.errors.push(
-                    Diagnostic::error(
-                        Category::TypeError,
-                        format!("actor type `{type_name}` has no registered protocol"),
-                    )
-                    .at(span_to_loc(actor.span)),
-                );
-            }
-            // Type variables stay permissive — protocol resolves later
-            if *safe {
-                Type::result(
-                    Type::Unit,
-                    kea_types::builtin_error_sum_type("ActorError")
-                        .expect("builtin ActorError sum type"),
+            unifier.push_error(
+                Diagnostic::error(
+                    Category::TypeError,
+                    "actor types are not supported",
                 )
-            } else {
-                Type::Unit
-            }
-        }
-
-        ExprKind::ActorCall {
-            actor,
-            method,
-            args,
-            safe,
-        } => {
-            let actor_ty = infer_expr_bidir(actor, env, unifier, records, traits, sum_types);
-            // Infer and check Sendable on each argument
-            let mut arg_types = Vec::new();
-            for arg in args {
-                let arg_ty = infer_expr_bidir(arg, env, unifier, records, traits, sum_types);
-                let resolved_arg = unifier.substitution.apply(&arg_ty);
-                if !matches!(resolved_arg, Type::Var(_)) {
-                    match resolve_sendable(traits, &resolved_arg, unifier, arg.span) {
-                        SendableSatisfaction::Satisfied => {}
-                        SendableSatisfaction::Ambiguous => {}
-                        SendableSatisfaction::Unsatisfied => {
-                            let detail = sendable_violation(&resolved_arg)
-                                .map(|v| format!(": {}", v.reason))
-                                .unwrap_or_default();
-                            unifier.errors.push(
-                                Diagnostic::error(
-                                    Category::TypeError,
-                                    format!(
-                                        "message argument must be Sendable, but `{resolved_arg}` is not{detail}",
-                                    ),
-                                )
-                                .at(span_to_loc(arg.span)),
-                            );
-                        }
-                    }
-                }
-                arg_types.push(resolved_arg);
-            }
-            // Unify actor type with Actor(T)
-            let inner_var = unifier.fresh_type();
-            constrain_type_eq(
-                unifier,
-                &actor_ty,
-                &Type::Actor(Box::new(inner_var.clone())),
-                &prov(Reason::ActorOp),
+                .at(span_to_loc(expr.span)),
             );
-            let resolved_inner = unifier.substitution.apply(&inner_var);
-            // Method resolution against protocol — `call` works on all methods
-            let return_type = if let Some(type_name) = type_name_for_trait_check(&resolved_inner)
-                && let Some(protocol) = traits.find_actor_protocol(&type_name)
-            {
-                if let Some(mp) = protocol.methods.get(&method.node) {
-                    // Check argument count and types
-                    if arg_types.len() != mp.params.len() {
-                        unifier.errors.push(
-                            Diagnostic::error(
-                                Category::TypeError,
-                                format!(
-                                    "method `{}` expects {} argument(s), but {} were provided",
-                                    method.node,
-                                    mp.params.len(),
-                                    arg_types.len(),
-                                ),
-                            )
-                            .at(span_to_loc(method.span)),
-                        );
-                    } else {
-                        for (i, (arg_ty, param_ty)) in arg_types.iter().zip(&mp.params).enumerate()
-                        {
-                            constrain_type_eq(
-                                unifier,
-                                arg_ty,
-                                param_ty,
-                                &prov(Reason::FunctionArg { param_index: i }),
-                            );
-                        }
-                    }
-                    // Return type depends on semantics:
-                    // Send → Result(Unit, ActorError) (caller doesn't see new state)
-                    // CallPure → Result(return_type, ActorError)
-                    // CallWithState → Result(second_tuple_element, ActorError)
-                    match mp.semantics {
-                        DispatchSemantics::Send => Type::Unit,
-                        DispatchSemantics::CallPure => mp.return_type.clone(),
-                        DispatchSemantics::CallWithState => {
-                            // return_type is (Self, T), extract T
-                            if let Type::Tuple(ref elems) = mp.return_type {
-                                if elems.len() == 2 {
-                                    elems[1].clone()
-                                } else {
-                                    mp.return_type.clone()
-                                }
-                            } else {
-                                mp.return_type.clone()
-                            }
-                        }
-                    }
-                } else {
-                    unifier.errors.push(
-                        Diagnostic::error(
-                            Category::TypeError,
-                            format!("actor type `{type_name}` has no method `{}`", method.node,),
-                        )
-                        .at(span_to_loc(method.span)),
-                    );
-                    unifier.fresh_type()
-                }
-            } else if let Some(type_name) = type_name_for_trait_check(&resolved_inner) {
-                // Concrete type but no protocol registered
-                unifier.errors.push(
-                    Diagnostic::error(
-                        Category::TypeError,
-                        format!("actor type `{type_name}` has no registered protocol"),
-                    )
-                    .at(span_to_loc(actor.span)),
-                );
-                unifier.fresh_type()
-            } else {
-                // Type variable — can't resolve protocol yet, stay permissive
-                unifier.fresh_type()
-            };
-            if *safe {
-                Type::result(
-                    return_type,
-                    kea_types::builtin_error_sum_type("ActorError")
-                        .expect("builtin ActorError sum type"),
-                )
-            } else {
-                return_type
-            }
+            Type::Unit
         }
 
         ExprKind::ControlSend { actor, signal } => {
-            let actor_ty = infer_expr_bidir(actor, env, unifier, records, traits, sum_types);
-            let signal_ty = infer_expr_bidir(signal, env, unifier, records, traits, sum_types);
-
-            // Check signal is Sendable
-            let resolved_signal = unifier.substitution.apply(&signal_ty);
-            if !matches!(resolved_signal, Type::Var(_)) {
-                match resolve_sendable(traits, &resolved_signal, unifier, signal.span) {
-                    SendableSatisfaction::Satisfied => {}
-                    SendableSatisfaction::Ambiguous => {}
-                    SendableSatisfaction::Unsatisfied => {
-                        let detail = sendable_violation(&resolved_signal)
-                            .map(|v| format!(": {}", v.reason))
-                            .unwrap_or_default();
-                        unifier.errors.push(
-                            Diagnostic::error(
-                                Category::TypeError,
-                                format!(
-                                    "control signal must be Sendable, but `{resolved_signal}` is not{detail}",
-                                ),
-                            )
-                            .at(span_to_loc(signal.span)),
-                        );
-                    }
-                }
-            }
-
-            // Unify actor type with Actor(T)
-            let inner_var = unifier.fresh_type();
-            constrain_type_eq(
-                unifier,
-                &actor_ty,
-                &Type::Actor(Box::new(inner_var.clone())),
-                &prov(Reason::ActorOp),
+            let _ = infer_expr_bidir(actor, env, unifier, records, traits, sum_types);
+            let _ = infer_expr_bidir(signal, env, unifier, records, traits, sum_types);
+            unifier.push_error(
+                Diagnostic::error(
+                    Category::TypeError,
+                    "actor types are not supported",
+                )
+                .at(span_to_loc(expr.span)),
             );
-            let resolved_inner = unifier.substitution.apply(&inner_var);
-
-            // Check actor has a control channel and signal type matches
-            if let Some(type_name) = type_name_for_trait_check(&resolved_inner)
-                && let Some(protocol) = traits.find_actor_protocol(&type_name)
-            {
-                if let Some(ref ctrl_ty) = protocol.control_type {
-                    constrain_type_eq(unifier, &signal_ty, ctrl_ty, &prov(Reason::ActorOp));
-                } else {
-                    unifier.errors.push(
-                        Diagnostic::error(
-                            Category::TypeError,
-                            format!(
-                                "actor type `{type_name}` does not have a control channel \
-                                 (no `type Control = ...` in its `impl Actor` block)",
-                            ),
-                        )
-                        .at(span_to_loc(expr.span)),
-                    );
-                }
-            }
             Type::Unit
         }
     };
@@ -13845,14 +13175,7 @@ fn check_expr_bidir(
                 report_zero_division_literal_if_present(op.node, right, unifier);
                 let left_resolved = unifier.substitution.apply(&left_ty);
                 let right_resolved = unifier.substitution.apply(&right_ty);
-                let result_ty = if let Some(decimal_ty) = infer_decimal_binary_result_fallback(
-                    op.node,
-                    &left_resolved,
-                    &right_resolved,
-                    unifier,
-                ) {
-                    decimal_ty
-                } else if let Some(widened_ty) =
+                let result_ty = if let Some(widened_ty) =
                     widened_integer_arithmetic_result_type(&left_resolved, &right_resolved)
                 {
                     widened_ty
@@ -14897,36 +14220,6 @@ fn resolve_module_qualified_variant(
     }
 }
 
-enum SendableSatisfaction {
-    Satisfied,
-    Unsatisfied,
-    Ambiguous,
-}
-
-fn resolve_sendable(
-    traits: &TraitRegistry,
-    ty: &Type,
-    unifier: &mut Unifier,
-    span: Span,
-) -> SendableSatisfaction {
-    if traits.lookup_trait("Sendable").is_some() {
-        match solve_trait_impl_with_diag(traits, unifier, "Sendable", ty, span) {
-            SolveOutcome::Unique(_) => SendableSatisfaction::Satisfied,
-            SolveOutcome::Ambiguous(_) => SendableSatisfaction::Ambiguous,
-            SolveOutcome::NoMatch(_) => {
-                if is_sendable(ty) {
-                    SendableSatisfaction::Satisfied
-                } else {
-                    SendableSatisfaction::Unsatisfied
-                }
-            }
-        }
-    } else if is_sendable(ty) {
-        SendableSatisfaction::Satisfied
-    } else {
-        SendableSatisfaction::Unsatisfied
-    }
-}
 
 /// Infer the type constraints imposed by a pattern and bind pattern variables.
 ///
@@ -15468,68 +14761,6 @@ fn binop_name(op: BinOp) -> &'static str {
     }
 }
 
-/// Build an ActorProtocol from a type's actor impl methods.
-///
-/// **Precondition**: `methods` must contain concrete (monomorphic, nominal) types,
-/// not generalized types from the type environment. Use [`concrete_method_types_from_decls`]
-/// to build suitable input from FnDecl annotations.
-///
-/// Each method type should be a resolved `Function { params: [Self, ...], ret: R }`.
-/// The first parameter (`self`) is stripped; dispatch semantics are derived from the
-/// return type relative to the type name.
-/// Config methods: evaluated once at spawn time, NOT included in the dispatch table.
-/// These provide trait-level defaults for actor configuration.
-pub const ACTOR_CONFIG_METHODS: &[&str] = &[
-    "mailbox_size",
-    "supervision",
-    "max_restarts",
-    "tick_interval",
-];
-
-/// Lifecycle methods: included in the dispatch table but excluded from the send/call protocol.
-/// These are dispatched internally (init on spawn/restart, terminate on exit,
-/// handle_control on control channel) but not callable by users via send/call.
-pub const ACTOR_LIFECYCLE_METHODS: &[&str] = &["init", "on_tick", "handle_control", "terminate"];
-
-pub fn build_actor_protocol(
-    type_name: &str,
-    methods: &BTreeMap<String, Type>,
-    control_type: Option<Type>,
-) -> ActorProtocol {
-    let mut protocol_methods = BTreeMap::new();
-
-    for (name, ty) in methods {
-        // Skip config and lifecycle methods — they're not user-callable dispatch targets.
-        if ACTOR_CONFIG_METHODS.contains(&name.as_str())
-            || ACTOR_LIFECYCLE_METHODS.contains(&name.as_str())
-        {
-            continue;
-        }
-        if let Type::Function(ft) = ty {
-            // Strip self parameter (first param)
-            let params = if ft.params.is_empty() {
-                vec![]
-            } else {
-                ft.params[1..].to_vec()
-            };
-            let semantics = derive_dispatch_semantics(type_name, &ft.ret);
-            protocol_methods.insert(
-                name.clone(),
-                MethodProtocol {
-                    params,
-                    return_type: (*ft.ret).clone(),
-                    semantics,
-                },
-            );
-        }
-    }
-
-    ActorProtocol {
-        type_name: type_name.to_string(),
-        methods: protocol_methods,
-        control_type,
-    }
-}
 
 /// Resolve a type annotation with `Self` and associated types in scope.
 ///
@@ -15560,9 +14791,6 @@ fn resolve_annotation_with_self_and_assoc(
             }
             if builtin_arity_mismatch(name, args.len()).is_some() {
                 return None;
-            }
-            if name == "Decimal" {
-                return resolve_decimal_annotation(args);
             }
             match (name.as_str(), args.as_slice()) {
                 ("Option", [inner]) => Some(Type::option(
@@ -15601,15 +14829,6 @@ fn resolve_annotation_with_self_and_assoc(
                         )?,
                     ))
                 }
-                ("Actor", [inner]) => Some(Type::Actor(Box::new(
-                    resolve_annotation_with_self_and_assoc(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?,
-                ))),
                 ("Ptr", [inner]) => Some(ptr_opaque_type(
                     resolve_annotation_with_self_and_assoc(
                         inner,
@@ -15619,43 +14838,6 @@ fn resolve_annotation_with_self_and_assoc(
                         assoc_types,
                     )?,
                 )),
-                ("Arc", [inner]) => {
-                    Some(Type::Arc(Box::new(resolve_annotation_with_self_and_assoc(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?)))
-                }
-                ("Stream", [inner]) => Some(Type::Stream(Box::new(
-                    resolve_annotation_with_self_and_assoc(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?,
-                ))),
-                ("Task", [inner]) => Some(Type::Task(Box::new(
-                    resolve_annotation_with_self_and_assoc(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?,
-                ))),
-                ("Tagged", [inner_ann]) => Some(Type::Tagged {
-                    inner: Box::new(resolve_annotation_with_self_and_assoc(
-                        inner_ann,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?),
-                    tags: BTreeMap::new(),
-                }),
                 _ => resolve_named_type_application(name, args, records, sum_types, |arg_ann| {
                     resolve_annotation_with_self_and_assoc(
                         arg_ann,
@@ -15863,9 +15045,6 @@ fn resolve_annotation_with_self_assoc_and_params(
             if builtin_arity_mismatch(name, args.len()).is_some() {
                 return None;
             }
-            if name == "Decimal" {
-                return resolve_decimal_annotation(args);
-            }
             match (name.as_str(), args.as_slice()) {
                 ("Option", [inner]) => Some(Type::option(
                     resolve_annotation_with_self_assoc_and_params(
@@ -15911,17 +15090,6 @@ fn resolve_annotation_with_self_assoc_and_params(
                         )?,
                     ))
                 }
-                ("Actor", [inner]) => Some(Type::Actor(Box::new(
-                    resolve_annotation_with_self_assoc_and_params(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                        type_params,
-                        placeholder_id,
-                    )?,
-                ))),
                 ("Ptr", [inner]) => Some(ptr_opaque_type(
                     resolve_annotation_with_self_assoc_and_params(
                         inner,
@@ -15933,51 +15101,6 @@ fn resolve_annotation_with_self_assoc_and_params(
                         placeholder_id,
                     )?,
                 )),
-                ("Arc", [inner]) => Some(Type::Arc(Box::new(
-                    resolve_annotation_with_self_assoc_and_params(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                        type_params,
-                        placeholder_id,
-                    )?,
-                ))),
-                ("Stream", [inner]) => Some(Type::Stream(Box::new(
-                    resolve_annotation_with_self_assoc_and_params(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                        type_params,
-                        placeholder_id,
-                    )?,
-                ))),
-                ("Task", [inner]) => Some(Type::Task(Box::new(
-                    resolve_annotation_with_self_assoc_and_params(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                        type_params,
-                        placeholder_id,
-                    )?,
-                ))),
-                ("Tagged", [inner_ann]) => Some(Type::Tagged {
-                    inner: Box::new(resolve_annotation_with_self_assoc_and_params(
-                        inner_ann,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                        type_params,
-                        placeholder_id,
-                    )?),
-                    tags: BTreeMap::new(),
-                }),
                 ("Step", [inner]) => {
                     let inner_ty = resolve_annotation_with_self_assoc_and_params(
                         inner,
@@ -16172,16 +15295,11 @@ fn resolve_annotation_with_self_assoc_and_params(
 
 /// Build concrete method types from FnDecl annotations.
 ///
-/// Used for actor protocols which need monomorphic types (not generalized).
 /// The generalized types from type_env contain type variables from HM
-/// let-generalization (e.g., `forall a r. #{ count: a | r } -> a`), which
-/// cause `derive_dispatch_semantics` to see `Var(_)` return types instead
-/// of concrete types like `Int` or `Counter`.
-///
-/// This function reads the type annotations directly from the AST, producing
-/// concrete `Function { params: [Self, ...], ret: R }` types suitable for
-/// actor protocol dispatch classification. Only the first clause of
-/// multi-clause methods is inspected (actor methods should have a single clause).
+/// let-generalization (e.g., `forall a r. #{ count: a | r } -> a`).
+/// This function reads type annotations directly from the AST, producing
+/// concrete `Function { params: [Self, ...], ret: R }` types.
+/// Only the first clause of multi-clause methods is inspected.
 pub fn concrete_method_types_from_decls(
     type_name: &str,
     methods: &[kea_ast::FnDecl],
@@ -16249,17 +15367,6 @@ pub fn concrete_method_types_from_decls(
     result
 }
 
-/// Extract the concrete type name from a Type, for use in trait satisfaction checks.
-/// Returns `Some(name)` for named records; `None` for anonymous records, type vars,
-/// and other non-nominal types (where trait checking is deferred or inapplicable).
-fn type_name_for_trait_check(ty: &Type) -> Option<String> {
-    match ty {
-        Type::Record(rt) => Some(rt.name.clone()),
-        Type::Sum(st) => Some(st.name.clone()),
-        Type::Opaque { name, .. } => Some(name.clone()),
-        _ => None,
-    }
-}
 
 fn instantiate_trait_method_type(
     trait_info: &TraitInfo,
