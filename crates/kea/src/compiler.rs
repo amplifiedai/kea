@@ -3587,6 +3587,106 @@ fn typecheck_functions(
     diagnostics: &mut Vec<Diagnostic>,
     module_path: Option<&str>,
 ) -> Result<std::collections::BTreeMap<Span, Type>, String> {
+    // Collect type-block methods: (owner_type_name, fn_decl, is_same_name_merge).
+    // These are methods declared inside struct/enum blocks (§2.8, §3.5).
+    let struct_name = module_path.map(module_struct_name).unwrap_or("");
+    let type_block_methods: Vec<(String, FnDecl)> = module
+        .declarations
+        .iter()
+        .flat_map(|decl| {
+            let (type_name, methods): (&str, &[FnDecl]) = match &decl.node {
+                DeclKind::RecordDef(r) => (&r.name.node, &r.methods),
+                DeclKind::TypeDef(t) => (&t.name.node, &t.methods),
+                _ => return vec![],
+            };
+            methods
+                .iter()
+                .map(|m| (type_name.to_string(), m.clone()))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    // Collision detection: check for duplicate names within each type block,
+    // and between type-block methods and file-scope functions in the same
+    // merged namespace (§11.6).
+    if module_path.is_some() {
+        // Collect file-scope function names with their spans.
+        let file_scope_fns: BTreeMap<String, Span> = module
+            .declarations
+            .iter()
+            .filter_map(|decl| match &decl.node {
+                DeclKind::Function(f) => Some((f.name.node.clone(), f.span)),
+                DeclKind::ExprFn(e) => Some((e.name.node.clone(), e.span)),
+                _ => None,
+            })
+            .collect();
+
+        // Check each type block for internal duplicates and merged-namespace collisions.
+        for decl in &module.declarations {
+            let (type_name, methods): (&str, &[FnDecl]) = match &decl.node {
+                DeclKind::RecordDef(r) => (&r.name.node, &r.methods),
+                DeclKind::TypeDef(t) => (&t.name.node, &t.methods),
+                _ => continue,
+            };
+            let is_merged = type_name == struct_name;
+
+            // Internal duplicates within this type block.
+            let mut seen_in_block: BTreeMap<String, Span> = BTreeMap::new();
+            for m in methods {
+                if let Some(&prev_span) = seen_in_block.get(&m.name.node) {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            Category::TypeError,
+                            format!(
+                                "duplicate method `{}` in `{}` block",
+                                m.name.node, type_name
+                            ),
+                        )
+                        .at(span_to_loc(m.span))
+                        .with_label(
+                            span_to_loc(prev_span),
+                            "first definition here",
+                        ),
+                    );
+                    return Err(format_diagnostics(
+                        "duplicate method in type block",
+                        diagnostics,
+                    ));
+                }
+                seen_in_block.insert(m.name.node.clone(), m.span);
+
+                // Merged-namespace collision: type-block method vs file-scope fn.
+                if is_merged {
+                    if let Some(&fs_span) = file_scope_fns.get(&m.name.node) {
+                        diagnostics.push(
+                            Diagnostic::error(
+                                Category::TypeError,
+                                format!(
+                                    "method `{}` declared in `{}` block \
+                                     conflicts with a file-scope function of the same name \
+                                     in the merged namespace",
+                                    m.name.node, type_name
+                                ),
+                            )
+                            .at(span_to_loc(m.span))
+                            .with_label(
+                                span_to_loc(fs_span),
+                                "file-scope definition here",
+                            )
+                            .with_help(
+                                "rename one of the definitions, or remove the duplicate",
+                            ),
+                        );
+                        return Err(format_diagnostics(
+                            "method name collision in merged namespace",
+                            diagnostics,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
     // Pre-register all function names and effect rows so forward references
     // (including mutual recursion) resolve correctly.  This also enables
     // transitive effect inference for forward-referenced effectful callees.
@@ -3613,6 +3713,21 @@ fn typecheck_functions(
 
         // Also pre-register the effect row so transitive effect inference
         // sees the declared effects of forward-referenced callees.
+        let effects =
+            resolve_effect_annotation_simple(&fn_decl.effect_annotation, records, sum_types);
+        env.set_function_effect_row(fn_decl.name.node.clone(), effects);
+    }
+
+    // Pre-register type-block methods so they are visible to mutual recursion
+    // and forward references within the same module.
+    for (_, fn_decl) in &type_block_methods {
+        let resolved = resolve_fn_decl_type(fn_decl, records, sum_types);
+        let ty = resolved.unwrap_or_else(|| {
+            let id = placeholder_counter;
+            placeholder_counter = placeholder_counter.wrapping_sub(1);
+            Type::Var(kea_types::TypeVarId(id))
+        });
+        env.bind(fn_decl.name.node.clone(), TypeScheme::mono(ty));
         let effects =
             resolve_effect_annotation_simple(&fn_decl.effect_annotation, records, sum_types);
         env.set_function_effect_row(fn_decl.name.node.clone(), effects);
@@ -3698,6 +3813,98 @@ fn typecheck_functions(
             }
             if let Some(effect_row) = env.function_effect_row(&fn_decl.name.node) {
                 env.set_function_effect_row(qualified_name, effect_row);
+            }
+        }
+    }
+
+    // Type-check and register type-block methods (§2.8, §3.5, §11.6).
+    // Each method is type-checked like a file-scope function, then registered
+    // as inherent on its nominal type name and in the type's own namespace
+    // so that both `Type.method(x)` and `x.method()` resolve correctly.
+    for (type_name, fn_decl) in &type_block_methods {
+        let where_diags = validate_where_clause_traits(&fn_decl.where_clause, traits);
+        diagnostics.extend(where_diags.iter().filter(|d| !is_error(d)).cloned());
+        if where_diags.iter().any(is_error) {
+            diagnostics.extend(where_diags);
+            return Err(format_diagnostics(
+                "where-clause validation failed",
+                diagnostics,
+            ));
+        }
+
+        let mut ctx = InferenceContext::new();
+        seed_fn_where_type_params_in_context(fn_decl, traits, &mut ctx);
+        let expr = fn_decl.to_let_expr();
+        let _ = infer_and_resolve_in_context(&expr, env, &mut ctx, records, traits, sum_types);
+
+        if ctx.has_errors() {
+            diagnostics.extend_from_slice(ctx.errors());
+            return Err(format_diagnostics("type inference failed", diagnostics));
+        }
+
+        ctx.check_trait_bounds(traits);
+        if ctx.has_errors() {
+            diagnostics.extend_from_slice(ctx.errors());
+            return Err(format_diagnostics("trait obligations failed", diagnostics));
+        }
+
+        diagnostics.extend(ctx.errors().iter().filter(|d| !is_error(d)).cloned());
+        all_expr_types.extend(ctx.resolve_expr_types());
+
+        if !fn_decl.where_clause.is_empty()
+            && let Some(scheme) = env.lookup(&fn_decl.name.node).cloned()
+        {
+            let mut scheme = scheme;
+            apply_where_clause(&mut scheme, fn_decl, ctx.substitution());
+            env.bind(fn_decl.name.node.clone(), scheme);
+        }
+
+        let effect_row = env
+            .lookup(&fn_decl.name.node)
+            .and_then(|scheme| match &scheme.ty {
+                Type::Function(ft) => Some(ft.effects.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(EffectRow::pure);
+
+        env.set_function_effect_row(fn_decl.name.node.clone(), effect_row);
+        register_fn_signature(fn_decl, env);
+
+        // Register on the nominal type namespace so `Type.method()` works.
+        // For the same-name merge case (type_name == module_short), this also
+        // registers the method under the module path — which is the same key.
+        if env.resolve_module_path_alias(type_name).is_none() {
+            env.register_module_alias(type_name, type_name);
+        }
+        env.register_module_function(type_name, &fn_decl.name.node);
+        if let Some(scheme) = env.lookup(&fn_decl.name.node).cloned() {
+            env.register_module_type_scheme_exact(type_name, &fn_decl.name.node, scheme);
+        }
+        // Register as inherent on the nominal type so `x.method()` (UMS) resolves.
+        env.register_inherent_method(type_name, &fn_decl.name.node);
+
+        // Propagate qualified-name metadata (signatures + effect rows).
+        let qualified_name = format!("{type_name}.{}", fn_decl.name.node);
+        if let Some(signature) = env.function_signature(&fn_decl.name.node).cloned() {
+            env.set_function_signature(qualified_name.clone(), signature);
+        }
+        if let Some(effect_row) = env.function_effect_row(&fn_decl.name.node) {
+            env.set_function_effect_row(qualified_name, effect_row);
+        }
+
+        // For the same-name merge case, also register under the module path so that
+        // existing MIR/codegen lookups by module path still find the method.
+        if let Some(module_path) = module_path {
+            let module_short = module_struct_name(module_path);
+            if module_short == type_name.as_str() && module_path != type_name.as_str() {
+                env.register_module_function(module_path, &fn_decl.name.node);
+                if let Some(scheme) = env.lookup(&fn_decl.name.node).cloned() {
+                    env.register_module_type_scheme_exact(
+                        module_path,
+                        &fn_decl.name.node,
+                        scheme,
+                    );
+                }
             }
         }
     }
