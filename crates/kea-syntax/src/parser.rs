@@ -656,6 +656,7 @@ impl Parser {
         let mut fields = Vec::new();
         let mut const_fields = Vec::new();
         let mut field_annotations = Vec::new();
+        let mut methods = Vec::new();
         self.skip_newlines();
         if !self.at_block_end(delimiter) {
             loop {
@@ -665,6 +666,20 @@ impl Parser {
                 }
                 let anns = self.parse_annotations()?;
                 self.skip_newlines();
+                // Method declaration: `fn name(params) -> Type { body }` or `pub fn ...`
+                if self.check(&TokenKind::Fn)
+                    || (self.check(&TokenKind::Pub)
+                        && self.peek_is(|k| matches!(k, TokenKind::Fn)))
+                {
+                    let method_start = self.current_span();
+                    let method_public = self.match_token(&TokenKind::Pub);
+                    self.expect(&TokenKind::Fn, "expected 'fn'")?;
+                    let decl = self.fn_decl(method_public, method_start, None, anns)?;
+                    if let DeclKind::Function(fn_decl) = decl.node {
+                        methods.push(fn_decl);
+                    }
+                    continue;
+                }
                 if self.match_token(&TokenKind::Const) {
                     let const_name = self.expect_ident("expected const field name")?;
                     self.expect(&TokenKind::Colon, "expected ':' after const field name")?;
@@ -706,6 +721,7 @@ impl Parser {
                 fields,
                 const_fields,
                 field_annotations,
+                methods,
             }),
             start.merge(end),
         ))
@@ -760,6 +776,7 @@ impl Parser {
 
         let delimiter = self.expect_block_start("expected enum body block after enum name")?;
         let mut variants = Vec::new();
+        let mut methods = Vec::new();
         self.skip_newlines();
         if !self.at_block_end(delimiter) {
             loop {
@@ -768,9 +785,40 @@ impl Parser {
                     break;
                 }
 
+                // Method declaration: `fn name(params) -> Type { body }` or `pub fn ...`
+                // Check before the optional pipe so `fn` at the start of a line is caught.
+                if self.check(&TokenKind::Fn)
+                    || (self.check(&TokenKind::Pub)
+                        && self.peek_is(|k| matches!(k, TokenKind::Fn)))
+                {
+                    let method_start = self.current_span();
+                    let method_public = self.match_token(&TokenKind::Pub);
+                    self.expect(&TokenKind::Fn, "expected 'fn'")?;
+                    let decl = self.fn_decl(method_public, method_start, None, vec![])?;
+                    if let DeclKind::Function(fn_decl) = decl.node {
+                        methods.push(fn_decl);
+                    }
+                    continue;
+                }
+
                 // Optional leading pipe per variant for visual alignment.
                 self.match_token(&TokenKind::Pipe);
                 self.skip_newlines();
+
+                // Check for method after a leading pipe too.
+                if self.check(&TokenKind::Fn)
+                    || (self.check(&TokenKind::Pub)
+                        && self.peek_is(|k| matches!(k, TokenKind::Fn)))
+                {
+                    let method_start = self.current_span();
+                    let method_public = self.match_token(&TokenKind::Pub);
+                    self.expect(&TokenKind::Fn, "expected 'fn'")?;
+                    let decl = self.fn_decl(method_public, method_start, None, vec![])?;
+                    if let DeclKind::Function(fn_decl) = decl.node {
+                        methods.push(fn_decl);
+                    }
+                    continue;
+                }
 
                 let variant_annotations = self.parse_annotations()?;
                 self.skip_newlines();
@@ -827,6 +875,7 @@ impl Parser {
                 annotations,
                 params,
                 variants,
+                methods,
             }),
             start.merge(end),
         ))

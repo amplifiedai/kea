@@ -761,6 +761,8 @@ pub struct TypeDef {
     pub annotations: Vec<Annotation>,
     pub params: Vec<String>,
     pub variants: Vec<TypeVariant>,
+    /// Inherent methods declared inside the enum block (§2.8, §3.5).
+    pub methods: Vec<FnDecl>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -792,6 +794,8 @@ pub struct RecordDef {
     pub const_fields: Vec<ConstField>,
     /// Per-field annotations aligned with `fields` by index.
     pub field_annotations: Vec<Vec<Annotation>>,
+    /// Inherent methods declared inside the struct block (§2.8).
+    pub methods: Vec<FnDecl>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
