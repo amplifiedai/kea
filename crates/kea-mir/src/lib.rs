@@ -5238,14 +5238,15 @@ fn lower_hir_function(
     // Entry-point functions create default capability cells (closures wrapping
     // the runtime functions) so that capability dispatch cells can be threaded
     // to callees even when no user handler is installed.
-    if function.name == "main"
-        && let Type::Function(ft) = &function.ty
-    {
-        for (label, _) in &ft.effects.row.fields {
-            let effect = label.as_str();
-            if !is_direct_capability_effect(effect) {
-                continue;
-            }
+    //
+    // We iterate all direct capability specs (not just those in main's concrete
+    // effect row) because capability effects can propagate through row variables
+    // and still be needed inside lambdas created in main's body.  The wrapper
+    // functions are always generated, so creating cells for unused capabilities
+    // is harmless.
+    if function.name == "main" {
+        for capability in DIRECT_CAPABILITIES {
+            let effect = capability.effect;
             for op in effect_operations
                 .values()
                 .filter(|op| op.effect == effect)
@@ -6630,9 +6631,61 @@ impl FunctionLoweringCtx {
             &mut lambda_dispatch_set,
         );
         let lambda_dispatch_effects = lambda_dispatch_set.into_iter().collect::<Vec<_>>();
+
+        // Determine which dispatch effects to capture from active cells vs. thread as trailing
+        // params. Effects with an active cell at the creation site are captured into the closure
+        // so they don't appear as trailing params in the entry wrapper. This is critical for
+        // effect-polymorphic callers: when a caller calls `f: fn() -[Test, e]> Unit`, it only
+        // passes dispatch cells for the *concrete* effects in the type (Test.check) — it cannot
+        // pass cells for effects buried in the row variable `e` (e.g., IO). By capturing IO at
+        // creation time, the entry wrapper only needs trailing params for effects the caller
+        // actually knows about.
+        //
+        // The lifted lambda body is compiled with dispatch effects ordered [trailing, bound] so
+        // that param indices from the entry wrapper call match the lifted function's expectations.
+        let mut wrapper_dispatch_effects: Vec<String> = Vec::new();
+        let mut bound_dispatch_effects_keys: Vec<String> = Vec::new();
+        let mut bound_dispatch_captures: Vec<(MirValueId, Type)> = Vec::new();
+        for dispatch_op_key in &lambda_dispatch_effects {
+            let Some((dispatch_effect, dispatch_operation)) = dispatch_op_key.split_once('.')
+            else {
+                self.emit_inst(MirInst::Unsupported {
+                    detail: format!("invalid dispatch operation key `{dispatch_op_key}`"),
+                });
+                return None;
+            };
+            if let Some(dispatch_cell) =
+                self.lookup_effect_cell(dispatch_effect, dispatch_operation)
+            {
+                // Active cell available — capture it so it doesn't become a trailing param.
+                bound_dispatch_captures.push((dispatch_cell, Type::Dynamic));
+                bound_dispatch_effects_keys.push(dispatch_op_key.clone());
+            } else if bind_dispatch_effects {
+                // Caller requires all cells to be bound (expression-position lambda).
+                self.emit_inst(MirInst::Unsupported {
+                    detail: format!(
+                        "missing active handler cell for operation `{dispatch_op_key}` while binding lambda dispatch"
+                    ),
+                });
+                return None;
+            } else {
+                // No active cell — becomes a trailing dispatch param, provided by the caller.
+                wrapper_dispatch_effects.push(dispatch_op_key.clone());
+            }
+        }
+
+        // The lifted lambda body sees dispatch effects in [trailing, bound] order.
+        // Trailing params come from the entry wrapper signature; bound params come after.
+        let lifted_lambda_dispatch_effects: Vec<String> = wrapper_dispatch_effects
+            .iter()
+            .chain(bound_dispatch_effects_keys.iter())
+            .cloned()
+            .collect();
+
         let mut known_dispatch_effects = self.known_function_dispatch_effects.clone();
-        if !lambda_dispatch_effects.is_empty() {
-            known_dispatch_effects.insert(lambda_name.clone(), lambda_dispatch_effects.clone());
+        if !lifted_lambda_dispatch_effects.is_empty() {
+            known_dispatch_effects
+                .insert(lambda_name.clone(), lifted_lambda_dispatch_effects.clone());
         }
         let lowered_functions = lower_hir_function(
             &lifted,
@@ -6660,31 +6713,6 @@ impl FunctionLoweringCtx {
 
         let entry_name = self.allocate_generated_closure_entry_name("lambda");
         let callee_fail_result_abi = uses_fail_result_abi_from_type(&lifted.ty);
-        let mut wrapper_dispatch_effects = lambda_dispatch_effects;
-        let mut bound_dispatch_captures = Vec::new();
-        if bind_dispatch_effects {
-            for dispatch_op_key in &wrapper_dispatch_effects {
-                let Some((dispatch_effect, dispatch_operation)) = dispatch_op_key.split_once('.')
-                else {
-                    self.emit_inst(MirInst::Unsupported {
-                        detail: format!("invalid dispatch operation key `{dispatch_op_key}`"),
-                    });
-                    return None;
-                };
-                let Some(dispatch_cell) =
-                    self.lookup_effect_cell(dispatch_effect, dispatch_operation)
-                else {
-                    self.emit_inst(MirInst::Unsupported {
-                        detail: format!(
-                            "missing active handler cell for operation `{dispatch_op_key}` while binding lambda dispatch"
-                        ),
-                    });
-                    return None;
-                };
-                bound_dispatch_captures.push((dispatch_cell, Type::Dynamic));
-            }
-            wrapper_dispatch_effects = Vec::new();
-        }
         let wrapper = self.build_closure_entry_wrapper(
             entry_name.clone(),
             lambda_name,
