@@ -13115,6 +13115,205 @@ fn check_file_catches_cross_module_type_error() {
     let _ = std::fs::remove_dir_all(project_dir);
 }
 
+// ---------------------------------------------------------------------------
+// Tests: nominal block methods (struct/enum inline fn, §2.8 / §3.5 / §11.6)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn struct_inline_method_ums_dispatch() {
+    // struct with fn inside its block; called via UMS and qualified form.
+    let source = concat!(
+        "use Test\n",
+        "\n",
+        "struct Point\n",
+        "  x: Int\n",
+        "  y: Int\n",
+        "\n",
+        "  fn distance(_ self: Point, _ other: Point) -> Int\n",
+        "    let dx = self.x - other.x\n",
+        "    let dy = self.y - other.y\n",
+        "    dx * dx + dy * dy\n",
+        "\n",
+        "  fn origin() -> Point\n",
+        "    Point { x: 0, y: 0 }\n",
+        "\n",
+        "test \"struct block method UMS\"\n",
+        "  let p = Point { x: 3, y: 4 }\n",
+        "  let q = Point.origin()\n",
+        "  Test.assert(p.distance(q) == 25)\n",
+        "  Test.assert(Point.distance(p, q) == 25)\n",
+        "\n",
+        "test \"struct block static method\"\n",
+        "  let o = Point.origin()\n",
+        "  Test.assert(o.x == 0)\n",
+        "  Test.assert(o.y == 0)\n",
+    );
+    let path = write_temp_source(source, "kea-struct-inline-method", "kea");
+    let run = run_test_file(&path).expect("struct inline method test should pass");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(
+        failures.is_empty(),
+        "struct inline method failures: {failures:?}"
+    );
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn enum_inline_associated_method() {
+    // enum with an associated (static) fn inside its block.
+    let source = concat!(
+        "use List\n",
+        "use Test\n",
+        "\n",
+        "enum Direction\n",
+        "  North\n",
+        "  South\n",
+        "  East\n",
+        "  West\n",
+        "\n",
+        "  fn all() -> List Direction\n",
+        "    Cons(North, Cons(South, Cons(East, Cons(West, Nil))))\n",
+        "\n",
+        "test \"enum block associated method\"\n",
+        "  let dirs = Direction.all()\n",
+        "  Test.assert(List.length(dirs) == 4)\n",
+    );
+    let path = write_temp_source(source, "kea-enum-inline-static", "kea");
+    let run = run_test_file(&path).expect("enum inline associated method test should pass");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(
+        failures.is_empty(),
+        "enum inline associated method failures: {failures:?}"
+    );
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn enum_inline_receiver_method() {
+    // enum with a receiver fn inside its block; called via UMS and qualified form.
+    let source = concat!(
+        "use Test\n",
+        "\n",
+        "@derive(Eq)\n",
+        "enum Direction\n",
+        "  North\n",
+        "  South\n",
+        "  East\n",
+        "  West\n",
+        "\n",
+        "  fn opposite(_ self: Direction) -> Direction\n",
+        "    case self\n",
+        "      North -> South\n",
+        "      South -> North\n",
+        "      East  -> West\n",
+        "      West  -> East\n",
+        "\n",
+        "test \"enum block receiver method UMS\"\n",
+        "  let n = North\n",
+        "  Test.assert(n.opposite() == South)\n",
+        "  Test.assert(Direction.opposite(East) == West)\n",
+    );
+    let path = write_temp_source(source, "kea-enum-inline-receiver", "kea");
+    let run = run_test_file(&path).expect("enum inline receiver method test should pass");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(
+        failures.is_empty(),
+        "enum inline receiver method failures: {failures:?}"
+    );
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn struct_inline_method_coexists_with_file_scope_fn() {
+    // A struct can have block methods while the same file has unrelated
+    // file-scope functions. No collision if the names are different.
+    let source = concat!(
+        "use Test\n",
+        "\n",
+        "struct Vec2\n",
+        "  x: Int\n",
+        "  y: Int\n",
+        "\n",
+        "  fn magnitude_sq(_ self: Vec2) -> Int\n",
+        "    self.x * self.x + self.y * self.y\n",
+        "\n",
+        "fn scale(_ v: Vec2, _ factor: Int) -> Vec2\n",
+        "  Vec2 { x: v.x * factor, y: v.y * factor }\n",
+        "\n",
+        "test \"struct block and file-scope coexist\"\n",
+        "  let v = Vec2 { x: 3, y: 4 }\n",
+        "  let w = scale(v, 2)\n",
+        "  Test.assert(v.magnitude_sq() == 25)\n",
+        "  Test.assert(w.magnitude_sq() == 100)\n",
+    );
+    let path = write_temp_source(source, "kea-struct-inline-plus-file-scope", "kea");
+    let run = run_test_file(&path).expect("struct inline + file-scope test should pass");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(
+        failures.is_empty(),
+        "struct inline + file-scope failures: {failures:?}"
+    );
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn enum_block_duplicate_method_is_rejected() {
+    // Duplicate method name inside a single enum block must error.
+    let source = concat!(
+        "enum Coin\n",
+        "  Heads\n",
+        "  Tails\n",
+        "\n",
+        "  fn flip(_ self: Coin) -> Coin\n",
+        "    case self\n",
+        "      Heads -> Tails\n",
+        "      Tails -> Heads\n",
+        "\n",
+        "  fn flip(_ self: Coin) -> Coin\n",
+        "    Heads\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  0\n",
+    );
+    let path = write_temp_source(source, "kea-enum-duplicate-method", "kea");
+    let err = run_file(&path).expect_err("duplicate method in enum block should fail");
+    assert!(
+        err.contains("duplicate method") || err.contains("flip"),
+        "expected duplicate method error, got: {err}"
+    );
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn merged_namespace_method_vs_file_scope_collision_is_rejected() {
+    // In a same-name merge file (struct/enum name == module struct name),
+    // a type-block method and a file-scope function with the same name must error.
+    // The file must be named "box.kea" so the module struct name is "Box",
+    // matching the struct inside → triggering same-name merge collision detection.
+    let source = concat!(
+        "struct Box\n",
+        "  value: Int\n",
+        "\n",
+        "  fn unwrap(_ self: Box) -> Int\n",
+        "    self.value\n",
+        "\n",
+        "fn unwrap(_ b: Box) -> Int\n",
+        "  b.value + 1\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  0\n",
+    );
+    let dir = temp_project_dir("kea-merged-ns-collision");
+    let path = dir.join("box.kea");
+    std::fs::write(&path, source).expect("temp source write should succeed");
+    let err = run_file(&path).expect_err("merged namespace method collision should fail");
+    assert!(
+        err.contains("conflict") || err.contains("collision") || err.contains("unwrap"),
+        "expected collision error, got: {err}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
     let path = temp_artifact_path(prefix, extension);
     std::fs::write(&path, contents).expect("temp source write should succeed");
