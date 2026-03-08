@@ -209,3 +209,15 @@ int64_t __kea_clock_monotonic(void) {
   return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
 #endif
 }
+
+// TLS fail-propagation slot: out-of-band channel for Fail payloads that
+// cannot propagate through the pure handler callback ABI.
+static __thread const uint8_t *__kea_fail_payload_slot = NULL;
+
+const uint8_t *__kea_get_fail_payload(void) { return __kea_fail_payload_slot; }
+void __kea_set_fail_payload(const uint8_t *p) { __kea_fail_payload_slot = p; }
+const uint8_t *__kea_take_fail_payload(void) {
+  const uint8_t *p = __kea_fail_payload_slot;
+  __kea_fail_payload_slot = NULL;
+  return p;
+}

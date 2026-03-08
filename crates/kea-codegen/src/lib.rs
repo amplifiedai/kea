@@ -503,6 +503,13 @@ fn runtime_import_signature(module: &impl Module, name: &str) -> cranelift_codeg
         "__kea_panic_div_zero" | "__kea_panic_mod_zero" => {
             // void -> void
         }
+        // TLS fail-propagation slot
+        "__kea_get_fail_payload" | "__kea_take_fail_payload" => {
+            sig.returns.push(AbiParam::new(ptr));
+        }
+        "__kea_set_fail_payload" => {
+            sig.params.push(AbiParam::new(ptr));
+        }
         _ => panic!("unknown runtime import: {name}"),
     }
     sig
@@ -594,6 +601,26 @@ fn take_jit_exit_code() -> Option<i32> {
 
 unsafe extern "C" fn kea_io_exit_stub(code: i64) {
     JIT_EXIT_CODE.with(|c| c.set(Some(code as i32)));
+}
+
+// Thread-local fail-propagation slot for JIT mode.
+std::thread_local! {
+    static KEA_FAIL_PAYLOAD: std::cell::Cell<*const u8> =
+        const { std::cell::Cell::new(std::ptr::null()) };
+}
+
+unsafe extern "C" fn kea_get_fail_payload_stub() -> *const u8 {
+    KEA_FAIL_PAYLOAD.with(|c| c.get())
+}
+unsafe extern "C" fn kea_set_fail_payload_stub(p: *const u8) {
+    KEA_FAIL_PAYLOAD.with(|c| c.set(p));
+}
+unsafe extern "C" fn kea_take_fail_payload_stub() -> *const u8 {
+    KEA_FAIL_PAYLOAD.with(|c| {
+        let p = c.get();
+        c.set(std::ptr::null());
+        p
+    })
 }
 
 unsafe extern "C" fn kea_hash_string_stub(s: *const c_char) -> i64 {
@@ -968,6 +995,18 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_text_trim", kea_text_trim_stub as *const u8);
     builder.symbol("__kea_text_replace", kea_text_replace_stub as *const u8);
     builder.symbol("__kea_text_repeat", kea_text_repeat_stub as *const u8);
+    builder.symbol(
+        "__kea_get_fail_payload",
+        kea_get_fail_payload_stub as *const u8,
+    );
+    builder.symbol(
+        "__kea_set_fail_payload",
+        kea_set_fail_payload_stub as *const u8,
+    );
+    builder.symbol(
+        "__kea_take_fail_payload",
+        kea_take_fail_payload_stub as *const u8,
+    );
 }
 
 fn compile_with_jit(

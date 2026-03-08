@@ -475,6 +475,7 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
                 &effect_operations,
                 &known_function_dispatch_effects,
                 &lambda_factories,
+                false,
             ));
         }
     }
@@ -5172,6 +5173,7 @@ fn lower_hir_function(
     effect_operations: &BTreeMap<String, EffectOperationInfo>,
     known_function_dispatch_effects: &BTreeMap<String, Vec<String>>,
     lambda_factories: &BTreeMap<String, LambdaFactoryTemplate>,
+    fail_tls_wrap: bool,
 ) -> Vec<MirFunction> {
     let (declared_params, ret) = match &function.ty {
         Type::Function(ft) => (ft.params.clone(), ft.ret.as_ref().clone()),
@@ -5277,7 +5279,14 @@ fn lower_hir_function(
         }
     }
 
-    let return_value = if let HirExprKind::Lambda { params, body } = &function.body.kind {
+    let return_value = if fail_tls_wrap {
+        // TLS-wrapping path: lower body through lower_catch_body_as_local_call so
+        // that any residual Fail is captured, then branch on the Result and either
+        // return the Ok value normally or store the Err payload in the TLS slot and
+        // return a zero sentinel.  The sentinel is safe because the dispatch site
+        // discards the callback return value whenever TLS is set.
+        ctx.emit_fail_tls_wrapped_body(&function.body, &ret)
+    } else if let HirExprKind::Lambda { params, body } = &function.body.kind {
         ctx.lower_lambda_to_closure_value(
             &function.body,
             params,
@@ -5287,6 +5296,7 @@ fn lower_hir_function(
             } else {
                 None
             },
+            false,
             false,
         )
     } else {
@@ -5680,6 +5690,7 @@ impl FunctionLoweringCtx {
             &self.effect_operations,
             &self.known_function_dispatch_effects,
             &self.lambda_factories,
+            false,
         );
         for f in lowered_functions {
             self.register_generated_function(f);
@@ -5879,12 +5890,18 @@ impl FunctionLoweringCtx {
             ty: callback_ty.clone(),
             span: clause.span,
         };
+        let needs_tls_wrap = matches!(
+            classification,
+            ClauseBodyClassification::TailResumptive { .. }
+                | ClauseBodyClassification::NonTail(_)
+        ) && hir_body_has_residual_fail(&callback_body, &self.effect_operations);
         let Some(callback_value) = self.lower_lambda_to_closure_value(
             &callback_lambda,
             &callback_params,
             &callback_body,
             Some(&callback_ty),
             true,
+            needs_tls_wrap,
         ) else {
             self.emit_inst(MirInst::Unsupported {
                 detail: format!(
@@ -6519,6 +6536,7 @@ impl FunctionLoweringCtx {
             &self.effect_operations,
             &known_dispatch_effects,
             &self.lambda_factories,
+            false,
         );
         for lowered in lowered_functions {
             self.register_generated_function(lowered);
@@ -6547,6 +6565,229 @@ impl FunctionLoweringCtx {
         Some(call_result)
     }
 
+    /// Emit a call to one of the TLS fail-propagation intrinsics.
+    /// Returns the result MirValueId for get/take (which return a pointer),
+    /// or None for set (which is void).
+    fn emit_fail_tls_call(
+        &mut self,
+        name: &str,
+        args: Vec<MirValueId>,
+    ) -> Option<MirValueId> {
+        let has_return = name != "__kea_set_fail_payload";
+        let result = if has_return {
+            Some(self.new_value())
+        } else {
+            None
+        };
+        self.emit_inst(MirInst::Call {
+            callee: MirCallee::External(name.to_string()),
+            args,
+            arg_types: vec![Type::Dynamic; if has_return { 0 } else { 1 }],
+            result: result.clone(),
+            ret_type: if has_return { Type::Dynamic } else { Type::Unit },
+            callee_fail_result_abi: false,
+            capture_fail_result: false,
+            cc_manifest_id: "default".to_string(),
+        });
+        result
+    }
+
+    /// Lower a callback body through `lower_catch_body_as_local_call`, then
+    /// branch on the Result:
+    ///
+    /// - Ok(v)  → return v normally (fast path, no TLS access)
+    /// - Err(p) → check-before-set into TLS slot (first-Fail-wins), return
+    ///   a zero sentinel so the dispatch site can continue running
+    ///
+    /// Used by `lower_hir_function` when `fail_tls_wrap` is set for handler
+    /// clause callbacks that contain residual `Fail`-effectful calls.
+    fn emit_fail_tls_wrapped_body(
+        &mut self,
+        body: &HirExpr,
+        ret_ty: &Type,
+    ) -> Option<MirValueId> {
+        // Lift the body to a fail_result_abi sub-function and call it.
+        let catch_result = self.lower_catch_body_as_local_call(body)?;
+
+        // Load the discriminant tag: 0 = Ok, non-zero = Err.
+        let tag = self.new_value();
+        self.emit_inst(MirInst::SumTagLoad {
+            dest: tag.clone(),
+            sum: catch_result.clone(),
+            sum_type: "Result".to_string(),
+        });
+
+        // Branch: if tag == 0 (Ok) → ok_block; if tag != 0 (Err) → err_block.
+        // MirTerminator::Branch sends control to then_block when condition != 0.
+        // We want then=err, else=ok.
+        let ok_block = self.new_block();
+        let err_block = self.new_block();
+
+        // Join block carries the final callback return value.
+        let join_param = self.new_value();
+        let join_block = self.new_block_with_params(vec![MirBlockParam {
+            id: join_param.clone(),
+            ty: ret_ty.clone(),
+        }]);
+
+        self.set_terminator(MirTerminator::Branch {
+            condition: tag,
+            then_block: err_block.clone(),
+            else_block: ok_block.clone(),
+        });
+
+        // Ok branch: extract the inner value and jump to join.
+        self.switch_to(ok_block);
+        let ok_value = self.new_value();
+        self.emit_inst(MirInst::SumPayloadLoad {
+            dest: ok_value.clone(),
+            sum: catch_result.clone(),
+            sum_type: "Result".to_string(),
+            variant: "Ok".to_string(),
+            field_index: 0,
+            field_ty: ret_ty.clone(),
+        });
+        self.ensure_jump_to(join_block.clone(), vec![ok_value]);
+
+        // Err branch: extract fail payload, check-before-set into TLS, return sentinel.
+        self.switch_to(err_block);
+        let err_payload = self.new_value();
+        self.emit_inst(MirInst::SumPayloadLoad {
+            dest: err_payload.clone(),
+            sum: catch_result.clone(),
+            sum_type: "Result".to_string(),
+            variant: "Err".to_string(),
+            field_index: 0,
+            field_ty: Type::Dynamic,
+        });
+
+        // existing = __kea_get_fail_payload()
+        // Branch on existing: if non-null (slot already set), skip — first Fail wins.
+        let existing = self
+            .emit_fail_tls_call("__kea_get_fail_payload", vec![])
+            .expect("__kea_get_fail_payload returns a value");
+        let set_block = self.new_block();
+        let skip_block = self.new_block();
+        let after_tls = self.new_block();
+        // Branch: existing != 0 → skip_block (already set); existing == 0 → set_block.
+        self.set_terminator(MirTerminator::Branch {
+            condition: existing,
+            then_block: skip_block.clone(),
+            else_block: set_block.clone(),
+        });
+
+        // set_block: store err_payload into TLS slot.
+        self.switch_to(set_block);
+        self.emit_fail_tls_call("__kea_set_fail_payload", vec![err_payload]);
+        self.ensure_jump_to(after_tls.clone(), vec![]);
+
+        // skip_block: TLS already holds an earlier payload; drop this one.
+        self.switch_to(skip_block);
+        self.ensure_jump_to(after_tls.clone(), vec![]);
+
+        // after_tls: return a zero sentinel so the dispatch site can continue.
+        self.switch_to(after_tls);
+        let sentinel = self.new_value();
+        if *ret_ty == Type::Unit {
+            self.emit_inst(MirInst::Const {
+                dest: sentinel.clone(),
+                literal: MirLiteral::Unit,
+            });
+        } else {
+            self.emit_inst(MirInst::Const {
+                dest: sentinel.clone(),
+                literal: MirLiteral::Int(0),
+            });
+        }
+        self.ensure_jump_to(join_block.clone(), vec![sentinel]);
+
+        // The join block is the exit point; its param is the value returned by
+        // lower_hir_function as the function's return value.
+        self.switch_to(join_block);
+        Some(join_param)
+    }
+
+    /// After a `catch` body returns, check whether a handler-clause callback
+    /// stored a Fail payload in the TLS slot.
+    ///
+    /// - If the body returned Ok AND TLS is set → override with Err(tls_payload).
+    /// - If the body returned Err → clear TLS (to prevent outer-catch contamination)
+    ///   and keep the body's Err.
+    /// - If TLS is null → pass the result through unchanged.
+    ///
+    /// Always calls `__kea_take_fail_payload` (which atomically clears the slot)
+    /// so the slot never leaks to a containing `catch` scope.
+    fn emit_catch_tls_check(&mut self, result: MirValueId, caught_ty: &Type) -> MirValueId {
+        // Load the Result tag (0 = Ok, non-zero = Err).
+        let tag = self.new_value();
+        self.emit_inst(MirInst::SumTagLoad {
+            dest: tag.clone(),
+            sum: result.clone(),
+            sum_type: "Result".to_string(),
+        });
+
+        let ok_block = self.new_block();
+        let err_block = self.new_block();
+        let join_param = self.new_value();
+        let join_block = self.new_block_with_params(vec![MirBlockParam {
+            id: join_param.clone(),
+            ty: Type::Sum(kea_types::SumType {
+                name: "Result".to_string(),
+                type_args: Vec::new(),
+            }),
+        }]);
+
+        // Branch: tag != 0 → err_block; tag == 0 → ok_block.
+        self.set_terminator(MirTerminator::Branch {
+            condition: tag,
+            then_block: err_block.clone(),
+            else_block: ok_block.clone(),
+        });
+
+        // Ok path: take TLS; if non-null, override result with Err(tls_payload).
+        self.switch_to(ok_block);
+        let tls_payload = self
+            .emit_fail_tls_call("__kea_take_fail_payload", vec![])
+            .expect("__kea_take_fail_payload returns a value");
+
+        let override_block = self.new_block();
+        let keep_block = self.new_block();
+        // Branch: tls_payload != 0 → override_block; == 0 → keep_block.
+        self.set_terminator(MirTerminator::Branch {
+            condition: tls_payload.clone(),
+            then_block: override_block.clone(),
+            else_block: keep_block.clone(),
+        });
+
+        // override_block: construct Err(tls_payload) and jump to join.
+        self.switch_to(override_block);
+        let new_err = self.new_value();
+        self.emit_inst(MirInst::SumInit {
+            dest: new_err.clone(),
+            sum_type: "Result".to_string(),
+            variant: "Err".to_string(),
+            tag: 1,
+            fields: vec![tls_payload],
+        });
+        self.sum_value_types
+            .insert(new_err.clone(), "Result".to_string());
+        self.ensure_jump_to(join_block.clone(), vec![new_err]);
+
+        // keep_block: TLS was null; pass the Ok result through unchanged.
+        self.switch_to(keep_block);
+        self.ensure_jump_to(join_block.clone(), vec![result.clone()]);
+
+        // Err path: take TLS to clear the slot, then keep the body's Err result.
+        self.switch_to(err_block);
+        let _ = self.emit_fail_tls_call("__kea_take_fail_payload", vec![]);
+        self.ensure_jump_to(join_block.clone(), vec![result.clone()]);
+
+        // Join: the final Result value.
+        self.switch_to(join_block);
+        let _ = caught_ty; // used implicitly via result type tracking
+        join_param
+    }
+
     fn lower_lambda_to_closure_value(
         &mut self,
         expr: &HirExpr,
@@ -6554,6 +6795,7 @@ impl FunctionLoweringCtx {
         body: &HirExpr,
         expected_ty: Option<&Type>,
         bind_dispatch_effects: bool,
+        fail_tls_wrap: bool,
     ) -> Option<MirValueId> {
         let resolved_fn_ty = match (&expr.ty, expected_ty) {
             (Type::Function(ft), _) => Some(ft.clone()),
@@ -6698,6 +6940,7 @@ impl FunctionLoweringCtx {
             &self.effect_operations,
             &known_dispatch_effects,
             &self.lambda_factories,
+            fail_tls_wrap,
         );
         // Use the actual return type from the lowered lambda body rather than
         // resolved_fn_ty.ret. HIR types are erased to Dynamic when no annotation
@@ -7205,9 +7448,18 @@ impl FunctionLoweringCtx {
                 } else {
                     self.lower_catch_body_as_local_call(caught)?
                 };
+
+                // TLS fail-propagation check: after the caught body returns, inspect
+                // the TLS slot set by any handler-clause callbacks that Fail-ed.
+                // If the body returned Ok but a callback Fail-ed, override the result
+                // with Err(tls_payload) so the outer code sees the failure.
+                // If the body returned Err (direct failure), just clear TLS and keep
+                // the body's Err.  Always take (not just get) to prevent leakage.
+                let final_result = self.emit_catch_tls_check(result.clone(), &caught.ty);
+
                 self.sum_value_types
-                    .insert(result.clone(), "Result".to_string());
-                Some(result)
+                    .insert(final_result.clone(), "Result".to_string());
+                Some(final_result)
             }
             HirExprKind::Handle {
                 expr: handled,
@@ -7353,6 +7605,7 @@ impl FunctionLoweringCtx {
                     body,
                     synthesized_ty.as_ref(),
                     true,
+                    false,
                 )
             }
             HirExprKind::Tuple(items) => {
@@ -7492,27 +7745,6 @@ impl FunctionLoweringCtx {
                         return None;
                     }
                 };
-
-            // Guard: Fail-effected calls inside a handler clause callback cannot
-            // propagate through the pure callback ABI — they would silently trap
-            // at runtime. Diagnose early with a clear error instead.
-            //
-            // The fix requires threading Fail through the callback dispatch ABI,
-            // which is a non-trivial change tracked separately. For now users
-            // should wrap the handler body in `catch`, or restructure so that
-            // Fail-effectful calls happen outside the handler clause.
-            if hir_body_has_residual_fail(&clause.body, &self.effect_operations) {
-                self.emit_inst(MirInst::Unsupported {
-                    detail: format!(
-                        "handler clause `{target_effect}.{}` body calls `Fail`-effectful \
-                         operations, which cannot propagate through the callback ABI; \
-                         wrap the handler body in `catch` or move `Fail`-effectful calls \
-                         outside the handler clause",
-                        clause.operation,
-                    ),
-                });
-                return None;
-            }
 
             let pre_resume_capture_cells = match &classification {
                 ClauseBodyClassification::NonTail(split) => {
@@ -7888,6 +8120,7 @@ impl FunctionLoweringCtx {
                     body,
                     Some(&expected_ty),
                     false,
+                    false,
                 )
             } else {
                 self.lower_expr(&template.lambda_body)
@@ -7932,6 +8165,7 @@ impl FunctionLoweringCtx {
                     inner_params,
                     inner_body,
                     Some(&expected_ty),
+                    false,
                     false,
                 )
             } else {
@@ -7988,6 +8222,7 @@ impl FunctionLoweringCtx {
                 &local_lambda.params,
                 &local_lambda.body,
                 Some(&synthesized_expr.ty),
+                false,
                 false,
             )?;
             self.restore_var_scope(&incoming_scope);
@@ -8323,6 +8558,7 @@ impl FunctionLoweringCtx {
                     &local_lambda.body,
                     expected,
                     false,
+                    false,
                 )?;
                 self.restore_var_scope(&incoming_scope);
                 arg_types.push(expected.cloned().unwrap_or(synthesized_ty));
@@ -8335,6 +8571,7 @@ impl FunctionLoweringCtx {
                     params,
                     body.as_ref(),
                     expected,
+                    false,
                     false,
                 )?;
                 arg_types.push(expected.cloned().unwrap_or_else(|| arg.ty.clone()));

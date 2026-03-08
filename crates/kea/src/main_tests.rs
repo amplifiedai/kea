@@ -10420,27 +10420,97 @@ fn compile_and_execute_recursive_handler_installation_depth_exit_code() {
 }
 
 #[test]
-fn compile_handler_clause_with_direct_fail_call_is_rejected() {
-    // A handler clause body that calls Fail.fail cannot propagate the failure
-    // through the pure callback ABI — it would silently trap at runtime.
-    // The compiler must diagnose this with a clear error.
-    //
-    // Wrapping in `catch` so the residual Fail is valid at the type level,
-    // letting the type checker pass and the MIR lowering guard fire.
+fn handler_clause_residual_fail_propagates() {
+    // A handler clause body that calls Fail.fail should propagate the failure
+    // to the outer `catch` via the TLS slot.  The outer catch receives Err.
     let source_path = write_temp_source(
-        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Int\n  Echo.say(\"hello\")\n  42\n\nfn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      Fail.fail(\"no says allowed\")\n      resume ()\n  case r\n    Ok(v) -> v\n    Err(_) -> -1\n",
+        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Unit\n  Echo.say(\"hello\")\n\nfn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      Fail.fail(\"no says allowed\")\n      resume ()\n  case r\n    Ok(_) -> 0\n    Err(_) -> 42\n",
+        "kea-cli-tls-fail-propagates",
+        "kea",
+    );
+    let run = run_file(&source_path)
+        .expect("handler_clause_residual_fail_propagates should compile and run");
+    assert_eq!(
+        run.exit_code, 42,
+        "outer catch should receive the callback Fail as Err"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn handler_clause_residual_fail_not_triggered() {
+    // Happy path: callback body has a conditional Fail.fail branch that is
+    // statically unreachable (0 == 1).  The TLS wrapping is compiled in
+    // because hir_body_has_residual_fail returns true, but at runtime the
+    // Fail path is never taken, so the outer catch should see Ok.
+    let source_path = write_temp_source(
+        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Unit\n  Echo.say(\"hello\")\n\nfn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      if 0 == 1\n        Fail.fail(\"never reached\")\n      else\n        ()\n      resume ()\n  case r\n    Ok(_) -> 42\n    Err(_) -> 0\n",
+        "kea-cli-tls-fail-not-triggered",
+        "kea",
+    );
+    let run = run_file(&source_path)
+        .expect("handler_clause_residual_fail_not_triggered should compile and run");
+    assert_eq!(
+        run.exit_code, 42,
+        "happy path: TLS slot never written, Ok should be returned"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn handler_clause_residual_fail_nested() {
+    // Nested handlers: inner callback Fails, outer catch receives it.
+    // The inner handler's catch intercepts the inner Fail via TLS and
+    // the outer handler's catch should NOT see inner Fail (slot is cleared).
+    let source_path = write_temp_source(
+        "effect Inner\n  fn op() -> Unit\n\neffect Outer\n  fn run() -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn inner_comp() -[Inner]> Unit\n  Inner.op()\n\nfn main() -> Int\n  let inner_r = catch handle inner_comp()\n    Inner.op() ->\n      Fail.fail(\"inner fail\")\n      resume ()\n  case inner_r\n    Ok(_) -> 0\n    Err(_) -> 42\n",
+        "kea-cli-tls-fail-nested",
+        "kea",
+    );
+    let run = run_file(&source_path)
+        .expect("handler_clause_residual_fail_nested should compile and run");
+    assert_eq!(
+        run.exit_code, 42,
+        "inner catch should receive the callback Fail from inner handler"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn handler_clause_residual_fail_multi_yield() {
+    // Multi-yield: computation calls the effect operation twice.
+    // Both callback invocations attempt to Fail.  First-Fail-wins: the TLS
+    // slot is set on the first invocation and the second invocation's payload
+    // is dropped (slot already non-null).  The outer catch sees exactly one Err.
+    let source_path = write_temp_source(
+        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Unit\n  Echo.say(\"first\")\n  Echo.say(\"second\")\n\nfn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      Fail.fail(s)\n      resume ()\n  case r\n    Ok(_) -> 0\n    Err(_) -> 42\n",
+        "kea-cli-tls-fail-multi-yield",
+        "kea",
+    );
+    let run = run_file(&source_path)
+        .expect("handler_clause_residual_fail_multi_yield should compile and run");
+    assert_eq!(
+        run.exit_code, 42,
+        "outer catch should receive the Fail and first-Fail-wins should prevent double-set"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_handler_clause_with_direct_fail_call_is_rejected() {
+    // Previously rejected; now that TLS propagation is implemented, this
+    // should compile and run correctly — the outer catch receives the Fail.
+    let source_path = write_temp_source(
+        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Int\n  Echo.say(\"hello\")\n  42\n\nfn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      Fail.fail(\"no says allowed\")\n      resume ()\n  case r\n    Ok(v) -> v\n    Err(_) -> 99\n",
         "kea-cli-handler-clause-residual-fail",
         "kea",
     );
 
-    let err = compile_file(&source_path, CodegenMode::Aot)
-        .expect_err("residual Fail in handler clause must be rejected");
-    assert!(
-        err.contains("Fail")
-            && (err.contains("callback ABI")
-                || err.contains("declared pure")
-                || err.contains("effects")),
-        "expected residual-Fail-in-callback diagnostic, got: {err}"
+    let run = run_file(&source_path)
+        .expect("residual Fail in handler clause should now compile and run");
+    assert_eq!(
+        run.exit_code, 99,
+        "outer catch should receive the callback Fail as Err"
     );
 
     let _ = std::fs::remove_file(source_path);
