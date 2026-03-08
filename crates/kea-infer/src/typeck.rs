@@ -11811,7 +11811,11 @@ fn infer_expr_bidir(
 
                         let mut ordered_args: Vec<Option<&Argument>> = vec![None; expected_arity];
                         let mut had_error = false;
-                        if has_named_fields {
+                        // Use named mode only when caller explicitly labels any arg.
+                        // Positional construction `Add(l, r)` is valid per KERNEL §4.2.
+                        let use_named_mode =
+                            has_named_fields && args.iter().any(|arg| arg.label.is_some());
+                        if use_named_mode {
                             let label_to_idx: BTreeMap<&str, usize> = variant_info
                                 .fields
                                 .iter()
@@ -11827,7 +11831,7 @@ fn infer_expr_bidir(
                                         Diagnostic::error(
                                             Category::ArityMismatch,
                                             format!(
-                                                "constructor `{}` has named fields; use labeled arguments",
+                                                "constructor `{}` has named fields; use labeled arguments or positional syntax (not mixed)",
                                                 name.node
                                             ),
                                         )
@@ -14084,7 +14088,10 @@ fn constrain_case_pattern_shape(
                 .field_types
                 .iter()
                 .any(|field| field.name.is_some());
-            if has_named_fields {
+            // Use named mode only when user explicitly writes `field: pattern`.
+            let use_named_mode =
+                has_named_fields && args.iter().any(|arg| arg.name.is_some());
+            if use_named_mode {
                 let field_index: BTreeMap<&str, usize> = instantiated_variant
                     .field_types
                     .iter()
@@ -14113,6 +14120,7 @@ fn constrain_case_pattern_shape(
                     );
                 }
             } else {
+                // Positional mode: match args to fields in order.
                 for (arg_pat, field_ty) in
                     args.iter().zip(instantiated_variant.field_types.iter())
                 {
@@ -14443,7 +14451,11 @@ fn infer_pattern(
                         .field_types
                         .iter()
                         .any(|field| field.name.is_some());
-                    if has_named_fields {
+                    // Use named mode only when the user explicitly writes `field: pattern`.
+                    // Bare patterns like `IntLit(v)` are always positional per KERNEL §4.2.
+                    let use_named_mode =
+                        has_named_fields && args.iter().any(|arg| arg.name.is_some());
+                    if use_named_mode {
                         let field_index: BTreeMap<&str, usize> = instantiated_variant
                             .field_types
                             .iter()
@@ -14458,6 +14470,7 @@ fn infer_pattern(
                             let resolved_name = if let Some(name) = &arg.name {
                                 Some(name.node.clone())
                             } else if let PatternKind::Var(var_name) = &arg.pattern.node {
+                                // Pun: bare identifier resolves as field name
                                 Some(var_name.clone())
                             } else {
                                 None

@@ -13080,6 +13080,61 @@ fn merged_namespace_method_vs_file_scope_collision_is_rejected() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+#[test]
+fn compile_and_execute_gadt_eval_monomorphic_exit_code() {
+    // A simple monomorphic GADT: Expr Int with constructor return type annotations.
+    // eval_int : Expr Int -> Int dispatches on the GADT constructor.
+    let source = concat!(
+        "enum Expr T\n",
+        "  IntLit(value: Int) : Expr Int\n",
+        "  Add(left: Expr Int, right: Expr Int) : Expr Int\n",
+        "\n",
+        "fn eval_int(e: Expr Int) -> Int\n",
+        "  case e\n",
+        "    IntLit(v) -> v\n",
+        "    Add(l, r) -> eval_int(l) + eval_int(r)\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  eval_int(Add(IntLit(20), IntLit(22)))\n",
+    );
+    let source_path = write_temp_source(source, "kea-gadt-eval-mono", "kea");
+    let run = run_file(&source_path).expect("GADT monomorphic eval should compile and run");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_gadt_branch_local_refinement_exit_code() {
+    // GADT with both IntLit and BoolLit; eval functions are type-specific.
+    // Tests that the GADT where-constraints are branch-local (IntLit arm knows v: Int,
+    // BoolLit arm knows v: Bool, and the information doesn't cross arm boundaries).
+    // Avoids `then`/`else` as field names since they're reserved keywords.
+    let source = concat!(
+        "enum Expr T\n",
+        "  IntLit(value: Int) : Expr Int\n",
+        "  BoolLit(value: Bool) : Expr Bool\n",
+        "  Add(left: Expr Int, right: Expr Int) : Expr Int\n",
+        "  Cond(guard: Expr Bool, tru: Expr Int, fal: Expr Int) : Expr Int\n",
+        "\n",
+        "fn eval_int(e: Expr Int) -> Int\n",
+        "  case e\n",
+        "    IntLit(value: v) -> v\n",
+        "    Add(left: l, right: r) -> eval_int(l) + eval_int(r)\n",
+        "    Cond(guard: g, tru: t, fal: f) -> if eval_bool(g) then eval_int(t) else eval_int(f)\n",
+        "\n",
+        "fn eval_bool(e: Expr Bool) -> Bool\n",
+        "  case e\n",
+        "    BoolLit(value: v) -> v\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  eval_int(Cond(guard: BoolLit(value: true), tru: IntLit(value: 42), fal: IntLit(value: 0)))\n",
+    );
+    let source_path = write_temp_source(source, "kea-gadt-branch-local", "kea");
+    let run = run_file(&source_path).expect("GADT branch-local refinement should compile and run");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
 fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
     let path = temp_artifact_path(prefix, extension);
     std::fs::write(&path, contents).expect("temp source write should succeed");
