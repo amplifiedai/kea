@@ -474,6 +474,7 @@ fn make_record_def(name: &str, fields: Vec<(&str, TypeAnnotation)>) -> RecordDef
             .collect(),
         const_fields: vec![],
         field_annotations: vec![],
+    methods: vec![],
     }
 }
 
@@ -494,6 +495,7 @@ fn make_param_record_def(
             .collect(),
         const_fields: vec![],
         field_annotations: vec![],
+    methods: vec![],
     }
 }
 
@@ -541,6 +543,7 @@ fn make_type_def(
                 where_clause: vec![],
             })
             .collect(),
+    methods: vec![],
     }
 }
 
@@ -1519,6 +1522,7 @@ fn sum_type_variant_where_clause_registers_constraints() {
                 where_clause: vec![],
             },
         ],
+    methods: vec![],
     };
 
     sums.register(&tagged, &records)
@@ -1550,6 +1554,7 @@ fn sum_type_variant_where_clause_unknown_param_errors() {
                 ty: sp(TypeAnnotation::Named("Int".to_string())),
             }],
         }],
+    methods: vec![],
     };
 
     let err = sums
@@ -1581,6 +1586,7 @@ fn sum_type_variant_where_clause_accepts_phantom_constraint_param() {
                 ty: sp(TypeAnnotation::Named("Int".to_string())),
             }],
         }],
+    methods: vec![],
     };
 
     sums.register(&tagged, &records)
@@ -1612,6 +1618,7 @@ fn constructor_enforces_variant_where_clause_constraints() {
                 ty: sp(TypeAnnotation::Named("Int".to_string())),
             }],
         }],
+    methods: vec![],
     };
     sums.register(&constrained, &records)
         .expect("Constrained should register");
@@ -1659,6 +1666,7 @@ fn constructor_enforces_variant_where_clause_constraints_bool_variant() {
                 }],
             },
         ],
+    methods: vec![],
     };
     sums.register(&constrained, &records)
         .expect("Constrained should register");
@@ -1729,6 +1737,7 @@ fn case_arms_do_not_leak_variant_where_clause_constraints() {
                 }],
             },
         ],
+    methods: vec![],
     };
     sums.register(&tagged, &records)
         .expect("Tagged should register");
@@ -1795,6 +1804,7 @@ fn case_exhaustiveness_ignores_unreachable_gadt_variants() {
                 }],
             },
         ],
+    methods: vec![],
     };
     sums.register(&tagged, &records)
         .expect("Tagged should register");
@@ -1851,6 +1861,7 @@ fn case_exhaustiveness_ignores_unreachable_phantom_gadt_variants() {
                 }],
             },
         ],
+    methods: vec![],
     };
     sums.register(&expr_ty, &records)
         .expect("Expr should register");
@@ -1907,6 +1918,7 @@ fn case_ignores_unreachable_gadt_arms_without_errors() {
                 }],
             },
         ],
+    methods: vec![],
     };
     sums.register(&tagged, &records)
         .expect("Tagged should register");
@@ -4270,6 +4282,7 @@ fn infer_case_pattern_sum_constructor_arity_mismatch_errors() {
             ],
             where_clause: vec![],
         }],
+    methods: vec![],
     };
     sums.register(&pair, &records)
         .expect("Pair should register");

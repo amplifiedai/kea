@@ -278,6 +278,7 @@ TypeDef(
                 where_clause: [],
             },
         ],
+        methods: [],
     },
 )
 
@@ -650,6 +651,7 @@ RecordDef(
             [],
             [],
         ],
+        methods: [],
     },
 )
 

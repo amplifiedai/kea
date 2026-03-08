@@ -9502,6 +9502,7 @@ mod tests {
                 ],
                 const_fields: vec![],
                 field_annotations: vec![],
+            methods: vec![],
             }))],
         };
 
@@ -9550,6 +9551,7 @@ mod tests {
                         where_clause: vec![],
                     },
                 ],
+            methods: vec![],
             }))],
         };
 
@@ -10266,6 +10268,7 @@ mod tests {
                     }],
                     const_fields: vec![],
                     field_annotations: vec![],
+                methods: vec![],
                 })),
                 HirDecl::Function(HirFunction {
                     name: "get_x".to_string(),
@@ -10949,6 +10952,7 @@ mod tests {
                     where_clause: vec![],
                 },
             ],
+        methods: vec![],
         }));
         let option_ty = Type::Sum(kea_types::SumType {
             name: "Option".to_string(),
@@ -11200,6 +11204,7 @@ mod tests {
                     ],
                     const_fields: vec![],
                     field_annotations: vec![],
+                methods: vec![],
                 })),
                 HirDecl::Function(HirFunction {
                     name: "get_age".to_string(),
@@ -16253,6 +16258,7 @@ mod tests {
                     )],
                     const_fields: vec![],
                     field_annotations: vec![],
+                methods: vec![],
                 })),
                 HirDecl::Function(HirFunction {
                     name: "id_user".to_string(),
