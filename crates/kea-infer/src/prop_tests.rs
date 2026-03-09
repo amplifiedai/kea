@@ -1406,11 +1406,13 @@ fn register_container_with_projected_defaults(
                 name: "Item".into(),
             }],
         ))),
+        doc: None,
     };
     let item_assoc = kea_ast::AssociatedTypeDecl {
         name: sp_ast("Item".to_string()),
         constraints: vec![],
         default: Some(sp_ast(kea_ast::TypeAnnotation::Named("String".to_string()))),
+        doc: None,
     };
     let associated_types = if wrapped_first {
         vec![wrapped_assoc, item_assoc]
@@ -2631,6 +2633,7 @@ proptest! {
             methods: vec![],
             control_type: None,
             where_clause: vec![],
+            doc: None,
         };
         traits
             .register_trait_impl(&block)
@@ -2673,11 +2676,13 @@ proptest! {
                     name: sp_ast("Item".to_string()),
                     constraints: vec![],
                     default: None,
+                    doc: None,
                 },
                 kea_ast::AssociatedTypeDecl {
                     name: sp_ast("Wrapped".to_string()),
                     constraints: vec![],
                     default: None,
+                    doc: None,
                 },
             ],
             methods: vec![],
@@ -2711,6 +2716,7 @@ proptest! {
             methods: vec![],
             control_type: None,
             where_clause,
+            doc: None,
         };
         traits.register_trait_impl(&block).expect("impl should register");
 

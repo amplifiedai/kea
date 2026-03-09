@@ -379,6 +379,7 @@ fn register_hkt_for_use_for_traits(traits: &mut TraitRegistry, records: &RecordR
                 methods: vec![],
                 control_type: None,
                 where_clause: vec![],
+                doc: None,
             })
             .unwrap();
         traits
@@ -389,6 +390,7 @@ fn register_hkt_for_use_for_traits(traits: &mut TraitRegistry, records: &RecordR
                 methods: vec![],
                 control_type: None,
                 where_clause: vec![],
+                doc: None,
             })
             .unwrap();
         traits
@@ -399,6 +401,7 @@ fn register_hkt_for_use_for_traits(traits: &mut TraitRegistry, records: &RecordR
                 methods: vec![],
                 control_type: None,
                 where_clause: vec![],
+                doc: None,
             })
             .unwrap();
     }
@@ -412,6 +415,7 @@ fn register_hkt_for_use_for_traits(traits: &mut TraitRegistry, records: &RecordR
                 methods: vec![],
                 control_type: None,
                 where_clause: vec![],
+                doc: None,
             })
             .unwrap();
     }
@@ -5709,6 +5713,7 @@ fn make_impl_block(trait_name: &str, type_name: &str, methods: Vec<FnDecl>) -> k
         methods,
         control_type: None,
         where_clause: vec![],
+        doc: None,
     }
 }
 
@@ -5726,6 +5731,7 @@ fn make_impl_block_with_params(
         methods,
         control_type: None,
         where_clause,
+        doc: None,
     }
 }
 
@@ -7953,6 +7959,7 @@ fn trait_bounds_checked_against_registry() {
         methods: vec![],
         control_type: None,
         where_clause: vec![],
+        doc: None,
     };
     trait_registry.register_trait_impl(&impl_block).unwrap();
     // Add methods with a type compatible with the trait method signature.
@@ -8077,6 +8084,7 @@ fn ambiguous_trait_bound_reports_error_and_skips_evidence_sites() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -8093,6 +8101,7 @@ fn ambiguous_trait_bound_reports_error_and_skips_evidence_sites() {
                 name: sp("Source".to_string()),
                 ty: sp(TypeAnnotation::Named(source.to_string())),
             }],
+            doc: None,
         };
         traits.register_trait_impl(&imp).unwrap();
     }
@@ -8159,6 +8168,7 @@ fn existential_param_check_reports_ambiguous_trait_impl() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -8175,6 +8185,7 @@ fn existential_param_check_reports_ambiguous_trait_impl() {
                 name: sp("Source".to_string()),
                 ty: sp(TypeAnnotation::Named(source.to_string())),
             }],
+            doc: None,
         };
         traits.register_trait_impl(&imp).unwrap();
     }
@@ -8236,6 +8247,7 @@ fn call_site_evidence_annotations_emitted_after_trait_check() {
         methods: vec![],
         control_type: None,
         where_clause: vec![],
+        doc: None,
     };
     traits.register_trait_impl(&display_int_impl).unwrap();
     traits.add_impl_methods(BTreeMap::new()).unwrap();
@@ -8318,6 +8330,7 @@ fn supertrait_bound_requires_supertrait_impl() {
         methods: vec![],
         control_type: None,
         where_clause: vec![],
+        doc: None,
     };
     traits.register_trait_impl(&orderable_int_impl).unwrap();
     traits.add_impl_methods(BTreeMap::new()).unwrap();
@@ -8387,6 +8400,7 @@ fn call_site_evidence_annotations_include_supertraits() {
         methods: vec![],
         control_type: None,
         where_clause: vec![],
+        doc: None,
     };
     traits.register_trait_impl(&eq_int_impl).unwrap();
     traits.add_impl_methods(BTreeMap::new()).unwrap();
@@ -8398,6 +8412,7 @@ fn call_site_evidence_annotations_include_supertraits() {
         methods: vec![],
         control_type: None,
         where_clause: vec![],
+        doc: None,
     };
     traits.register_trait_impl(&orderable_int_impl).unwrap();
     traits.add_impl_methods(BTreeMap::new()).unwrap();
@@ -8748,10 +8763,10 @@ fn apply_where_clause_attaches_bounds() {
         effect_annotation: None,
         body: var("x"),
         span: s(),
-        where_clause: vec![TraitBound {
+        where_clause: vec![WhereItem::TraitBound(TraitBound {
             type_var: sp("x".to_string()),
             trait_name: sp("Additive".to_string()),
-        }],
+        })],
     };
 
     let subst = kea_types::Substitution::new();
@@ -8770,10 +8785,10 @@ fn apply_where_clause_attaches_bounds() {
 #[test]
 fn validate_where_clause_traits_reports_unknown_trait() {
     let traits = TraitRegistry::new();
-    let where_clause = vec![TraitBound {
+    let where_clause = vec![WhereItem::TraitBound(TraitBound {
         type_var: sp("x".to_string()),
         trait_name: sp("UnknownTrait".to_string()),
-    }];
+    })];
     let diags = validate_where_clause_traits(&where_clause, &traits);
     assert_eq!(diags.len(), 1);
     assert!(
@@ -8808,10 +8823,10 @@ fn validate_where_clause_traits_reports_ambiguous_multi_param_bound() {
     };
     traits.register_trait(&trait_def, &records).unwrap();
 
-    let where_clause = vec![TraitBound {
+    let where_clause = vec![WhereItem::TraitBound(TraitBound {
         type_var: sp("T".to_string()),
         trait_name: sp("BiLike".to_string()),
-    }];
+    })];
     let diags = validate_where_clause_traits(&where_clause, &traits);
     assert_eq!(diags.len(), 1);
     assert!(
@@ -8846,10 +8861,10 @@ fn validate_where_clause_traits_allows_matching_multi_param_bound_name() {
     };
     traits.register_trait(&trait_def, &records).unwrap();
 
-    let where_clause = vec![TraitBound {
+    let where_clause = vec![WhereItem::TraitBound(TraitBound {
         type_var: sp("G".to_string()),
         trait_name: sp("BiLike".to_string()),
-    }];
+    })];
     let diags = validate_where_clause_traits(&where_clause, &traits);
     assert!(
         diags.is_empty(),
@@ -8876,14 +8891,14 @@ fn seed_fn_where_type_params_reports_unknown_trait() {
         effect_annotation: None,
         body: var("x"),
         span: s(),
-        where_clause: vec![TraitBound {
+        where_clause: vec![WhereItem::TraitBound(TraitBound {
             type_var: sp("F".to_string()),
             trait_name: sp("UnknownTrait".to_string()),
-        }],
+        })],
     };
 
     let mut unifier = Unifier::new();
-    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier);
+    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier, &RecordRegistry::new(), &SumTypeRegistry::new());
     assert!(unifier.has_errors());
     assert!(
         unifier
@@ -8928,14 +8943,14 @@ fn seed_fn_where_type_params_registers_kinded_constructor_var() {
         effect_annotation: None,
         body: var("xs"),
         span: s(),
-        where_clause: vec![TraitBound {
+        where_clause: vec![WhereItem::TraitBound(TraitBound {
             type_var: sp("F".to_string()),
             trait_name: sp("Applicative".to_string()),
-        }],
+        })],
     };
 
     let mut unifier = Unifier::new();
-    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier);
+    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier, &RecordRegistry::new(), &SumTypeRegistry::new());
 
     let Some(Type::Var(f_tv)) = unifier.annotation_type_param("F").cloned() else {
         panic!("F should be seeded as a type variable");
@@ -8990,14 +9005,14 @@ fn seed_fn_where_type_params_uses_matching_kind_for_multi_param_trait() {
         effect_annotation: None,
         body: var("xs"),
         span: s(),
-        where_clause: vec![TraitBound {
+        where_clause: vec![WhereItem::TraitBound(TraitBound {
             type_var: sp("F".to_string()),
             trait_name: sp("BiLike".to_string()),
-        }],
+        })],
     };
 
     let mut unifier = Unifier::new();
-    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier);
+    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier, &RecordRegistry::new(), &SumTypeRegistry::new());
     assert!(
         !unifier.has_errors(),
         "unexpected errors: {:?}",
@@ -9051,14 +9066,14 @@ fn seed_fn_where_type_params_uses_second_kind_when_bound_name_matches() {
         effect_annotation: None,
         body: var("xs"),
         span: s(),
-        where_clause: vec![TraitBound {
+        where_clause: vec![WhereItem::TraitBound(TraitBound {
             type_var: sp("G".to_string()),
             trait_name: sp("BiLike".to_string()),
-        }],
+        })],
     };
 
     let mut unifier = Unifier::new();
-    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier);
+    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier, &RecordRegistry::new(), &SumTypeRegistry::new());
     assert!(
         !unifier.has_errors(),
         "unexpected errors: {:?}",
@@ -9112,14 +9127,14 @@ fn seed_fn_where_type_params_errors_for_ambiguous_multi_param_trait_bound() {
         effect_annotation: None,
         body: var("xs"),
         span: s(),
-        where_clause: vec![TraitBound {
+        where_clause: vec![WhereItem::TraitBound(TraitBound {
             type_var: sp("T".to_string()),
             trait_name: sp("BiLike".to_string()),
-        }],
+        })],
     };
 
     let mut unifier = Unifier::new();
-    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier);
+    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier, &RecordRegistry::new(), &SumTypeRegistry::new());
     assert!(unifier.has_errors(), "expected ambiguous bound error");
     assert!(
         unifier.errors().iter().any(|d| d
@@ -9178,16 +9193,16 @@ fn fn_decl_annotations_support_constructor_application_type_vars() {
         effect_annotation: None,
         body: var("items"),
         span: s(),
-        where_clause: vec![TraitBound {
+        where_clause: vec![WhereItem::TraitBound(TraitBound {
             type_var: sp("F".to_string()),
             trait_name: sp("Applicative".to_string()),
-        }],
+        })],
     };
 
     let expr = fn_decl.to_let_expr();
     let mut env = TypeEnv::new();
     let mut unifier = Unifier::new();
-    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier);
+    seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier, &RecordRegistry::new(), &SumTypeRegistry::new());
     let Some(Type::Var(f_tv)) = unifier.annotation_type_param("F").cloned() else {
         panic!("F should be seeded as a type variable");
     };
@@ -9347,10 +9362,10 @@ fn trait_method_where_clause_propagates_kind_and_trait_bound() {
                 )],
             ))),
             effect_annotation: None,
-            where_clause: vec![TraitBound {
+            where_clause: vec![WhereItem::TraitBound(TraitBound {
                 type_var: sp("F".to_string()),
                 trait_name: sp("Applicative".to_string()),
-            }],
+            })],
             default_body: None,
             doc: None,
             span: s(),
@@ -9454,10 +9469,10 @@ fn trait_method_where_clause_allows_matching_param_on_multi_param_trait() {
             }],
             return_annotation: Some(sp(TypeAnnotation::Named("G".to_string()))),
             effect_annotation: None,
-            where_clause: vec![TraitBound {
+            where_clause: vec![WhereItem::TraitBound(TraitBound {
                 type_var: sp("G".to_string()),
                 trait_name: sp("BiConstraint".to_string()),
-            }],
+            })],
             default_body: None,
             doc: None,
             span: s(),
@@ -9519,10 +9534,10 @@ fn trait_method_where_clause_errors_for_ambiguous_multi_param_bound() {
             }],
             return_annotation: Some(sp(TypeAnnotation::Named("H".to_string()))),
             effect_annotation: None,
-            where_clause: vec![TraitBound {
+            where_clause: vec![WhereItem::TraitBound(TraitBound {
                 type_var: sp("T".to_string()),
                 trait_name: sp("BiConstraint".to_string()),
-            }],
+            })],
             default_body: None,
             doc: None,
             span: s(),
@@ -9599,6 +9614,7 @@ fn multiple_trait_bounds_enforced() {
         methods: vec![],
         control_type: None,
         where_clause: vec![],
+        doc: None,
     };
     trait_registry.register_trait_impl(&impl_block).unwrap();
     trait_registry.add_impl_methods(BTreeMap::new()).unwrap();
@@ -9661,6 +9677,7 @@ fn trait_bound_enforcement_end_to_end() {
         methods: vec![],
         control_type: None,
         where_clause: vec![],
+        doc: None,
     };
     trait_registry.register_trait_impl(&impl_block).unwrap();
     trait_registry.add_impl_methods(BTreeMap::new()).unwrap();
@@ -9686,10 +9703,10 @@ fn trait_bound_enforcement_end_to_end() {
         effect_annotation: None,
         body: var("x"),
         span: s(),
-        where_clause: vec![TraitBound {
+        where_clause: vec![WhereItem::TraitBound(TraitBound {
             type_var: sp("x".to_string()),
             trait_name: sp("Additive".to_string()),
-        }],
+        })],
     };
 
     // 3. Infer (mimics MCP type_check_decls flow)
@@ -9993,6 +10010,7 @@ fn trait_with_associated_type_stored() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![make_trait_method(
             "from",
@@ -10027,6 +10045,7 @@ fn impl_with_associated_type_coherence_allows_different() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10043,6 +10062,7 @@ fn impl_with_associated_type_coherence_allows_different() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&block1).unwrap();
 
@@ -10057,6 +10077,7 @@ fn impl_with_associated_type_coherence_allows_different() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("Float".into())),
         }],
+        doc: None,
     };
     assert!(traits.register_trait_impl(&block2).is_ok());
 
@@ -10071,6 +10092,7 @@ fn impl_with_associated_type_coherence_allows_different() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     assert!(traits.register_trait_impl(&block3).is_err());
 }
@@ -10090,6 +10112,7 @@ fn impl_with_unknown_associated_type_errors() {
             name: sp("Item".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10105,6 +10128,7 @@ fn impl_with_unknown_associated_type_errors() {
             name: sp("Nope".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     let err = traits.register_trait_impl(&block).unwrap_err();
     assert!(err.message.contains("has no associated type `Nope`"));
@@ -10125,6 +10149,7 @@ fn impl_with_duplicate_associated_type_assignment_errors() {
             name: sp("Item".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10146,6 +10171,7 @@ fn impl_with_duplicate_associated_type_assignment_errors() {
                 ty: sp(TypeAnnotation::Named("Bool".into())),
             },
         ],
+        doc: None,
     };
     let err = traits.register_trait_impl(&block).unwrap_err();
     assert!(
@@ -10169,6 +10195,7 @@ fn impl_missing_required_associated_type_errors() {
             name: sp("Item".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10181,6 +10208,7 @@ fn impl_missing_required_associated_type_errors() {
         methods: vec![],
         control_type: None,
         where_clause: vec![],
+        doc: None,
     };
     let err = traits.register_trait_impl(&block).unwrap_err();
     assert!(
@@ -10204,6 +10232,7 @@ fn impl_missing_associated_type_uses_trait_default() {
             name: sp("Item".to_string()),
             constraints: vec![],
             default: Some(sp(TypeAnnotation::Named("String".into()))),
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10216,6 +10245,7 @@ fn impl_missing_associated_type_uses_trait_default() {
         methods: vec![],
         control_type: None,
         where_clause: vec![],
+        doc: None,
     };
     traits.register_trait_impl(&block).unwrap();
     let outcome = traits.solve_goal(&TraitGoal::ProjectionEq {
@@ -10243,6 +10273,7 @@ fn impl_default_associated_type_can_project_self_assoc() {
                 name: sp("Item".to_string()),
                 constraints: vec![],
                 default: None,
+                doc: None,
             },
             kea_ast::AssociatedTypeDecl {
                 name: sp("Wrapped".to_string()),
@@ -10254,6 +10285,7 @@ fn impl_default_associated_type_can_project_self_assoc() {
                         name: "Item".into(),
                     }],
                 ))),
+                doc: None,
             },
         ],
         methods: vec![],
@@ -10270,6 +10302,7 @@ fn impl_default_associated_type_can_project_self_assoc() {
             name: sp("Item".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&block).unwrap();
 
@@ -10304,11 +10337,13 @@ fn impl_associated_type_defaults_resolve_in_fixpoint_order() {
                         name: "Item".into(),
                     }],
                 ))),
+                doc: None,
             },
             kea_ast::AssociatedTypeDecl {
                 name: sp("Item".to_string()),
                 constraints: vec![],
                 default: Some(sp(TypeAnnotation::Named("String".into()))),
+                doc: None,
             },
         ],
         methods: vec![],
@@ -10322,6 +10357,7 @@ fn impl_associated_type_defaults_resolve_in_fixpoint_order() {
         methods: vec![],
         control_type: None,
         where_clause: vec![],
+        doc: None,
     };
     traits.register_trait_impl(&block).unwrap();
 
@@ -10357,6 +10393,7 @@ fn impl_explicit_associated_type_overrides_trait_default() {
             name: sp("Item".to_string()),
             constraints: vec![],
             default: Some(sp(TypeAnnotation::Named("String".into()))),
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10372,6 +10409,7 @@ fn impl_explicit_associated_type_overrides_trait_default() {
             name: sp("Item".to_string()),
             ty: sp(TypeAnnotation::Named("Float".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&block).unwrap();
     let outcome = traits.solve_goal(&TraitGoal::ProjectionEq {
@@ -10399,11 +10437,13 @@ fn impl_explicit_associated_type_projection_is_order_invariant() {
                 name: sp("Item".to_string()),
                 constraints: vec![],
                 default: None,
+                doc: None,
             },
             kea_ast::AssociatedTypeDecl {
                 name: sp("Wrapped".to_string()),
                 constraints: vec![],
                 default: None,
+                doc: None,
             },
         ],
         methods: vec![],
@@ -10433,6 +10473,7 @@ fn impl_explicit_associated_type_projection_is_order_invariant() {
                 ty: sp(TypeAnnotation::Named("String".into())),
             },
         ],
+        doc: None,
     };
     traits.register_trait_impl(&block).unwrap();
 
@@ -10466,6 +10507,7 @@ fn trait_default_projection_unknown_assoc_errors() {
                     name: "Missing".into(),
                 }],
             ))),
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10492,11 +10534,13 @@ fn impl_assignment_projection_unknown_assoc_errors() {
                 name: sp("Item".to_string()),
                 constraints: vec![],
                 default: None,
+                doc: None,
             },
             kea_ast::AssociatedTypeDecl {
                 name: sp("Wrapped".to_string()),
                 constraints: vec![],
                 default: None,
+                doc: None,
             },
         ],
         methods: vec![],
@@ -10525,6 +10569,7 @@ fn impl_assignment_projection_unknown_assoc_errors() {
                 )),
             },
         ],
+        doc: None,
     };
     let err = traits.register_trait_impl(&block).unwrap_err();
     assert!(
@@ -10555,6 +10600,7 @@ fn trait_fundep_unknown_symbol_errors() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10676,6 +10722,7 @@ fn impl_with_fundep_conflicting_dependent_value_errors() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10691,6 +10738,7 @@ fn impl_with_fundep_conflicting_dependent_value_errors() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&first).unwrap();
 
@@ -10704,6 +10752,7 @@ fn impl_with_fundep_conflicting_dependent_value_errors() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("Float".into())),
         }],
+        doc: None,
     };
     let err = traits.register_trait_impl(&second).unwrap_err();
     assert!(err.message.contains("functional dependency conflict"));
@@ -10730,6 +10779,7 @@ fn impl_with_fundep_conflict_is_detected_across_different_type_names() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10745,6 +10795,7 @@ fn impl_with_fundep_conflict_is_detected_across_different_type_names() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&first).unwrap();
 
@@ -10758,6 +10809,7 @@ fn impl_with_fundep_conflict_is_detected_across_different_type_names() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     let err = traits.register_trait_impl(&second).unwrap_err();
     assert!(
@@ -10782,6 +10834,7 @@ fn find_impl_with_assoc_selects_correct() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10797,6 +10850,7 @@ fn find_impl_with_assoc_selects_correct() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&block1).unwrap();
 
@@ -10810,6 +10864,7 @@ fn find_impl_with_assoc_selects_correct() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("Float".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&block2).unwrap();
 
@@ -10886,6 +10941,7 @@ fn solve_goal_implements_reports_ambiguous_candidates() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10901,6 +10957,7 @@ fn solve_goal_implements_reports_ambiguous_candidates() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&block1).unwrap();
 
@@ -10914,6 +10971,7 @@ fn solve_goal_implements_reports_ambiguous_candidates() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("Float".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&block2).unwrap();
 
@@ -10944,6 +11002,7 @@ fn solve_goal_reports_ambiguous_param_bound_reason() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -10960,6 +11019,7 @@ fn solve_goal_reports_ambiguous_param_bound_reason() {
                 name: sp("Source".to_string()),
                 ty: sp(TypeAnnotation::Named(source.to_string())),
             }],
+            doc: None,
         };
         traits.register_trait_impl(&block).unwrap();
     }
@@ -11010,6 +11070,7 @@ fn solve_goal_reports_ambiguous_supertrait_reason() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -11026,6 +11087,7 @@ fn solve_goal_reports_ambiguous_supertrait_reason() {
                 name: sp("Source".to_string()),
                 ty: sp(TypeAnnotation::Named(source.to_string())),
             }],
+            doc: None,
         };
         traits.register_trait_impl(&block).unwrap();
     }
@@ -11075,6 +11137,7 @@ fn satisfies_type_rejects_ambiguity() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -11091,6 +11154,7 @@ fn satisfies_type_rejects_ambiguity() {
                 name: sp("Source".to_string()),
                 ty: sp(TypeAnnotation::Named(source.to_string())),
             }],
+            doc: None,
         };
         traits.register_trait_impl(&block).unwrap();
     }
@@ -11113,6 +11177,7 @@ fn solve_goal_implements_reports_ambiguity_without_fallback_lookup() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -11128,6 +11193,7 @@ fn solve_goal_implements_reports_ambiguity_without_fallback_lookup() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&first).unwrap();
 
@@ -11141,6 +11207,7 @@ fn solve_goal_implements_reports_ambiguity_without_fallback_lookup() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("Float".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&second).unwrap();
 
@@ -11169,6 +11236,7 @@ fn solve_goal_projection_eq_disambiguates_associated_type() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -11185,6 +11253,7 @@ fn solve_goal_projection_eq_disambiguates_associated_type() {
                 name: sp("Source".to_string()),
                 ty: sp(TypeAnnotation::Named(source.to_string())),
             }],
+            doc: None,
         };
         traits.register_trait_impl(&block).unwrap();
     }
@@ -11218,6 +11287,7 @@ fn solve_goal_projection_eq_reports_assoc_mismatch() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -11233,6 +11303,7 @@ fn solve_goal_projection_eq_reports_assoc_mismatch() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&block).unwrap();
 
@@ -11269,6 +11340,7 @@ fn solve_goal_projection_eq_accepts_variable_rhs_for_unique_candidate() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -11284,6 +11356,7 @@ fn solve_goal_projection_eq_accepts_variable_rhs_for_unique_candidate() {
             name: sp("Source".to_string()),
             ty: sp(TypeAnnotation::Named("String".into())),
         }],
+        doc: None,
     };
     traits.register_trait_impl(&block).unwrap();
 
@@ -11316,6 +11389,7 @@ fn solve_goal_projection_eq_variable_rhs_preserves_ambiguity() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![],
     };
@@ -11332,6 +11406,7 @@ fn solve_goal_projection_eq_variable_rhs_preserves_ambiguity() {
                 name: sp("Source".to_string()),
                 ty: sp(TypeAnnotation::Named(source.into())),
             }],
+            doc: None,
         };
         traits.register_trait_impl(&block).unwrap();
     }
@@ -11364,6 +11439,7 @@ fn trait_method_self_projection_gets_placeholder() {
             name: sp("Source".to_string()),
             constraints: vec![],
             default: None,
+            doc: None,
         }],
         methods: vec![make_trait_method(
             "from",
@@ -11583,6 +11659,7 @@ fn validate_module_fn_annotations_checks_trait_and_impl_methods() {
         }],
         control_type: None,
         where_clause: vec![],
+        doc: None,
     };
     let module = Module {
         doc: None,

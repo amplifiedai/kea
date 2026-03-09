@@ -51,6 +51,17 @@ pub struct TypeAnnotations {
     /// Maps the span of the `expect_type(...)` call to the resolved type name.
     /// The evaluator uses this to perform runtime type checking.
     pub expect_type_targets: BTreeMap<Span, String>,
+    /// Trait-dispatch callee rewrites for UMS-desugared calls.
+    ///
+    /// When `a.hash()` desugars to `Call(Var("hash"), [a])` and the type
+    /// checker determines (via `first_param_definitely_mismatches`) that the
+    /// standalone `hash` function is the wrong target, it records the resolved
+    /// implementation name here (e.g. `"Hash.PairBox.hash"`).  The HIR lowering
+    /// uses this to rewrite `Var("hash")` to the correct callee.
+    ///
+    /// Key: span of the `Var` callee expression.
+    /// Value: qualified function name to call instead (e.g. `"Hash.PairBox.hash"`).
+    pub resolved_trait_callees: BTreeMap<Span, String>,
 }
 
 /// Runtime dispatch mode for `spawn` expressions.
@@ -2735,14 +2746,18 @@ fn where_trait_bound_kind(
 }
 
 pub fn validate_where_clause_traits(
-    where_clause: &[kea_ast::TraitBound],
+    where_clause: &[kea_ast::WhereItem],
     traits: &TraitRegistry,
 ) -> Vec<Diagnostic> {
     where_clause
         .iter()
-        .filter_map(|bound| {
-            where_trait_bound_kind(traits, &bound.type_var, &bound.trait_name, "where clauses")
-                .err()
+        .filter_map(|item| {
+            if let kea_ast::WhereItem::TraitBound(bound) = item {
+                where_trait_bound_kind(traits, &bound.type_var, &bound.trait_name, "where clauses")
+                    .err()
+            } else {
+                None
+            }
         })
         .collect()
 }
@@ -3208,7 +3223,12 @@ tie it to at least one function-typed parameter effect annotation",
                 }
                 None => None,
             };
-            for bound in &method.where_clause {
+            for item in &method.where_clause {
+                let bound = match item {
+                    kea_ast::WhereItem::TraitBound(b) => b,
+                    kea_ast::WhereItem::AssocTypeEqual { .. }
+                    | kea_ast::WhereItem::TypeAssignment { .. } => continue,
+                };
                 let expected_kind = where_trait_bound_kind(
                     self,
                     &bound.type_var,
@@ -3496,6 +3516,10 @@ tie it to at least one function-typed parameter effect annotation",
                         }
                     }
                 }
+                // AssocTypeEqual constraints on impl type params (e.g., `i.Item = a`).
+                // These constrain when the impl applies. We accept them here; full
+                // enforcement happens structurally through the struct field types.
+                kea_ast::WhereItem::AssocTypeEqual { .. } => {}
             }
         }
 
@@ -3849,8 +3873,16 @@ tie it to at least one function-typed parameter effect annotation",
                 });
 
                 let mut self_ty = impl_self_type_hint(&last.type_name);
+                // Only refine self_ty from the first impl param when the trait method's
+                // first param is `Self` (TypeVarId(u32::MAX)). When the first trait param
+                // is a concrete type (e.g. `fn decode(_ input: Json) -> Option Self`),
+                // using the impl's first param would incorrectly bind Self to that type.
                 if let Type::Function(actual_fn) = actual_ty
                     && let Some(first_param) = actual_fn.params.first()
+                    && trait_method
+                        .param_types
+                        .first()
+                        .is_some_and(|t| matches!(t, Type::Var(v) if v.0 == u32::MAX))
                 {
                     self_ty = first_param.clone();
                 }
@@ -5174,6 +5206,8 @@ pub(crate) fn seed_fn_where_type_params(
     fn_decl: &kea_ast::FnDecl,
     traits: &TraitRegistry,
     unifier: &mut Unifier,
+    records: &RecordRegistry,
+    sum_types: &SumTypeRegistry,
 ) {
     if fn_decl.where_clause.is_empty() {
         return;
@@ -5186,7 +5220,14 @@ pub(crate) fn seed_fn_where_type_params(
         .collect();
     let mut scope = unifier.annotation_type_param_scope.clone();
 
-    for bound in &fn_decl.where_clause {
+    for item in &fn_decl.where_clause {
+        let bound = match item {
+            kea_ast::WhereItem::TraitBound(b) => b,
+            // AssocTypeEqual constraints are handled at call sites during type resolution.
+            kea_ast::WhereItem::AssocTypeEqual { .. }
+            | kea_ast::WhereItem::TypeAssignment { .. } => continue,
+        };
+
         let var_name = &bound.type_var.node;
         if param_names.contains(var_name) {
             continue;
@@ -5236,7 +5277,101 @@ pub(crate) fn seed_fn_where_type_params(
     }
 
     if !scope.is_empty() {
-        unifier.set_annotation_type_param_scope(scope);
+        unifier.set_annotation_type_param_scope(scope.clone());
+    }
+
+    // Second pass: process associated type equality constraints.
+    // `f.Item = Int` or `f.Foldable.Item = Int` in function where clauses.
+    // These must run after trait bounds so the base type var is already in scope.
+    for item in &fn_decl.where_clause {
+        let kea_ast::WhereItem::AssocTypeEqual {
+            type_var,
+            trait_name: explicit_trait,
+            assoc_name,
+            ty: rhs_ann,
+        } = item
+        else {
+            continue;
+        };
+
+        let var_name = &type_var.node;
+
+        // Find the type for the base type var (may be in scope or be a param).
+        let base_ty = match scope.get(var_name) {
+            Some(ty) => ty.clone(),
+            None => match unifier.annotation_type_param(var_name) {
+                Some(ty) => ty.clone(),
+                None => continue, // type var not in scope yet — skip
+            },
+        };
+
+        // Determine the owning trait for this assoc type.
+        let trait_owner = if let Some(t) = explicit_trait {
+            t.node.clone()
+        } else {
+            // Scan trait bounds on the same type var to find the trait that has this assoc type.
+            let mut found = None;
+            for other in &fn_decl.where_clause {
+                if let kea_ast::WhereItem::TraitBound(tb) = other
+                    && tb.type_var.node == *var_name
+                    && let Some(trait_info) = traits.lookup_trait(&tb.trait_name.node)
+                    && trait_info
+                        .associated_types
+                        .iter()
+                        .any(|at| at.name == assoc_name.node)
+                {
+                    found = Some(tb.trait_name.node.clone());
+                    break;
+                }
+            }
+            match found {
+                Some(t) => t,
+                None => continue, // can't determine trait — skip
+            }
+        };
+
+        // Resolve the RHS type annotation (e.g., `Int` → `Type::Int`).
+        let rhs_ty = match resolve_annotation(&rhs_ann.node, records, Some(sum_types)) {
+            Some(ty) => ty,
+            None => {
+                // Maybe it's a type var from scope.
+                if let Some(ty) = scope.get(&match &rhs_ann.node {
+                    TypeAnnotation::Named(n) => n.clone(),
+                    _ => String::new(),
+                }) {
+                    ty.clone()
+                } else {
+                    continue;
+                }
+            }
+        };
+
+        // Ensure a projection type var is registered under "{base}.{assoc}" so
+        // annotations like `List (f.Item)` resolve to this same type.
+        let proj_key = format!("{}.{}", var_name, assoc_name.node);
+        let proj_ty = unifier.annotation_type_param_or_insert_star(&proj_key);
+
+        // Emit constraints for proj_ty = rhs_ty and the assoc type equality.
+        let prov = Provenance {
+            span: assoc_name.span,
+            reason: Reason::TraitBound {
+                trait_name: format!("{}.{}", trait_owner, assoc_name.node),
+            },
+        };
+        // Unify the projection placeholder with the declared RHS type.
+        unifier.constrain(Constraint::TypeEqual {
+            expected: proj_ty,
+            actual: rhs_ty.clone(),
+            provenance: prov.clone(),
+        });
+        // Emit the assoc type equality obligation for trait solving.
+        unifier.constrain(Constraint::AssocTypeEqual {
+            base_trait: trait_owner,
+            base_ty,
+            assoc: assoc_name.node.clone(),
+            rhs: rhs_ty,
+            provenance: prov,
+        });
     }
 }
 
@@ -5247,8 +5382,10 @@ pub fn seed_fn_where_type_params_in_context(
     fn_decl: &kea_ast::FnDecl,
     traits: &TraitRegistry,
     ctx: &mut InferenceContext,
+    records: &RecordRegistry,
+    sum_types: &SumTypeRegistry,
 ) {
-    seed_fn_where_type_params(fn_decl, traits, ctx);
+    seed_fn_where_type_params(fn_decl, traits, ctx, records, sum_types);
 }
 
 /// Apply where-clause bounds from a FnDecl to a generalized TypeScheme.
@@ -5284,7 +5421,15 @@ pub fn apply_where_clause(
 
     let quantified: BTreeSet<TypeVarId> = scheme.type_vars.iter().copied().collect();
 
-    for bound in &fn_decl.where_clause {
+    for item in &fn_decl.where_clause {
+        let bound = match item {
+            kea_ast::WhereItem::TraitBound(b) => b,
+            // AssocTypeEqual constraints are carried in the TypeScheme's assoc_type_constraints.
+            // TypeAssignment is an impl-block concept, not used in fn where clauses.
+            kea_ast::WhereItem::AssocTypeEqual { .. }
+            | kea_ast::WhereItem::TypeAssignment { .. } => continue,
+        };
+
         // Find the parameter position for this bound's type variable name.
         let Some(idx) = param_names.iter().position(|p| p == &bound.type_var.node) else {
             continue;
@@ -7340,7 +7485,19 @@ fn resolve_annotation_or_bare_df(
                 associated_types: resolved_assoc?,
             })
         }
-        TypeAnnotation::Projection { .. } => None,
+        TypeAnnotation::Projection { base, name } => {
+            if base == "Self" {
+                // Self.Name — only valid in trait/impl context; not resolvable standalone.
+                return None;
+            }
+            // `T.Name` — associated type projection from a type variable.
+            // Look up (or create) a projection type var keyed as "{base}.{name}".
+            // This is registered in the scope by `seed_fn_where_type_params` when the
+            // where clause has an `AssocTypeEqual` for this projection.  If not present,
+            // create a fresh placeholder so type inference can continue.
+            let proj_key = format!("{base}.{name}");
+            Some(unifier.annotation_type_param_or_insert_star(&proj_key))
+        }
         TypeAnnotation::DimLiteral(n) => {
             unifier.push_error(
                 Diagnostic::error(
@@ -9158,7 +9315,9 @@ fn resolve_bound_call_args(
 }
 
 enum TraitMethodFallback {
-    Resolved(Type),
+    /// Resolved to a trait method. Carries the method type and the qualified
+    /// callee name (e.g. `"Hash.PairBox.hash"`) for HIR callee rewriting.
+    Resolved(Type, String),
     Ambiguous,
     None,
 }
@@ -9186,7 +9345,8 @@ fn resolve_unqualified_trait_method_fallback(
         .any(|name| name == method_name)
         && let Some(scheme) = env.resolve_qualified(&receiver_ctor, method_name)
     {
-        return TraitMethodFallback::Resolved(scheme.ty.clone());
+        let qualified = format!("{receiver_ctor}.{method_name}");
+        return TraitMethodFallback::Resolved(scheme.ty.clone(), qualified);
     }
 
     let mut candidates: Vec<(String, TraitMethodInfo)> = Vec::new();
@@ -9219,12 +9379,12 @@ fn resolve_unqualified_trait_method_fallback(
             let trait_info = traits
                 .lookup_trait(&trait_name)
                 .expect("trait should exist while resolving method fallback");
-            TraitMethodFallback::Resolved(instantiate_trait_method_type(
-                trait_info,
-                &trait_name,
-                &method,
-                unifier,
-            ))
+            let qualified =
+                format!("{trait_name}.{receiver_ctor}.{}", method.name);
+            TraitMethodFallback::Resolved(
+                instantiate_trait_method_type(trait_info, &trait_name, &method, unifier),
+                qualified,
+            )
         }
         _ => {
             let mut names = candidates
@@ -9247,6 +9407,29 @@ fn resolve_unqualified_trait_method_fallback(
             TraitMethodFallback::Ambiguous
         }
     }
+}
+
+/// Returns `true` when `func_ty` is a function whose first parameter is
+/// concretely ground and structurally incompatible with `arg0_ty`.
+///
+/// Used to decide whether to try trait-dispatch fallback for calls like
+/// `a.hash()` → `hash(a)` where `hash` resolves to a standalone function with
+/// a different first-param type (e.g. `Int`) than the actual receiver (`PairBox`).
+fn first_param_definitely_mismatches(func_ty: &Type, arg0_ty: &Type, unifier: &Unifier) -> bool {
+    let resolved_func = unifier.substitution.apply(func_ty);
+    let Type::Function(ft) = &resolved_func else {
+        return false;
+    };
+    let Some(first_param) = ft.params.first() else {
+        return false;
+    };
+    let first_param_resolved = unifier.substitution.apply(first_param);
+    let arg0_resolved = unifier.substitution.apply(arg0_ty);
+    // Only attempt the fallback when both sides are fully ground (no free type
+    // variables) so we don't inadvertently break generic call sites.
+    free_type_vars(&first_param_resolved).is_empty()
+        && free_type_vars(&arg0_resolved).is_empty()
+        && first_param_resolved != arg0_resolved
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -10947,7 +11130,10 @@ fn infer_expr_bidir(
                 &func.node,
                 ExprKind::Var(name) if env.lookup(name).is_none()
             );
-            let mut arg_types = if unresolved_callee {
+            // Eagerly infer arg types for all Var callees so we can use them in the
+            // trait-dispatch fallback even when the callee is already in env.
+            let is_var_callee = matches!(&func.node, ExprKind::Var(_));
+            let mut arg_types = if unresolved_callee || is_var_callee {
                 infer_bound_args_with_param_contracts(
                     &bound_args,
                     call_signature.as_ref(),
@@ -10967,7 +11153,7 @@ fn infer_expr_bidir(
                     match resolve_unqualified_trait_method_fallback(
                         name, &arg_types, env, traits, unifier, func.span,
                     ) {
-                        TraitMethodFallback::Resolved(ty) => ty,
+                        TraitMethodFallback::Resolved(ty, _qualified) => ty,
                         TraitMethodFallback::Ambiguous => {
                             suppress_undefined_callee = true;
                             unifier.fresh_type()
@@ -10977,7 +11163,27 @@ fn infer_expr_bidir(
                         }
                     }
                 } else {
-                    infer_expr_bidir(func, env, unifier, records, traits, sum_types)
+                    let env_ty =
+                        infer_expr_bidir(func, env, unifier, records, traits, sum_types);
+                    // If the env-resolved function's first param is concretely incompatible
+                    // with the first arg type, try trait dispatch as a fallback.  This
+                    // handles UMS-desugared calls like `a.hash()` → `hash(a)` where `hash`
+                    // also exists as a standalone function with a different first-param type.
+                    if !arg_types.is_empty()
+                        && first_param_definitely_mismatches(&env_ty, &arg_types[0], unifier)
+                    {
+                        match resolve_unqualified_trait_method_fallback(
+                            name, &arg_types, env, traits, unifier, func.span,
+                        ) {
+                            TraitMethodFallback::Resolved(ty, qualified) => {
+                                unifier.record_resolved_trait_callee(func.span, qualified);
+                                ty
+                            }
+                            _ => env_ty,
+                        }
+                    } else {
+                        env_ty
+                    }
                 }
             } else {
                 infer_expr_bidir(func, env, unifier, records, traits, sum_types)
@@ -13766,7 +13972,8 @@ fn check_expr_bidir(
                 &func.node,
                 ExprKind::Var(name) if env.lookup(name).is_none()
             );
-            let arg_types_for_fallback = if unresolved_callee {
+            let is_var_callee = matches!(&func.node, ExprKind::Var(_));
+            let arg_types_for_fallback = if unresolved_callee || is_var_callee {
                 infer_bound_args_with_param_contracts(
                     &bound_args,
                     call_signature.as_ref(),
@@ -13791,7 +13998,7 @@ fn check_expr_bidir(
                         unifier,
                         func.span,
                     ) {
-                        TraitMethodFallback::Resolved(ty) => ty,
+                        TraitMethodFallback::Resolved(ty, _qualified) => ty,
                         TraitMethodFallback::Ambiguous => {
                             suppress_undefined_callee = true;
                             unifier.fresh_type()
@@ -13801,7 +14008,32 @@ fn check_expr_bidir(
                         }
                     }
                 } else {
-                    infer_expr_bidir(func, env, unifier, records, traits, sum_types)
+                    let env_ty =
+                        infer_expr_bidir(func, env, unifier, records, traits, sum_types);
+                    if !arg_types_for_fallback.is_empty()
+                        && first_param_definitely_mismatches(
+                            &env_ty,
+                            &arg_types_for_fallback[0],
+                            unifier,
+                        )
+                    {
+                        match resolve_unqualified_trait_method_fallback(
+                            name,
+                            &arg_types_for_fallback,
+                            env,
+                            traits,
+                            unifier,
+                            func.span,
+                        ) {
+                            TraitMethodFallback::Resolved(ty, qualified) => {
+                                unifier.record_resolved_trait_callee(func.span, qualified);
+                                ty
+                            }
+                            _ => env_ty,
+                        }
+                    } else {
+                        env_ty
+                    }
                 }
             } else {
                 infer_expr_bidir(func, env, unifier, records, traits, sum_types)

@@ -852,6 +852,11 @@ impl Unifier {
                 .expect_type_targets
                 .insert(span, target);
         }
+        for (span, callee) in annotations.resolved_trait_callees {
+            self.type_annotations
+                .resolved_trait_callees
+                .insert(span, callee);
+        }
     }
 
     /// Generate a fresh row variable.
@@ -2103,6 +2108,17 @@ impl Unifier {
             .insert(span, type_name);
     }
 
+    /// Record a resolved trait callee name at a span for HIR lowering.
+    ///
+    /// Called when `first_param_definitely_mismatches` detects that the
+    /// env-resolved callee (e.g. standalone `hash`) is the wrong target and
+    /// trait dispatch selects a different implementation (e.g. `Hash.PairBox.hash`).
+    pub fn record_resolved_trait_callee(&mut self, span: Span, callee: String) {
+        self.type_annotations
+            .resolved_trait_callees
+            .insert(span, callee);
+    }
+
     /// Solve a set of constraints.
     pub fn solve(&mut self, constraints: Vec<Constraint>) -> Result<(), DiagnosticError> {
         self.solve_with_options(constraints, SolveOptions::default())
@@ -2887,6 +2903,7 @@ mod tests {
             methods: vec![],
             control_type: None,
             where_clause: vec![],
+            doc: None,
         };
         registry.register_trait_impl(&impl_block).unwrap();
         registry.add_impl_methods(BTreeMap::new()).unwrap();
@@ -2941,6 +2958,7 @@ mod tests {
             methods: vec![],
             control_type: None,
             where_clause: vec![],
+            doc: None,
         };
         registry.register_trait_impl(&impl_block).unwrap();
         registry.add_impl_methods(BTreeMap::new()).unwrap();
