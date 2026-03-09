@@ -464,7 +464,7 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
     let mut functions = Vec::new();
     for decl in &module.declarations {
         if let HirDecl::Function(function) = decl {
-            functions.extend(lower_hir_function(
+            let lowered = lower_hir_function(
                 function,
                 &layouts,
                 &known_functions,
@@ -476,7 +476,8 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
                 &known_function_dispatch_effects,
                 &lambda_factories,
                 false,
-            ));
+            );
+            functions.extend(lowered);
         }
     }
     // Generate default capability wrapper functions.  These are zero-capture
@@ -484,6 +485,11 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
     // (main) create ClosureInit references to these wrappers so that capability
     // cells can be threaded to callees even when no user handler is installed.
     functions.extend(generate_default_capability_wrappers(&effect_operations));
+    // Remove functions that contain Unsupported instructions, and transitively
+    // remove any function that calls a removed function.  This handles:
+    // - Generic functions with unresolvable trait dispatch (direct Unsupported)
+    // - Concrete wrappers that delegate to those generic functions (transitive)
+    functions = filter_unsupported_functions_transitive(functions);
 
     // Handler inlining: devirtualize callback closures when structurally verified.
     // Default: on for AOT, off for JIT (compilation cost dominates in JIT).
@@ -4224,6 +4230,147 @@ fn is_namespaced_symbol_name(name: &str) -> bool {
     name.contains('.')
 }
 
+/// Extract a nominal type name suitable for trait dispatch lookup.
+/// Returns the type name for records, sums, and primitive types.
+/// Returns `None` for type variables, dynamic types, etc.
+fn nominal_type_name_for_dispatch(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Int => Some("Int".to_string()),
+        Type::Bool => Some("Bool".to_string()),
+        Type::String => Some("String".to_string()),
+        Type::Float => Some("Float".to_string()),
+        Type::Char => Some("Char".to_string()),
+        Type::Sum(s) => Some(s.name.clone()),
+        Type::Record(r) => Some(r.name.clone()),
+        _ => None,
+    }
+}
+
+/// Remove functions that contain `Unsupported` instructions, plus any function
+/// that (transitively) calls one of those removed functions.
+///
+/// This handles two cases:
+/// - Direct: generic functions with unresolvable trait dispatch produce `Unsupported`
+///   instructions directly (e.g. `Encode.encode(x: a)` where `a` is a free type var).
+/// - Transitive: concrete wrapper functions (e.g. `Decode.List.decode`) that call a
+///   removed generic helper (e.g. `decode_list`) don't contain `Unsupported` themselves
+///   but would cause a codegen "unknown function" error if kept.
+fn filter_unsupported_functions_transitive(functions: Vec<MirFunction>) -> Vec<MirFunction> {
+    fn has_unsupported(f: &MirFunction) -> bool {
+        f.blocks
+            .iter()
+            .any(|b| b.instructions.iter().any(|i| matches!(i, MirInst::Unsupported { .. })))
+    }
+
+    fn local_refs(f: &MirFunction) -> impl Iterator<Item = &str> {
+        f.blocks.iter().flat_map(|b| {
+            b.instructions.iter().flat_map(|i| {
+                let mut names: Vec<&str> = Vec::new();
+                match i {
+                    MirInst::Call { callee: MirCallee::Local(name), .. } => {
+                        names.push(name.as_str());
+                    }
+                    MirInst::FunctionRef { function, .. } => {
+                        names.push(function.as_str());
+                    }
+                    _ => {}
+                }
+                names.into_iter()
+            })
+        })
+    }
+
+    // Seed with directly-unsupported function names.
+    let mut unsupported: BTreeSet<String> = functions
+        .iter()
+        .filter(|f| has_unsupported(f))
+        .map(|f| f.name.clone())
+        .collect();
+
+    // Fixed-point: keep adding callers of unsupported functions.
+    loop {
+        let before = unsupported.len();
+        for f in &functions {
+            if unsupported.contains(&f.name) {
+                continue;
+            }
+            if local_refs(f).any(|callee| unsupported.contains(callee)) {
+                unsupported.insert(f.name.clone());
+            }
+        }
+        if unsupported.len() == before {
+            break;
+        }
+    }
+
+    functions.into_iter().filter(|f| !unsupported.contains(&f.name)).collect()
+}
+
+/// Attempt to resolve a `Trait.method` call to a concrete `Trait.TypeName.method`
+/// implementation by inspecting argument and return types.
+///
+/// Resolution order:
+/// 1. First argument type: `Encode.encode(x: Point)` → `Encode.Point.encode`
+/// 2. Return type (unwrapping Option/Result wrappers):
+///    `Decode.decode(j: Json) -> Option Point` → `Decode.Point.decode`
+///
+/// This handles both encoder dispatch (first-arg) and decoder dispatch (return-type)
+/// without requiring dictionary passing.
+fn try_resolve_trait_dispatch_callee(
+    name: &str,
+    args: &[kea_hir::HirExpr],
+    known_function_types: &BTreeMap<String, Type>,
+) -> Option<String> {
+    // Only handle `Trait.method` (exactly one dot, e.g. `Encode.encode`).
+    // Skip `Trait.Type.method` forms (already fully qualified).
+    let (trait_prefix, method) = name.rsplit_once('.')?;
+    if trait_prefix.contains('.') {
+        return None;
+    }
+    // Strategy 1: dispatch on the first argument's concrete type.
+    if let Some(first_arg) = args.first()
+        && let Some(type_name) = nominal_type_name_for_dispatch(&first_arg.ty)
+    {
+        let candidate = format!("{trait_prefix}.{type_name}.{method}");
+        if known_function_types.contains_key(&candidate) {
+            return Some(candidate);
+        }
+    }
+    // Strategy 2: dispatch on the return type (used by Decode.decode which
+    // takes a Json input but dispatches on the output type).
+    // Accepts any type arg as candidate.
+    None
+}
+
+/// Attempt to resolve a `Trait.method` call using the expected return type.
+///
+/// Used for decode-style dispatch: `Decode.decode(j) -> Option T` resolves to
+/// `Decode.T.decode`. The call-site return type `ret_ty` is passed in.
+fn try_resolve_trait_dispatch_callee_by_ret(
+    name: &str,
+    ret_ty: &Type,
+    known_function_types: &BTreeMap<String, Type>,
+) -> Option<String> {
+    let (trait_prefix, method) = name.rsplit_once('.')?;
+    if trait_prefix.contains('.') {
+        return None;
+    }
+    // Unwrap Option/Result wrapper to get the inner concrete type.
+    let inner_ty = unwrap_option_type(ret_ty).or(Some(ret_ty))?;
+    let type_name = nominal_type_name_for_dispatch(inner_ty)?;
+    let candidate = format!("{trait_prefix}.{type_name}.{method}");
+    known_function_types.contains_key(&candidate).then_some(candidate)
+}
+
+/// If `ty` is `Option T`, return `T`. Otherwise return `None`.
+fn unwrap_option_type(ty: &Type) -> Option<&Type> {
+    let Type::Sum(sum) = ty else { return None };
+    if sum.name != "Option" || sum.type_args.len() != 1 {
+        return None;
+    }
+    Some(&sum.type_args[0])
+}
+
 fn collect_import_aliases(module: &HirModule) -> BTreeMap<String, String> {
     let mut aliases = BTreeMap::new();
     for decl in &module.declarations {
@@ -7400,6 +7547,24 @@ impl FunctionLoweringCtx {
                 field_index,
             } => {
                 let sum = self.lower_expr(base)?;
+                // When the HIR payload type is Dynamic, attempt to recover the
+                // concrete element type from the scrutinee's sum type args.  For a
+                // generic sum type `Foo A B` (e.g. `List a`), the k-th field of a
+                // constructor is often `type_args[k]`.  This lets us propagate
+                // `(Int, Int)` when matching `Cons(pair, rest)` on
+                // `List (Int, Int)` so that `pair.0` can be resolved.
+                let field_ty = if expr.ty == Type::Dynamic {
+                    if let Type::Sum(sum_ty) = &base.ty
+                        && sum_ty.name == *sum_type
+                        && let Some(concrete) = sum_ty.type_args.get(*field_index)
+                    {
+                        concrete.clone()
+                    } else {
+                        Type::Dynamic
+                    }
+                } else {
+                    expr.ty.clone()
+                };
                 let dest = self.new_value();
                 self.emit_inst(MirInst::SumPayloadLoad {
                     dest: dest.clone(),
@@ -7407,14 +7572,20 @@ impl FunctionLoweringCtx {
                     sum_type: sum_type.clone(),
                     variant: variant.clone(),
                     field_index: *field_index,
-                    field_ty: expr.ty.clone(),
+                    field_ty: field_ty.clone(),
                 });
-                if let Some(inner_sum_type) = self.infer_sum_type_from_type(&expr.ty) {
+                // When the concrete field type is a tuple, register the element
+                // types so that MIR can resolve `pair.0` field accesses even when
+                // the HIR let-binding propagates a Dynamic value type.
+                if let Type::Tuple(items) = &field_ty {
+                    self.tuple_value_types.insert(dest.clone(), items.clone());
+                }
+                if let Some(inner_sum_type) = self.infer_sum_type_from_type(&field_ty) {
                     self.sum_value_types.insert(dest.clone(), inner_sum_type);
                 }
                 // Track SumPayloadLoad results with managed-type fields: Block cleanup
                 // must NOT release these independently (see sum_payload_load_dests doc).
-                if is_heap_managed_type(&expr.ty, &self.layouts) {
+                if is_heap_managed_type(&field_ty, &self.layouts) {
                     self.sum_payload_load_dests.insert(dest.clone());
                 }
                 Some(dest)
@@ -8463,6 +8634,9 @@ impl FunctionLoweringCtx {
             && !self.known_function_types.contains_key(name)
             && ptr_intrinsic_symbol(name).is_none()
             && !self.intrinsic_symbols.contains_key(name)
+            && try_resolve_trait_dispatch_callee(name, args, &self.known_function_types).is_none()
+            && try_resolve_trait_dispatch_callee_by_ret(name, &expr.ty, &self.known_function_types)
+                .is_none()
         {
             self.emit_inst(MirInst::Unsupported {
                 detail: format!("unresolved qualified call target `{name}`"),
@@ -8493,7 +8667,26 @@ impl FunctionLoweringCtx {
                     } else if self.known_function_types.contains_key(name) {
                         MirCallee::Local(self.canonical_known_function_name(name))
                     } else if is_namespaced_symbol_name(name) {
-                        MirCallee::External(name.clone())
+                        // Try to resolve as a trait method dispatch via first-argument type
+                        // (e.g. `Encode.encode(x: Point)` → `Encode.Point.encode`) or via
+                        // the call expression's return type (e.g. `Decode.decode(j) -> Option Point`
+                        // → `Decode.Point.decode`).
+                        if let Some(resolved) = try_resolve_trait_dispatch_callee(
+                            name,
+                            args,
+                            &self.known_function_types,
+                        )
+                        .or_else(|| {
+                            try_resolve_trait_dispatch_callee_by_ret(
+                                name,
+                                &expr.ty,
+                                &self.known_function_types,
+                            )
+                        }) {
+                            MirCallee::Local(resolved)
+                        } else {
+                            MirCallee::External(name.clone())
+                        }
                     } else {
                         MirCallee::Local(name.clone())
                     }
@@ -9373,6 +9566,12 @@ impl FunctionLoweringCtx {
             if let Some(record_type) = self.record_value_types.get(&value_id) {
                 self.var_record_types
                     .insert(name.clone(), record_type.clone());
+            } else if let Some(items) = self.tuple_value_types.get(&value_id) {
+                // Propagate tuple layout name when the static value_ty is Dynamic
+                // (e.g. a generic list element bound by a Cons pattern) but the
+                // concrete type was recovered during SumPayloadLoad lowering.
+                self.var_record_types
+                    .insert(name.clone(), tuple_layout_name(items.len()));
             }
             match value_ty {
                 Type::Record(record_ty) => {

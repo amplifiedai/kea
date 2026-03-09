@@ -1,0 +1,106 @@
+doc
+  Encode converts Kea values to `Json` for serialization.
+
+  Import this module when you need to encode values:
+
+    use Codec   -- for the Json type
+    use Encode  -- for Encode.encode
+
+  ## Implementing Encode
+
+  Provide an impl block for your type:
+
+    struct Point
+      x: Int
+      y: Int
+
+    Point as Encode
+      fn encode(_ self: Point) -> Json
+        Json.JObject([("x", Json.JInt(self.x)), ("y", Json.JInt(self.y))])
+
+  ## @derive
+
+  Use `@derive(Encode)` to auto-generate an implementation:
+
+    @derive(Encode)
+    struct Point
+      x: Int
+      y: Int
+
+use Codec
+use List
+use Option
+
+-- -------------------------------------------------------------------------
+-- Encode trait
+-- -------------------------------------------------------------------------
+
+doc
+  Encode converts a value to its `Json` representation.
+
+  Implement this trait for types that can be serialized to JSON.
+
+    Int as Encode
+    Encode.encode(42)   -- => JInt(42)
+trait Encode
+  doc
+    Convert this value to its `Json` representation.
+
+      Encode.encode(true)     -- => JBool(true)
+      Encode.encode("hello")  -- => JString("hello")
+      Encode.encode(42)       -- => JInt(42)
+  fn encode(_ self: Self) -> Json
+
+-- Primitive implementations
+
+doc
+  Int encodes as `JInt`.
+
+    Encode.encode(42)   -- => JInt(42)
+Int as Encode
+  fn encode(_ self: Int) -> Json
+    Json.JInt(self)
+
+doc
+  Float encodes as `JFloat`.
+
+    Encode.encode(3.14)   -- => JFloat(3.14)
+Float as Encode
+  fn encode(_ self: Float) -> Json
+    Json.JFloat(self)
+
+doc
+  Bool encodes as `JBool`.
+
+    Encode.encode(true)    -- => JBool(true)
+    Encode.encode(false)   -- => JBool(false)
+Bool as Encode
+  fn encode(_ self: Bool) -> Json
+    Json.JBool(self)
+
+doc
+  String encodes as `JString`.
+
+    Encode.encode("hello")   -- => JString("hello")
+String as Encode
+  fn encode(_ self: String) -> Json
+    Json.JString(self)
+
+doc
+  Option encodes as the inner value, or `JNull` for `None`.
+
+    Encode.encode(Some(42))   -- => JInt(42)
+    Encode.encode(None)       -- => JNull
+Option a as Encode where a: Encode
+  fn encode(_ self: Option a) -> Json
+    case self
+      None    -> Json.JNull
+      Some(x) -> Encode.encode(x)
+
+doc
+  List encodes as `JArray` with each element encoded individually.
+
+    Encode.encode([1, 2, 3])   -- => JArray([JInt(1), JInt(2), JInt(3)])
+List a as Encode where a: Encode
+  fn encode(_ self: List a) -> Json
+    Json.JArray(List.map(self, |x| Encode.encode(x)))

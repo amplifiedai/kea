@@ -827,11 +827,29 @@ impl Unifier {
         // unification scope commits or rolls back.
         let annotations = std::mem::take(&mut self.type_annotations);
 
+        // Resolve expr_types with the CURRENT substitution before rolling back.
+        // Case-arm scopes are speculative — their substitution is rolled back,
+        // but expression types for sub-expressions (e.g. lambda parameter types)
+        // are needed by HIR/MIR lowering. Applying the arm-local substitution now
+        // makes them concrete before the substitution is also rolled back.
+        // Only concrete (fully-resolved) entries are useful after rollback;
+        // entries that still contain unresolved vars after this substitution
+        // are no worse than what would be recorded without the scope.
+        let resolved_expr_types: std::collections::BTreeMap<Span, Type> =
+            self.expr_types
+                .iter()
+                .map(|(span, ty)| (*span, self.substitution.apply(ty)))
+                .collect();
+
         *self = *scope.snapshot;
         self.next_type_var = self.next_type_var.max(next_type_var);
         self.next_row_var = self.next_row_var.max(next_row_var);
         self.next_dim_var = self.next_dim_var.max(next_dim_var);
         self.errors.extend(new_errors);
+        // Merge resolved expr_types back: entries from inside the arm scope
+        // survive with their arm-local substitution applied, giving HIR lowering
+        // concrete types for lambdas and other expressions in case arms.
+        self.expr_types.extend(resolved_expr_types);
         // Merge annotations from the rolled-back scope into the restored state.
         for (span, sites) in annotations.evidence_sites {
             self.type_annotations.evidence_sites.insert(span, sites);
@@ -2088,7 +2106,29 @@ impl Unifier {
         self.pending_trait_obligations.clear();
         self.pending_assoc_equalities.clear();
         self.trait_bound_spans.clear();
+        self.resolve_pending_qualified_trait_calls();
         std::mem::take(&mut self.type_annotations)
+    }
+
+    /// Resolve any remaining pending qualified trait method calls by applying
+    /// the final substitution.  This handles calls like `case Decode.decode(j) { ... }`
+    /// where `Self` is only resolved by the case arm patterns (after the Call arm).
+    fn resolve_pending_qualified_trait_calls(&mut self) {
+        let pending =
+            std::mem::take(&mut self.type_annotations.pending_qualified_trait_calls);
+        for (span, (prefix, self_var)) in pending {
+            let concrete_self = self.substitution.apply(&Type::Var(self_var));
+            let Some(type_name) = concrete_trait_dispatch_type_name(&concrete_self) else {
+                continue;
+            };
+            let Some((trait_name, method_name)) = prefix.split_once('.') else {
+                continue;
+            };
+            let qualified = format!("{trait_name}.{type_name}.{method_name}");
+            self.type_annotations
+                .resolved_trait_callees
+                .insert(span, qualified);
+        }
     }
 
     /// Set a bidirectional expected type hint for constructor disambiguation.
@@ -2585,6 +2625,21 @@ fn span_to_location(span: Span) -> SourceLocation {
         file_id: span.file.0,
         start: span.start,
         end: span.end,
+    }
+}
+
+/// Return the nominal type name suitable for qualified trait dispatch,
+/// or `None` for structural/unresolved types.
+fn concrete_trait_dispatch_type_name(ty: &Type) -> Option<&str> {
+    match ty {
+        Type::Record(r) => Some(r.name.as_str()),
+        Type::Sum(s) => Some(s.name.as_str()),
+        Type::Int | Type::IntN(..) => Some("Int"),
+        Type::Float | Type::FloatN(..) => Some("Float"),
+        Type::Bool => Some("Bool"),
+        Type::String => Some("String"),
+        Type::Char => Some("Char"),
+        _ => None,
     }
 }
 

@@ -1,0 +1,146 @@
+doc
+  Decode recovers Kea values from `Json` representations.
+
+  Import this module when you need to decode values:
+
+    use Codec   -- for the Json type
+    use Decode  -- for Decode.decode
+
+  ## Implementing Decode
+
+  Provide an impl block for your type:
+
+    struct Point
+      x: Int
+      y: Int
+
+    Point as Decode
+      fn decode(_ input: Json) -> Option Point
+        case input
+          Json.JObject(fields) ->
+            case (Json.field(fields, "x"), Json.field(fields, "y"))
+              (Some(Json.JInt(x)), Some(Json.JInt(y))) -> Some(Point { x: x, y: y })
+              _ -> None
+          _ -> None
+
+  ## @derive
+
+  Use `@derive(Decode)` to auto-generate an implementation:
+
+    @derive(Encode, Decode)
+    struct Point
+      x: Int
+      y: Int
+
+use Codec
+use Int
+use List
+use Option
+
+-- -------------------------------------------------------------------------
+-- Decode trait
+-- -------------------------------------------------------------------------
+
+doc
+  Decode recovers a value from a `Json` representation.
+
+  Returns `Some(value)` on success, `None` on a shape mismatch.
+
+    Int as Decode
+    Decode.decode(JInt(42))   -- => Some(42)
+    Decode.decode(JString("x"))   -- => None
+trait Decode
+  doc
+    Attempt to recover a value from `Json`.
+
+    Returns `Some(value)` on success, `None` when the input shape does not
+    match the expected form.
+
+      Decode.decode(JInt(42))       -- => Some(42)    (for Int as Decode)
+      Decode.decode(JString("x"))   -- => None        (for Int as Decode)
+  fn decode(_ input: Json) -> Option Self
+
+-- Primitive implementations
+
+doc
+  Int decodes from `JInt`. Fails on any other variant.
+
+    Decode.decode(JInt(5))       -- => Some(5)
+    Decode.decode(JString("5"))  -- => None
+Int as Decode
+  fn decode(_ input: Json) -> Option Int
+    case input
+      Json.JInt(n) -> Some(n)
+      _            -> None
+
+doc
+  Float decodes from `JFloat` or `JInt` (integers are valid JSON numbers).
+
+    Decode.decode(JFloat(3.14))   -- => Some(3.14)
+    Decode.decode(JInt(2))        -- => Some(2.0)
+Float as Decode
+  fn decode(_ input: Json) -> Option Float
+    case input
+      Json.JFloat(f) -> Some(f)
+      Json.JInt(n)   -> Some(Int.to_float(n))
+      _              -> None
+
+doc
+  Bool decodes from `JBool`. Fails on any other variant.
+
+    Decode.decode(JBool(true))   -- => Some(true)
+    Decode.decode(JNull)         -- => None
+Bool as Decode
+  fn decode(_ input: Json) -> Option Bool
+    case input
+      Json.JBool(b) -> Some(b)
+      _             -> None
+
+doc
+  String decodes from `JString`. Fails on any other variant.
+
+    Decode.decode(JString("hi"))   -- => Some("hi")
+    Decode.decode(JNull)           -- => None
+String as Decode
+  fn decode(_ input: Json) -> Option String
+    case input
+      Json.JString(s) -> Some(s)
+      _               -> None
+
+doc
+  Option decodes as `None` from `JNull`, otherwise delegates to the inner decoder.
+
+    Decode.decode(JNull)     -- => Some(None)      (for Option Int as Decode)
+    Decode.decode(JInt(5))   -- => Some(Some(5))   (for Option Int as Decode)
+Option a as Decode where a: Decode
+  fn decode(_ input: Json) -> Option (Option a)
+    case input
+      Json.JNull -> Some(None)
+      _          ->
+        case Decode.decode(input)
+          None    -> None
+          Some(x) -> Some(Some(x))
+
+doc
+  List decodes from `JArray` by decoding each element.
+
+  Returns `None` if any element fails to decode.
+
+    Decode.decode(JArray([JInt(1), JInt(2)]))   -- => Some([1, 2])
+    Decode.decode(JArray([JInt(1), JString("x")]))   -- => None
+List a as Decode where a: Decode
+  fn decode(_ input: Json) -> Option (List a)
+    case input
+      Json.JArray(items) -> decode_list(items)
+      _                  -> None
+
+fn decode_list(items: List Json) -> Option (List a) where a: Decode
+  case items
+    Nil -> Some([])
+    Cons(item, rest) ->
+      case Decode.decode(item)
+        None    -> None
+        Some(x) ->
+          case decode_list(rest)
+            None     -> None
+            Some(xs) -> Some(Cons(x, xs))

@@ -13360,6 +13360,150 @@ fn process_module_in_env_enforces_unsafe_call_gating_across_session_modules() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// @derive(Encode, Decode) tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compile_accepts_derive_encode_on_struct() {
+    let source = "use Codec\nuse Encode\n\n@derive(Encode)\nstruct Point\n  x: Int\n  y: Int\n\nfn main() -> Int\n  1\n";
+    let source_path = write_temp_source(source, "kea-cli-derive-encode-struct-accept", "kea");
+    let run = run_file(&source_path).expect("compile should succeed");
+    assert_eq!(run.exit_code, 1);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_derive_encode_struct_exit_code() {
+    let source = concat!(
+        "use Codec\n",
+        "use Encode\n",
+        "use Option\n",
+        "\n",
+        "@derive(Encode)\n",
+        "struct Point\n",
+        "  x: Int\n",
+        "  y: Int\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  let p = Point { x: 3, y: 4 }\n",
+        "  let j = Encode.encode(p)\n",
+        "  case j\n",
+        "    Json.JObject(fields) ->\n",
+        "      let fx = Codec.field(fields, \"x\")\n",
+        "      let fy = Codec.field(fields, \"y\")\n",
+        "      case fx\n",
+        "        Some(Json.JInt(3)) ->\n",
+        "          case fy\n",
+        "            Some(Json.JInt(4)) -> 42\n",
+        "            _ -> 0\n",
+        "        _ -> 0\n",
+        "    _ -> 0\n",
+    );
+    let source_path = write_temp_source(source, "kea-cli-derive-encode-struct-exec", "kea");
+    let run = run_file(&source_path).expect("compile and run should succeed");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_derive_encode_decode_round_trip_struct_exit_code() {
+    let source = concat!(
+        "use Codec\n",
+        "use Encode\n",
+        "use Decode\n",
+        "use Option\n",
+        "\n",
+        "@derive(Encode, Decode)\n",
+        "struct Point\n",
+        "  x: Int\n",
+        "  y: Int\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  let p = Point { x: 7, y: 11 }\n",
+        "  let j = Encode.encode(p)\n",
+        "  let dp : Option(Point) = Decode.decode(j)\n",
+        "  case dp\n",
+        "    None -> 0\n",
+        "    Some(q) ->\n",
+        "      if q.x == 7 and q.y == 11\n",
+        "        42\n",
+        "      else\n",
+        "        0\n",
+    );
+    let source_path = write_temp_source(
+        source,
+        "kea-cli-derive-encode-decode-round-trip-struct",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("compile and run should succeed");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_derive_encode_decode_round_trip_sum_exit_code() {
+    let source = concat!(
+        "use Codec\n",
+        "use Encode\n",
+        "use Decode\n",
+        "use Option\n",
+        "\n",
+        "@derive(Encode, Decode)\n",
+        "enum Color\n",
+        "  Red\n",
+        "  Green\n",
+        "  Blue\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  let j = Encode.encode(Color.Green)\n",
+        "  case Decode.decode(j)\n",
+        "    Some(Color.Green) -> 42\n",
+        "    _ -> 0\n",
+    );
+    let source_path = write_temp_source(
+        source,
+        "kea-cli-derive-encode-decode-round-trip-sum",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("compile and run should succeed");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_derive_encode_decode_sum_with_payload_exit_code() {
+    let source = concat!(
+        "use Codec\n",
+        "use Encode\n",
+        "use Decode\n",
+        "use Option\n",
+        "\n",
+        "@derive(Encode, Decode)\n",
+        "enum Wrapper\n",
+        "  Empty\n",
+        "  Boxed(Int)\n",
+        "\n",
+        "fn main() -> Int\n",
+        "  let a = Encode.encode(Wrapper.Empty)\n",
+        "  let b = Encode.encode(Wrapper.Boxed(99))\n",
+        "  case Decode.decode(a)\n",
+        "    Some(Wrapper.Empty) ->\n",
+        "      case Decode.decode(b)\n",
+        "        Some(Wrapper.Boxed(99)) -> 42\n",
+        "        _ -> 0\n",
+        "    _ -> 0\n",
+    );
+    let source_path = write_temp_source(
+        source,
+        "kea-cli-derive-encode-decode-sum-payload",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("compile and run should succeed");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
 fn temp_artifact_path(prefix: &str, extension: &str) -> PathBuf {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

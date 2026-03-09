@@ -59,9 +59,21 @@ pub struct TypeAnnotations {
     /// implementation name here (e.g. `"Hash.PairBox.hash"`).  The HIR lowering
     /// uses this to rewrite `Var("hash")` to the correct callee.
     ///
-    /// Key: span of the `Var` callee expression.
+    /// Also used for explicitly-qualified trait calls like `Encode.encode(p)`.
+    ///
+    /// Key: span of the `Var` or `FieldAccess` callee expression.
     /// Value: qualified function name to call instead (e.g. `"Hash.PairBox.hash"`).
     pub resolved_trait_callees: BTreeMap<Span, String>,
+    /// Pending qualified trait method call resolutions.
+    ///
+    /// Maps a FieldAccess callee span to `(prefix, self_var)` where
+    /// `prefix = "TraitName.method_name"` and `self_var` is the fresh type
+    /// variable introduced for `Self` by `instantiate_trait_method_type`.
+    ///
+    /// After all argument unification is complete (end of Call arm), the
+    /// self_var is resolved via substitution and a qualified implementation
+    /// name like `"Encode.Point.encode"` is moved to `resolved_trait_callees`.
+    pub pending_qualified_trait_calls: BTreeMap<Span, (String, TypeVarId)>,
 }
 
 /// Runtime dispatch mode for `spawn` expressions.
@@ -9382,7 +9394,7 @@ fn resolve_unqualified_trait_method_fallback(
             let qualified =
                 format!("{trait_name}.{receiver_ctor}.{}", method.name);
             TraitMethodFallback::Resolved(
-                instantiate_trait_method_type(trait_info, &trait_name, &method, unifier),
+                instantiate_trait_method_type(trait_info, &trait_name, &method, unifier).0,
                 qualified,
             )
         }
@@ -11084,11 +11096,17 @@ fn infer_expr_bidir(
                 unifier.push_error(diag);
             }
 
-            Type::Function(FunctionType {
+            let fn_ty = Type::Function(FunctionType {
                 params: param_types,
                 ret: Box::new(body_ty),
                 effects: final_effects,
-            })
+            });
+            // Record the lambda type so HIR/MIR lowering can recover the
+            // concrete parameter types (e.g. `pair: (String, Json)`) even
+            // when the lambda was inferred rather than checked against a
+            // known expected type.
+            unifier.record_expr_type(expr.span, fn_ty.clone());
+            fn_ty
         }
 
         ExprKind::With {
@@ -11368,6 +11386,10 @@ fn infer_expr_bidir(
             }
 
             note_existential_pack_sites(unifier, expr.span, &callable_ty, &arg_types);
+
+            // Resolve any pending qualified trait method call (e.g. `Encode.encode(p)`
+            // → `Encode.Point.encode`) now that Self is bound in the substitution.
+            try_finalize_qualified_trait_callee(func, unifier);
 
             ret_ty
         }
@@ -11676,12 +11698,21 @@ fn infer_expr_bidir(
 
                 if let Some(trait_info) = traits.lookup_trait(module_name) {
                     if let Some(method) = trait_info.methods.iter().find(|m| m.name == field.node) {
-                        return instantiate_trait_method_type(
+                        let (method_ty, self_var) = instantiate_trait_method_type(
                             trait_info,
                             module_name,
                             method,
                             unifier,
                         );
+                        // Record pending resolution: after the enclosing Call arm
+                        // unifies arguments and resolves Self, we'll look up what
+                        // self_var resolved to and populate resolved_trait_callees.
+                        let prefix = format!("{module_name}.{}", field.node);
+                        unifier
+                            .type_annotations
+                            .pending_qualified_trait_calls
+                            .insert(expr.span, (prefix, self_var));
+                        return method_ty;
                     }
                     unifier.push_error(
                         Diagnostic::error(
@@ -13165,11 +13196,16 @@ fn check_expr_bidir(
             env.pop_scope();
             unifier.exit_lambda();
 
-            return Type::Function(FunctionType {
+            let fn_ty = Type::Function(FunctionType {
                 params: param_types,
                 ret: Box::new(expected_ret),
                 effects: expected_fn.effects.clone(),
             });
+            // Record the lambda type so that HIR/MIR lowering can correctly
+            // type lambda parameters (e.g. `pair: (String, Json)` in
+            // `|pair| pair.0 ++ ...` when the expected param type is known).
+            unifier.record_expr_type(expr.span, fn_ty.clone());
+            return fn_ty;
         }
         (
             ExprKind::If {
@@ -14088,6 +14124,8 @@ fn check_expr_bidir(
                 }
                 unifier.note_evidence_site(expr.span, &callable_ty);
                 note_existential_pack_sites(unifier, expr.span, &callable_ty, &arg_types);
+                // Resolve any pending qualified trait method call now that Self is bound.
+                try_finalize_qualified_trait_callee(func, unifier);
                 return expected.clone();
             }
         }
@@ -15436,7 +15474,7 @@ fn instantiate_trait_method_type(
     trait_name: &str,
     method: &TraitMethodInfo,
     unifier: &mut Unifier,
-) -> Type {
+) -> (Type, TypeVarId) {
     let self_var = if let Some(param) = trait_self_param_info(trait_info) {
         unifier.fresh_type_var_with_kind(param.kind.clone())
     } else {
@@ -15496,12 +15534,52 @@ fn instantiate_trait_method_type(
         }
     }
 
-    rename_type(
+    let ty = rename_type(
         &raw_method_ty,
         &type_mapping,
         &BTreeMap::new(),
         &BTreeMap::new(),
-    )
+    );
+    (ty, self_var)
+}
+
+/// Return the nominal type name suitable for qualified trait dispatch
+/// (e.g. `"Point"` for `Type::Record`, `"Option"` for `Type::Sum { name: "Option", .. }`).
+/// Returns `None` for structural/unresolved types.
+fn concrete_type_name_for_trait_dispatch(ty: &Type) -> Option<&str> {
+    match ty {
+        Type::Record(r) => Some(r.name.as_str()),
+        Type::Sum(s) => Some(s.name.as_str()),
+        Type::Int | Type::IntN(..) => Some("Int"),
+        Type::Float | Type::FloatN(..) => Some("Float"),
+        Type::Bool => Some("Bool"),
+        Type::String => Some("String"),
+        Type::Char => Some("Char"),
+        _ => None,
+    }
+}
+
+/// After the Call arm has unified all arguments (so Self is resolved in the
+/// substitution), check if `func` is a qualified trait method call that was
+/// recorded in `pending_qualified_trait_calls`.  If so, resolve Self and move
+/// the entry to `resolved_trait_callees`.
+fn try_finalize_qualified_trait_callee(func: &Expr, unifier: &mut Unifier) {
+    let Some((prefix, self_var)) = unifier
+        .type_annotations
+        .pending_qualified_trait_calls
+        .remove(&func.span)
+    else {
+        return;
+    };
+    let concrete_self = unifier.substitution.apply(&Type::Var(self_var));
+    let Some(type_name) = concrete_type_name_for_trait_dispatch(&concrete_self) else {
+        return;
+    };
+    let Some((trait_name, method_name)) = prefix.split_once('.') else {
+        return;
+    };
+    let qualified = format!("{trait_name}.{type_name}.{method_name}");
+    unifier.record_resolved_trait_callee(func.span, qualified);
 }
 
 fn span_to_loc(span: Span) -> SourceLocation {

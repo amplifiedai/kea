@@ -2077,6 +2077,10 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
                     .get(&(type_name.clone(), field.node.clone()))
                 {
                     HirExprKind::Lit(Lit::Int(*tag))
+                } else if let Some(qualified) = ctx.resolved_trait_callees.get(&expr.span) {
+                    // Qualified trait method call resolved to a concrete impl
+                    // e.g. `Encode.encode` → `Encode.Point.encode`
+                    HirExprKind::Var(qualified.clone())
                 } else if is_namespace_qualifier(type_name) {
                     HirExprKind::Var(format!("{type_name}.{}", field.node))
                 } else {
@@ -2253,6 +2257,13 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
             }
             _ => default_ty,
         },
+        // For lambdas, use the inferred function type from the type checker so that
+        // MIR can correctly type lambda parameters (e.g. `pair: (String, Json)` for
+        // `|pair| pair.0 ++ ...`).  This is safe: it only fires when default_ty is
+        // Dynamic, so explicit ty_hints are not overridden.
+        ExprKind::Lambda { .. } if default_ty == Type::Dynamic => {
+            ctx.expr_types.get(&expr.span).cloned().unwrap_or(Type::Dynamic)
+        }
         _ => default_ty,
     };
 
@@ -2263,11 +2274,12 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum LiteralCaseValue {
     Int(i64),
     Float(f64),
     Bool(bool),
+    String(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2372,7 +2384,7 @@ fn lower_bool_case(
     }
 
     let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
-    let lowered_scrutinee = lower_expr(scrutinee, None, ctx);
+    let lowered_scrutinee = lower_expr(scrutinee, ctx.expr_types.get(&scrutinee.span).cloned(), ctx);
     let safe_scrutinee = matches!(
         lowered_scrutinee.kind,
         HirExprKind::Var(_) | HirExprKind::Lit(_)
@@ -2587,7 +2599,12 @@ fn lower_literal_case(
     // missing-value paths for non-Unit expressions.
     let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
 
-    let lowered_scrutinee = lower_expr(scrutinee, None, ctx);
+    // Use the inferred concrete type for the scrutinee so that access-path type
+    // recovery works for generic constructors (e.g. `Cons(pair, rest)` on
+    // `List (String, Json)` gives `pair` the type `(String, Json)` rather than
+    // `Dynamic`, enabling `pair.0` / `pair.1` to resolve in MIR lowering).
+    let scrutinee_type_hint = ctx.expr_types.get(&scrutinee.span).cloned();
+    let lowered_scrutinee = lower_expr(scrutinee, scrutinee_type_hint, ctx);
     let safe_scrutinee = matches!(
         lowered_scrutinee.kind,
         HirExprKind::Var(_) | HirExprKind::Lit(_)
@@ -2726,7 +2743,7 @@ fn lower_literal_case(
     {
         let rhs = match matcher {
             LiteralCaseMatcher::Literal(lit) => HirExpr {
-                kind: HirExprKind::Lit(literal_case_lit(lit)),
+                kind: HirExprKind::Lit(literal_case_lit(lit.clone())),
                 ty: literal_case_type(lit),
                 span: scrutinee.span,
             },
@@ -2761,7 +2778,7 @@ fn lower_literal_case(
                     op: BinOp::Eq,
                     left: Box::new(payload_expr),
                     right: Box::new(HirExpr {
-                        kind: HirExprKind::Lit(literal_case_lit(payload_check.expected)),
+                        kind: HirExprKind::Lit(literal_case_lit(payload_check.expected.clone())),
                         ty: literal_case_type(payload_check.expected),
                         span: scrutinee.span,
                     }),
@@ -2889,7 +2906,7 @@ fn lower_record_case(
 
     let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
 
-    let lowered_scrutinee = lower_expr(scrutinee, None, ctx);
+    let lowered_scrutinee = lower_expr(scrutinee, ctx.expr_types.get(&scrutinee.span).cloned(), ctx);
     let safe_scrutinee = matches!(
         lowered_scrutinee.kind,
         HirExprKind::Var(_) | HirExprKind::Lit(_)
@@ -3009,8 +3026,8 @@ fn lower_record_case(
                 span: scrutinee.span,
             };
             let expected_expr = HirExpr {
-                kind: HirExprKind::Lit(literal_case_lit(field_check.expected)),
-                ty: literal_case_type(field_check.expected),
+                kind: HirExprKind::Lit(literal_case_lit(field_check.expected.clone())),
+                ty: literal_case_type(field_check.expected.clone()),
                 span: scrutinee.span,
             };
             let next = HirExpr {
@@ -3107,7 +3124,8 @@ fn literal_case_values_from_pattern(
     match pattern {
         PatternKind::Lit(lit @ Lit::Int(_))
         | PatternKind::Lit(lit @ Lit::Float(_))
-        | PatternKind::Lit(lit @ Lit::Bool(_)) => Some((
+        | PatternKind::Lit(lit @ Lit::Bool(_))
+        | PatternKind::Lit(lit @ Lit::String(_)) => Some((
             vec![LiteralCaseMatcher::Literal(literal_case_value_from_lit(
                 lit,
             )?)],
@@ -3616,24 +3634,63 @@ fn build_payload_access_expr(
                 variant,
                 field_index,
                 field_ty,
-            } => HirExpr {
-                kind: HirExprKind::SumPayloadAccess {
-                    expr: Box::new(current),
-                    sum_type: sum_type.clone(),
-                    variant: variant.clone(),
-                    field_index: *field_index,
-                },
-                ty: field_ty.clone(),
-                span: scrutinee_expr.span,
-            },
-            ConstructorPayloadAccessStep::RecordField { field, field_ty } => HirExpr {
-                kind: HirExprKind::FieldAccess {
-                    expr: Box::new(current),
-                    field: field.clone(),
-                },
-                ty: field_ty.clone(),
-                span: scrutinee_expr.span,
-            },
+            } => {
+                // When field_ty is Dynamic (e.g. for generic `List a`, the field
+                // type `a` lowered to Dynamic), try to recover the concrete type
+                // from the current expression's sum type args.  For `List (String, Json)`,
+                // type_args[0] = (String, Json), so `pair` gets the right type and
+                // subsequent tuple destructuring (`pair.0`, `pair.1`) resolves correctly.
+                let resolved_ty = if *field_ty == Type::Dynamic {
+                    if let Type::Sum(sum_ty) = &current.ty
+                        && sum_ty.name == *sum_type
+                        && let Some(concrete) = sum_ty.type_args.get(*field_index)
+                        && *concrete != Type::Dynamic
+                    {
+                        concrete.clone()
+                    } else {
+                        field_ty.clone()
+                    }
+                } else {
+                    field_ty.clone()
+                };
+                HirExpr {
+                    kind: HirExprKind::SumPayloadAccess {
+                        expr: Box::new(current),
+                        sum_type: sum_type.clone(),
+                        variant: variant.clone(),
+                        field_index: *field_index,
+                    },
+                    ty: resolved_ty,
+                    span: scrutinee_expr.span,
+                }
+            }
+            ConstructorPayloadAccessStep::RecordField { field, field_ty } => {
+                // When field_ty is Dynamic, try to recover from the current
+                // expression's type.  For a Tuple type, field "0", "1", ... index
+                // into the element list.
+                let resolved_ty = if *field_ty == Type::Dynamic {
+                    match &current.ty {
+                        Type::Tuple(items) => {
+                            if let Ok(idx) = field.parse::<usize>() {
+                                items.get(idx).cloned().unwrap_or(Type::Dynamic)
+                            } else {
+                                Type::Dynamic
+                            }
+                        }
+                        _ => field_ty.clone(),
+                    }
+                } else {
+                    field_ty.clone()
+                };
+                HirExpr {
+                    kind: HirExprKind::FieldAccess {
+                        expr: Box::new(current),
+                        field: field.clone(),
+                    },
+                    ty: resolved_ty,
+                    span: scrutinee_expr.span,
+                }
+            }
         };
     }
     if access_path.is_empty() {
@@ -3783,6 +3840,7 @@ fn literal_case_value_from_lit(lit: &Lit) -> Option<LiteralCaseValue> {
         Lit::Int(value) => Some(LiteralCaseValue::Int(*value)),
         Lit::Float(value) => Some(LiteralCaseValue::Float(*value)),
         Lit::Bool(value) => Some(LiteralCaseValue::Bool(*value)),
+        Lit::String(value) => Some(LiteralCaseValue::String(value.clone())),
         _ => None,
     }
 }
@@ -3947,6 +4005,7 @@ fn literal_case_lit(lit: LiteralCaseValue) -> Lit {
         LiteralCaseValue::Int(value) => Lit::Int(value),
         LiteralCaseValue::Float(value) => Lit::Float(value),
         LiteralCaseValue::Bool(value) => Lit::Bool(value),
+        LiteralCaseValue::String(value) => Lit::String(value),
     }
 }
 
@@ -3955,6 +4014,7 @@ fn literal_case_type(lit: LiteralCaseValue) -> Type {
         LiteralCaseValue::Int(_) => Type::Int,
         LiteralCaseValue::Float(_) => Type::Float,
         LiteralCaseValue::Bool(_) => Type::Bool,
+        LiteralCaseValue::String(_) => Type::String,
     }
 }
 

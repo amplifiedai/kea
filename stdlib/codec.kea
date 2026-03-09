@@ -1,15 +1,21 @@
 doc
-  Codec provides `Encode` and `Decode` traits for converting values to and
-  from a JSON-like representation.
+  Codec provides the `Json` intermediate representation used by the `Encode`
+  and `Decode` traits, plus helpers for working with JSON values.
 
   ## JSON values
 
-  `Json` is the intermediate form. Primitive types encode to `Json` directly;
-  compound types encode their fields recursively.
+  `Json` is the universal interchange format. Primitive types encode to `Json`
+  directly; compound types encode their fields recursively.
 
-  ## Encoding
+  ## Encoding and decoding
 
-  Implement `Encode` to convert a type to `Json`:
+  Import `Encode` for serialization and `Decode` for deserialization:
+
+    use Codec   -- for the Json type and helpers
+    use Encode  -- for Encode.encode
+    use Decode  -- for Decode.decode
+
+  Implement the traits for custom types:
 
     struct Point
       x: Int
@@ -18,13 +24,6 @@ doc
     Point as Encode
       fn encode(_ self: Point) -> Json
         Json.JObject([("x", Json.JInt(self.x)), ("y", Json.JInt(self.y))])
-
-    Point.encode(Point { x: 1, y: 2 })
-    -- => JObject([("x", JInt(1)), ("y", JInt(2))])
-
-  ## Decoding
-
-  Implement `Decode` to recover a value from `Json`:
 
     Point as Decode
       fn decode(_ input: Json) -> Option Point
@@ -38,8 +37,7 @@ doc
   ## @derive
 
   Use `@derive(Encode)` and `@derive(Decode)` on structs and enums to
-  generate these implementations automatically (compiler feature, not
-  hand-written code).
+  generate these implementations automatically.
 
 use List
 use Option
@@ -71,188 +69,6 @@ enum Json
   JString(String)
   JArray(List Json)
   JObject(List (String, Json))
-
--- -------------------------------------------------------------------------
--- Encode trait
--- -------------------------------------------------------------------------
-
-doc
-  Encode converts a value to its `Json` representation.
-
-  Implement this trait for types that can be serialized to JSON.
-
-    Int as Encode
-    Encode.encode(42)   -- => JInt(42)
-trait Encode
-  doc
-    Convert this value to its `Json` representation.
-
-      Encode.encode(true)     -- => JBool(true)
-      Encode.encode("hello")  -- => JString("hello")
-      Encode.encode(42)       -- => JInt(42)
-  fn encode(_ self: Self) -> Json
-
--- Primitive implementations
-
-doc
-  Int encodes as `JInt`.
-
-    Encode.encode(42)   -- => JInt(42)
-Int as Encode
-  fn encode(_ self: Int) -> Json
-    Json.JInt(self)
-
-doc
-  Float encodes as `JFloat`.
-
-    Encode.encode(3.14)   -- => JFloat(3.14)
-Float as Encode
-  fn encode(_ self: Float) -> Json
-    Json.JFloat(self)
-
-doc
-  Bool encodes as `JBool`.
-
-    Encode.encode(true)    -- => JBool(true)
-    Encode.encode(false)   -- => JBool(false)
-Bool as Encode
-  fn encode(_ self: Bool) -> Json
-    Json.JBool(self)
-
-doc
-  String encodes as `JString`.
-
-    Encode.encode("hello")   -- => JString("hello")
-String as Encode
-  fn encode(_ self: String) -> Json
-    Json.JString(self)
-
-doc
-  Option encodes as the inner value, or `JNull` for `None`.
-
-    Encode.encode(Some(42))   -- => JInt(42)
-    Encode.encode(None)       -- => JNull
-Option a as Encode where a: Encode
-  fn encode(_ self: Option a) -> Json
-    case self
-      None    -> Json.JNull
-      Some(x) -> Encode.encode(x)
-
-doc
-  List encodes as `JArray` with each element encoded individually.
-
-    Encode.encode([1, 2, 3])   -- => JArray([JInt(1), JInt(2), JInt(3)])
-List a as Encode where a: Encode
-  fn encode(_ self: List a) -> Json
-    Json.JArray(List.map(self, |x| Encode.encode(x)))
-
--- -------------------------------------------------------------------------
--- Decode trait
--- -------------------------------------------------------------------------
-
-doc
-  Decode recovers a value from a `Json` representation.
-
-  Returns `Some(value)` on success, `None` on a shape mismatch.
-
-    Int as Decode
-    Decode.decode(JInt(42))   -- => Some(42)
-    Decode.decode(JString("x"))   -- => None
-trait Decode
-  doc
-    Attempt to recover a value from `Json`.
-
-    Returns `Some(value)` on success, `None` when the input shape does not
-    match the expected form.
-
-      Decode.decode(JInt(42))       -- => Some(42)    (for Int as Decode)
-      Decode.decode(JString("x"))   -- => None        (for Int as Decode)
-  fn decode(_ input: Json) -> Option Self
-
--- Primitive implementations
-
-doc
-  Int decodes from `JInt`. Fails on any other variant.
-
-    Decode.decode(JInt(5))       -- => Some(5)
-    Decode.decode(JString("5"))  -- => None
-Int as Decode
-  fn decode(_ input: Json) -> Option Int
-    case input
-      Json.JInt(n) -> Some(n)
-      _            -> None
-
-doc
-  Float decodes from `JFloat` or `JInt` (integers are valid JSON numbers).
-
-    Decode.decode(JFloat(3.14))   -- => Some(3.14)
-    Decode.decode(JInt(2))        -- => Some(2.0)
-Float as Decode
-  fn decode(_ input: Json) -> Option Float
-    case input
-      Json.JFloat(f) -> Some(f)
-      Json.JInt(n)   -> Some(Int.to_float(n))
-      _              -> None
-
-doc
-  Bool decodes from `JBool`. Fails on any other variant.
-
-    Decode.decode(JBool(true))   -- => Some(true)
-    Decode.decode(JNull)         -- => None
-Bool as Decode
-  fn decode(_ input: Json) -> Option Bool
-    case input
-      Json.JBool(b) -> Some(b)
-      _             -> None
-
-doc
-  String decodes from `JString`. Fails on any other variant.
-
-    Decode.decode(JString("hi"))   -- => Some("hi")
-    Decode.decode(JNull)           -- => None
-String as Decode
-  fn decode(_ input: Json) -> Option String
-    case input
-      Json.JString(s) -> Some(s)
-      _               -> None
-
-doc
-  Option decodes as `None` from `JNull`, otherwise delegates to the inner decoder.
-
-    Decode.decode(JNull)     -- => Some(None)      (for Option Int as Decode)
-    Decode.decode(JInt(5))   -- => Some(Some(5))   (for Option Int as Decode)
-Option a as Decode where a: Decode
-  fn decode(_ input: Json) -> Option (Option a)
-    case input
-      Json.JNull -> Some(None)
-      _          ->
-        case Decode.decode(input)
-          None    -> None
-          Some(x) -> Some(Some(x))
-
-doc
-  List decodes from `JArray` by decoding each element.
-
-  Returns `None` if any element fails to decode.
-
-    Decode.decode(JArray([JInt(1), JInt(2)]))   -- => Some([1, 2])
-    Decode.decode(JArray([JInt(1), JString("x")]))   -- => None
-List a as Decode where a: Decode
-  fn decode(_ input: Json) -> Option (List a)
-    case input
-      Json.JArray(items) -> decode_list(items)
-      _                  -> None
-
-fn decode_list(items: List Json) -> Option (List a) where a: Decode
-  case items
-    Nil -> Some([])
-    Cons(item, rest) ->
-      case Decode.decode(item)
-        None    -> None
-        Some(x) ->
-          case decode_list(rest)
-            None     -> None
-            Some(xs) -> Some(Cons(x, xs))
 
 -- -------------------------------------------------------------------------
 -- Json helpers

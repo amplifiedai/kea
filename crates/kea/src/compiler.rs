@@ -1974,6 +1974,236 @@ fn build_hash_impl_source_for_record(def: &RecordDef) -> String {
     source
 }
 
+// ---------------------------------------------------------------------------
+// @derive(Encode) builders
+// ---------------------------------------------------------------------------
+
+fn build_encode_impl_source_for_record(def: &RecordDef) -> String {
+    let used_params = type_params_used_in_record(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Encode");
+    let mut source = String::new();
+    source.push_str(&format!("{target} as Encode{where_clause}\n"));
+    source.push_str(&format!("  fn encode(_ self: {target}) -> Json\n"));
+    if def.fields.is_empty() {
+        source.push_str("    Json.JObject([])\n");
+        return source;
+    }
+    let pairs: Vec<String> = def
+        .fields
+        .iter()
+        .map(|(field, _)| {
+            format!(
+                "(\"{}\", Encode.encode(self.{}))",
+                field.node, field.node
+            )
+        })
+        .collect();
+    source.push_str(&format!("    Json.JObject([{}])\n", pairs.join(", ")));
+    source
+}
+
+fn build_encode_impl_source_for_sum(def: &TypeDef) -> String {
+    let used_params = type_params_used_in_sum(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Encode");
+    let mut source = String::new();
+    source.push_str(&format!("{target} as Encode{where_clause}\n"));
+    source.push_str(&format!("  fn encode(_ self: {target}) -> Json\n"));
+    source.push_str("    case self\n");
+    for variant in &def.variants {
+        let ctor = &variant.name.node;
+        if variant.fields.is_empty() {
+            source.push_str(&format!(
+                "      {ctor} -> Json.JObject([(\"tag\", Json.JString(\"{ctor}\"))])\n"
+            ));
+            continue;
+        }
+        let (pattern, vars) = constructor_pattern_fields(&variant.fields, "v");
+        let mut pairs = vec![format!("(\"tag\", Json.JString(\"{ctor}\"))")];
+        for (idx, (field, var)) in variant.fields.iter().zip(vars.iter()).enumerate() {
+            let key = field
+                .name
+                .as_ref()
+                .map(|n| n.node.clone())
+                .unwrap_or_else(|| idx.to_string());
+            pairs.push(format!("(\"{key}\", Encode.encode({var}))"));
+        }
+        source.push_str(&format!(
+            "      {ctor}({pattern}) -> Json.JObject([{}])\n",
+            pairs.join(", ")
+        ));
+    }
+    source
+}
+
+// ---------------------------------------------------------------------------
+// @derive(Decode) builders
+// ---------------------------------------------------------------------------
+
+/// Generate nested `case` decode logic for a sequence of (key, varname) pairs,
+/// returning a `Some(constructor_expr)` or `None` at the innermost level.
+/// Indentation is `indent` spaces; increases by 2 per level.
+fn decode_fields_nested(
+    fields: &[(String, String)], // (json_key, var_name)
+    result_expr: &str,
+    indent: usize,
+) -> String {
+    if fields.is_empty() {
+        return format!("{}{result_expr}\n", " ".repeat(indent));
+    }
+    let (key, var) = &fields[0];
+    // raw_var holds the Json value before decoding; must not shadow the
+    // decoded var, and must not start with `_` (Kea unused-var lint).
+    let raw_var = format!("raw{var}");
+    let pad = " ".repeat(indent);
+    let pad2 = " ".repeat(indent + 2);
+    let pad4 = " ".repeat(indent + 4);
+    let pad6 = " ".repeat(indent + 6);
+    let mut out = String::new();
+    out.push_str(&format!("{pad}case Codec.field(fields, \"{key}\")\n"));
+    out.push_str(&format!("{pad2}None -> None\n"));
+    out.push_str(&format!("{pad2}Some({raw_var}) ->\n"));
+    out.push_str(&format!("{pad4}case Decode.decode({raw_var})\n"));
+    out.push_str(&format!("{pad6}None -> None\n"));
+    out.push_str(&format!("{pad6}Some({var}) ->\n"));
+    out.push_str(&decode_fields_nested(&fields[1..], result_expr, indent + 8));
+    out
+}
+
+/// Like `decode_fields_nested` but uses pre-bound raw-field variables (e.g. `rawfield0`)
+/// instead of inline `Codec.field(fields, key)` calls.  This avoids an RC bug where
+/// `fields` is released after the first `Codec.field` call and is then accessed again
+/// in a nested arm.
+///
+/// `fields` is a slice of `(prebound_raw_field_var, intermediate_raw_var, decoded_var)`.
+fn decode_fields_nested_prebound(
+    fields: &[(String, String, String)],
+    result_expr: &str,
+    indent: usize,
+) -> String {
+    if fields.is_empty() {
+        return format!("{}{result_expr}\n", " ".repeat(indent));
+    }
+    let (raw_field_var, raw_var, var) = &fields[0];
+    let pad = " ".repeat(indent);
+    let pad2 = " ".repeat(indent + 2);
+    let pad4 = " ".repeat(indent + 4);
+    let pad6 = " ".repeat(indent + 6);
+    let mut out = String::new();
+    out.push_str(&format!("{pad}case {raw_field_var}\n"));
+    out.push_str(&format!("{pad2}None -> None\n"));
+    out.push_str(&format!("{pad2}Some({raw_var}) ->\n"));
+    out.push_str(&format!("{pad4}case Decode.decode({raw_var})\n"));
+    out.push_str(&format!("{pad6}None -> None\n"));
+    out.push_str(&format!("{pad6}Some({var}) ->\n"));
+    out.push_str(&decode_fields_nested_prebound(&fields[1..], result_expr, indent + 8));
+    out
+}
+
+fn build_decode_impl_source_for_record(def: &RecordDef) -> String {
+    let used_params = type_params_used_in_record(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Decode");
+    let mut source = String::new();
+    source.push_str(&format!("{target} as Decode{where_clause}\n"));
+    source.push_str(&format!("  fn decode(_ input: Json) -> Option {target}\n"));
+    source.push_str("    case input\n");
+    if def.fields.is_empty() {
+        source.push_str(&format!(
+            "      Json.JObject(_) -> Some({} {{}})\n      _ -> None\n",
+            def.name.node
+        ));
+        return source;
+    }
+    source.push_str("      Json.JObject(fields) ->\n");
+    // Pre-bind all Codec.field calls before case matching to avoid an RC bug where
+    // `fields` is released after the first Codec.field call in a nested case arm.
+    for (i, (field, _)) in def.fields.iter().enumerate() {
+        source.push_str(&format!(
+            "        let rawfield{i} = Codec.field(fields, \"{}\")\n",
+            field.node
+        ));
+    }
+    let triples: Vec<(String, String, String)> = def
+        .fields
+        .iter()
+        .enumerate()
+        .map(|(i, _)| (format!("rawfield{i}"), format!("rawv{i}"), format!("v{i}")))
+        .collect();
+    let field_assigns: Vec<String> = def
+        .fields
+        .iter()
+        .enumerate()
+        .map(|(i, (field, _))| format!("{}: v{i}", field.node))
+        .collect();
+    let result_expr = format!(
+        "Some({} {{ {} }})",
+        def.name.node,
+        field_assigns.join(", ")
+    );
+    source.push_str(&decode_fields_nested_prebound(&triples, &result_expr, 8));
+    source.push_str("      _ -> None\n");
+    source
+}
+
+fn build_decode_impl_source_for_sum(def: &TypeDef) -> String {
+    let used_params = type_params_used_in_sum(def);
+    let target = impl_target_type(&def.name.node, &def.params);
+    let where_clause = derive_where_clause(&used_params, "Decode");
+    let mut source = String::new();
+    source.push_str(&format!("{target} as Decode{where_clause}\n"));
+    source.push_str(&format!("  fn decode(_ input: Json) -> Option {target}\n"));
+    source.push_str("    case input\n");
+    source.push_str("      Json.JObject(fields) ->\n");
+    source.push_str("        case Codec.field(fields, \"tag\")\n");
+    source.push_str("          None -> None\n");
+    source.push_str("          Some(Json.JString(tag)) ->\n");
+    source.push_str("            case tag\n");
+    for variant in &def.variants {
+        let ctor = &variant.name.node;
+        if variant.fields.is_empty() {
+            source.push_str(&format!(
+                "              \"{ctor}\" -> Some({}.{ctor})\n",
+                def.name.node
+            ));
+            continue;
+        }
+        source.push_str(&format!("              \"{ctor}\" ->\n"));
+        let pairs: Vec<(String, String)> = variant
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(i, field)| {
+                let key = field
+                    .name
+                    .as_ref()
+                    .map(|n| n.node.clone())
+                    .unwrap_or_else(|| i.to_string());
+                (key, format!("v{i}"))
+            })
+            .collect();
+        let arg_list: Vec<String> = variant
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(i, field)| {
+                if let Some(name) = &field.name {
+                    format!("{}: v{i}", name.node)
+                } else {
+                    format!("v{i}")
+                }
+            })
+            .collect();
+        let result_expr = format!("Some({}.{ctor}({}))", def.name.node, arg_list.join(", "));
+        source.push_str(&decode_fields_nested(&pairs, &result_expr, 16));
+    }
+    source.push_str("              _ -> None\n");
+    source.push_str("          _ -> None\n");
+    source.push_str("      _ -> None\n");
+    source
+}
+
 fn parse_generated_impl_decl(
     source: &str,
     file_id: FileId,
@@ -2051,6 +2281,8 @@ fn expand_derived_impls(module: &Module, diagnostics: &mut Vec<Diagnostic>) -> M
                         "Show" => build_show_impl_source_for_sum(def),
                         "Ord" => build_ord_impl_source_for_sum(def),
                         "Hash" => build_hash_impl_source_for_sum(def),
+                        "Encode" => build_encode_impl_source_for_sum(def),
+                        "Decode" => build_decode_impl_source_for_sum(def),
                         other => {
                             diagnostics.push(
                                 Diagnostic::error(
@@ -2081,6 +2313,8 @@ fn expand_derived_impls(module: &Module, diagnostics: &mut Vec<Diagnostic>) -> M
                         "Show" => build_show_impl_source_for_record(def),
                         "Ord" => build_ord_impl_source_for_record(def),
                         "Hash" => build_hash_impl_source_for_record(def),
+                        "Encode" => build_encode_impl_source_for_record(def),
+                        "Decode" => build_decode_impl_source_for_record(def),
                         other => {
                             diagnostics.push(
                                 Diagnostic::error(
@@ -2837,15 +3071,26 @@ fn apply_module_imports(
                     env.mark_trait_in_scope(trait_name);
                     if let Some(trait_info) = traits.lookup_trait(trait_name) {
                         for method in &trait_info.methods {
-                            bind_imported_item(
-                                &module_path,
-                                &method.name,
-                                import.module.span,
-                                &visibility,
-                                env,
-                                diagnostics,
-                                &mut imported_symbols,
-                            );
+                            // For trait-owning modules, `Trait.method` may not
+                            // have a single qualified symbol when there are
+                            // multiple impls (e.g., `Encode.encode` has 6
+                            // primitive impls). Silently skip the binding; the
+                            // type checker resolves qualified trait calls
+                            // (`Encode.encode(x)`) via the trait registry
+                            // directly and does not require a local binding.
+                            if env.resolve_qualified(&module_path, &method.name).is_some() {
+                                bind_imported_item(
+                                    &module_path,
+                                    &method.name,
+                                    import.module.span,
+                                    &visibility,
+                                    env,
+                                    diagnostics,
+                                    &mut imported_symbols,
+                                );
+                            } else {
+                                imported_symbols.push(method.name.clone());
+                            }
                         }
                     }
                 }
@@ -3908,7 +4153,8 @@ fn typecheck_functions(
 
         diagnostics.extend(ctx.errors().iter().filter(|d| !is_error(d)).cloned());
 
-        all_expr_types.extend(ctx.resolve_expr_types());
+        let chunk_expr_types = ctx.resolve_expr_types();
+        all_expr_types.extend(chunk_expr_types);
         all_resolved_trait_callees
             .extend(ctx.take_type_annotations().resolved_trait_callees);
 
