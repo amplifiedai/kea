@@ -1,0 +1,111 @@
+doc
+  Foldable abstracts over collections that can be reduced element-by-element.
+
+  Any type that can be traversed left-to-right, accumulating a result,
+  implements Foldable. Lists, options, and other containers fit this pattern.
+
+  ## Associated type
+
+  `type Item` — the element type produced during traversal.
+
+  ## Core operation
+
+  `fold` drives everything. It visits each element, threading an accumulator
+  through every step:
+
+    Foldable.fold([1, 2, 3], 0, |acc, x| acc + x)   -- => 6
+    Foldable.fold(None, 99, |acc, x| acc + x)        -- => 99
+    Foldable.fold(Some(5), 0, |acc, x| acc + x)      -- => 5
+
+  ## Derived operations
+
+  `count`, `any`, `all`, and `sum` are derived from `fold` and work on
+  any Foldable collection.
+
+    Foldable.count([1, 2, 3])              -- => 3
+    Foldable.any([1, 2, 3], |x| x > 2)    -- => true
+    Foldable.sum([1, 2, 3])               -- => 6
+
+use List
+use Option
+
+trait Foldable
+  -- The element type produced by traversal.
+  type Item
+  doc
+    Reduce a collection to a single value by applying `f` to each element
+    left-to-right, starting from `init`.
+
+      Foldable.fold([1, 2, 3], 0, |acc, x| acc + x)   -- => 6
+      Foldable.fold([], "seed", |acc, _| acc)          -- => "seed"
+  fn fold(_ self: Self, _ init: b, _ f: fn(b, Self.Item) -> b) -> b
+
+-- -------------------------------------------------------------------------
+-- List implementation
+-- -------------------------------------------------------------------------
+
+List a as Foldable where Item = a
+  fn fold(_ self: List a, _ init: b, _ f: fn(b, a) -> b) -> b
+    List.fold(self, init, f)
+
+-- -------------------------------------------------------------------------
+-- Option implementation
+-- None contributes no elements; Some(x) contributes exactly one.
+-- -------------------------------------------------------------------------
+
+Option a as Foldable where Item = a
+  fn fold(_ self: Option a, _ init: b, _ f: fn(b, a) -> b) -> b
+    case self
+      None    -> init
+      Some(x) -> f(init, x)
+
+-- -------------------------------------------------------------------------
+-- Derived operations
+-- -------------------------------------------------------------------------
+
+doc
+  Count the elements in a foldable collection.
+
+    Foldable.count([1, 2, 3])   -- => 3
+    Foldable.count([])          -- => 0
+    Foldable.count(Some(7))     -- => 1
+    Foldable.count(None)        -- => 0
+fn count(xs: f) -> Int where f: Foldable
+  Foldable.fold(xs, 0, |acc, _| acc + 1)
+
+doc
+  Return true when any element satisfies the predicate.
+
+    Foldable.any([1, 2, 3], |x| x > 2)    -- => true
+    Foldable.any([1, 2, 3], |x| x > 10)   -- => false
+    Foldable.any([], |_| true)             -- => false
+fn any(xs: List a, pred: fn(a) -> Bool) -> Bool
+  Foldable.fold(xs, false, |acc, x| acc or pred(x))
+
+doc
+  Return true when all elements satisfy the predicate.
+
+  Returns true for empty collections (vacuous truth).
+
+    Foldable.all([2, 4, 6], |x| x % 2 == 0)   -- => true
+    Foldable.all([2, 3, 6], |x| x % 2 == 0)   -- => false
+    Foldable.all([], |_| false)                -- => true
+fn all(xs: List a, pred: fn(a) -> Bool) -> Bool
+  Foldable.fold(xs, true, |acc, x| acc and pred(x))
+
+doc
+  Sum all integer elements using `fold`.
+
+    Foldable.sum([1, 2, 3, 4])   -- => 10
+    Foldable.sum([])             -- => 0
+fn sum(xs: f) -> Int where f: Foldable, f.Item = Int
+  Foldable.fold(xs, 0, |acc, x| acc + x)
+
+doc
+  Collect all elements into a list in traversal order.
+
+    Foldable.to_list(Some(42))   -- => [42]
+    Foldable.to_list(None)       -- => []
+    Foldable.to_list([3, 1, 2])  -- => [3, 1, 2]
+fn to_list(xs: f) -> List (f.Item) where f: Foldable
+  List.reverse(Foldable.fold(xs, [], |acc, x| Cons(x, acc)))

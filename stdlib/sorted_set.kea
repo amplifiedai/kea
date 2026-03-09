@@ -1,0 +1,226 @@
+doc
+  Persistent sorted set backed by a sorted list of unique elements.
+
+  Elements are maintained in ascending order using a caller-supplied
+  comparison function. Membership, insertion, and removal all preserve the
+  sorted, unique-element invariant.
+
+  ## Usage
+
+    let s = SortedSet.new(|x, y| Ord.compare(x, y))
+    let s2 = SortedSet.insert(s, 3)
+    let s3 = SortedSet.insert(s2, 1)
+    SortedSet.to_list(s3)   -- => [1, 3]
+
+  ## Set operations
+
+  `union`, `intersection`, and `difference` run in O(n + m) by
+  merging the two sorted lists in a single pass.
+
+  ## Complexity
+
+  - Membership: O(n) — linear scan
+  - Insert:     O(n) — sorted insertion
+  - Delete:     O(n) — linear removal
+  - Union:      O(n + m) — merge pass
+  - Intersection: O(n + m) — merge pass
+
+use List
+use Option
+use Order
+use Ord
+
+struct SortedSet(k)
+  entries: List k
+  cmp_fn: fn(k, k) -> Ordering
+
+-- -------------------------------------------------------------------------
+-- Construction
+-- -------------------------------------------------------------------------
+
+doc
+  Create an empty sorted set with the given comparison function.
+
+    let s = SortedSet.new(|x, y| Ord.compare(x, y))
+    SortedSet.size(s)   -- => 0
+fn new(cmp_fn: fn(k, k) -> Ordering) -> SortedSet k
+  SortedSet { entries: [], cmp_fn: cmp_fn }
+
+doc
+  Build a sorted set from a list of elements. Duplicates are silently discarded.
+
+    SortedSet.of_list([3, 1, 2, 1], |x, y| Ord.compare(x, y))
+    -- => SortedSet with entries [1, 2, 3]
+fn of_list(xs: List k, cmp_fn: fn(k, k) -> Ordering) -> SortedSet k
+  List.fold(xs, new(cmp_fn), |s, x| insert(s, x))
+
+-- -------------------------------------------------------------------------
+-- Queries
+-- -------------------------------------------------------------------------
+
+doc
+  Return the number of elements in the set.
+
+    SortedSet.size(s)   -- => 3
+fn size(s: SortedSet k) -> Int
+  List.length(s.entries)
+
+doc
+  Return true when the set has no elements.
+
+    SortedSet.is_empty(SortedSet.new(|x, y| Ord.compare(x, y)))   -- => true
+fn is_empty(s: SortedSet k) -> Bool
+  case s.entries
+    Nil -> true
+    _   -> false
+
+doc
+  Return true if the element is a member of the set.
+
+    SortedSet.member(s, 2)   -- => true or false
+fn member(s: SortedSet k, x: k) -> Bool
+  member_step(s.entries, x, s.cmp_fn)
+
+fn member_step(entries: List k, x: k, cmp: fn(k, k) -> Ordering) -> Bool
+  case entries
+    Nil -> false
+    Cons(e, rest) ->
+      case cmp(x, e)
+        Order.Equal   -> true
+        Order.Less    -> false  -- sorted: won't appear later
+        Order.Greater -> member_step(rest, x, cmp)
+
+-- -------------------------------------------------------------------------
+-- Modification
+-- -------------------------------------------------------------------------
+
+doc
+  Insert an element, returning the updated set.
+
+  Has no effect if the element is already a member.
+
+    SortedSet.insert(s, 5)
+fn insert(s: SortedSet k, x: k) -> SortedSet k
+  s~{ entries: insert_sorted(s.entries, x, s.cmp_fn) }
+
+fn insert_sorted(entries: List k, x: k, cmp: fn(k, k) -> Ordering) -> List k
+  case entries
+    Nil -> [x]
+    Cons(e, rest) ->
+      case cmp(x, e)
+        Order.Equal   -> entries           -- already present
+        Order.Less    -> Cons(x, entries)  -- insert before
+        Order.Greater -> Cons(e, insert_sorted(rest, x, cmp))
+
+doc
+  Remove an element, returning the updated set.
+
+  Returns the original set unchanged if the element is absent.
+
+    SortedSet.remove(s, 2)
+fn remove(s: SortedSet k, x: k) -> SortedSet k
+  s~{ entries: remove_sorted(s.entries, x, s.cmp_fn) }
+
+fn remove_sorted(entries: List k, x: k, cmp: fn(k, k) -> Ordering) -> List k
+  case entries
+    Nil -> Nil
+    Cons(e, rest) ->
+      case cmp(x, e)
+        Order.Equal   -> rest
+        Order.Less    -> entries  -- won't appear later
+        Order.Greater -> Cons(e, remove_sorted(rest, x, cmp))
+
+-- -------------------------------------------------------------------------
+-- Set operations (O(n + m) merge passes)
+-- -------------------------------------------------------------------------
+
+doc
+  Return the union: all elements that appear in either set.
+
+  Both sets must use compatible comparison functions.
+
+    SortedSet.union(s1, s2)
+fn union(s1: SortedSet k, s2: SortedSet k) -> SortedSet k
+  SortedSet { entries: union_merge(s1.entries, s2.entries, s1.cmp_fn), cmp_fn: s1.cmp_fn }
+
+fn union_merge(xs: List k, ys: List k, cmp: fn(k, k) -> Ordering) -> List k
+  case xs
+    Nil -> ys
+    Cons(x, xrest) ->
+      case ys
+        Nil -> xs
+        Cons(y, yrest) ->
+          case cmp(x, y)
+            Order.Equal   -> Cons(x, union_merge(xrest, yrest, cmp))
+            Order.Less    -> Cons(x, union_merge(xrest, ys, cmp))
+            Order.Greater -> Cons(y, union_merge(xs, yrest, cmp))
+
+doc
+  Return the intersection: elements that appear in both sets.
+
+    SortedSet.intersection(s1, s2)
+fn intersection(s1: SortedSet k, s2: SortedSet k) -> SortedSet k
+  SortedSet { entries: intersect_merge(s1.entries, s2.entries, s1.cmp_fn), cmp_fn: s1.cmp_fn }
+
+fn intersect_merge(xs: List k, ys: List k, cmp: fn(k, k) -> Ordering) -> List k
+  case xs
+    Nil -> Nil
+    Cons(x, xrest) ->
+      case ys
+        Nil -> Nil
+        Cons(y, yrest) ->
+          case cmp(x, y)
+            Order.Equal   -> Cons(x, intersect_merge(xrest, yrest, cmp))
+            Order.Less    -> intersect_merge(xrest, ys, cmp)
+            Order.Greater -> intersect_merge(xs, yrest, cmp)
+
+doc
+  Return the difference: elements in `s1` that are not in `s2`.
+
+    SortedSet.difference(s1, s2)
+fn difference(s1: SortedSet k, s2: SortedSet k) -> SortedSet k
+  SortedSet { entries: diff_merge(s1.entries, s2.entries, s1.cmp_fn), cmp_fn: s1.cmp_fn }
+
+fn diff_merge(xs: List k, ys: List k, cmp: fn(k, k) -> Ordering) -> List k
+  case xs
+    Nil -> Nil
+    Cons(x, xrest) ->
+      case ys
+        Nil -> xs
+        Cons(y, yrest) ->
+          case cmp(x, y)
+            Order.Equal   -> diff_merge(xrest, yrest, cmp)   -- in both: exclude
+            Order.Less    -> Cons(x, diff_merge(xrest, ys, cmp))
+            Order.Greater -> diff_merge(xs, yrest, cmp)
+
+-- -------------------------------------------------------------------------
+-- Traversal
+-- -------------------------------------------------------------------------
+
+doc
+  Return all elements in ascending order.
+
+    SortedSet.to_list(s)   -- => [1, 2, 3]
+fn to_list(s: SortedSet k) -> List k
+  s.entries
+
+doc
+  Reduce all elements to a single value in ascending order.
+
+    SortedSet.fold(s, 0, |acc, x| acc + x)
+fn fold(s: SortedSet k, init: b, f: fn(b, k) -> b) -> b
+  List.fold(s.entries, init, f)
+
+doc
+  Return the smallest element, or `None` if empty.
+
+    SortedSet.min(s)   -- => Some(1)
+fn min(s: SortedSet k) -> Option k
+  List.head(s.entries)
+
+doc
+  Return the largest element, or `None` if empty.
+
+    SortedSet.max(s)   -- => Some(3)
+fn max(s: SortedSet k) -> Option k
+  List.last(s.entries)

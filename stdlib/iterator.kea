@@ -1,0 +1,168 @@
+doc
+  Iterator provides step-by-step traversal over a sequence of values.
+
+  Unlike `Foldable`, which consumes a collection in one pass, `Iterator`
+  models traversal as an explicit cursor. Each call to `next` returns the
+  next item together with the updated iterator, or `None` when the sequence
+  is exhausted.
+
+  ## Associated type
+
+  `type Item` — the value produced at each step.
+
+  ## Pattern
+
+  Iterators are functional: `next` never mutates. The returned iterator is
+  the new position. Advance by recursing on the second element of the pair:
+
+    fn sum_iter(it: i) -> Int where i: Iterator, i.Item = Int
+      case Iterator.next(it)
+        None            -> 0
+        Some((x, rest)) -> x + sum_iter(rest)
+
+  Collect into a list with `Iterator.collect`:
+
+    Iterator.collect(ListIter { xs: [1, 2, 3] })   -- => [1, 2, 3]
+
+  Map and filter lazily with `Iterator.map` and `Iterator.filter`.
+
+use List
+use Option
+
+trait Iterator
+  doc
+    The value type produced at each step.
+  type Item
+  doc
+    Advance the iterator one step.
+
+    Returns `Some((item, rest))` where `item` is the next value and `rest`
+    is the iterator positioned after it. Returns `None` when exhausted.
+
+      case Iterator.next(it)
+        None            -> "done"
+        Some((x, rest)) -> "got {x}, continuing"
+  fn next(_ self: Self) -> Option ((Self.Item, Self))
+
+-- -------------------------------------------------------------------------
+-- List iterator
+-- -------------------------------------------------------------------------
+
+doc
+  A cursor into a list, advancing by peeling the head.
+
+    let it = ListIter { xs: [1, 2, 3] }
+    Iterator.next(it)   -- => Some((1, ListIter { xs: [2, 3] }))
+struct ListIter(a)
+  xs: List a
+
+doc
+  `ListIter(a)` iterates a list left-to-right.
+
+    let it = ListIter { xs: [10, 20] }
+    Iterator.next(it)   -- => Some((10, ListIter { xs: [20] }))
+ListIter a as Iterator where Item = a
+  fn next(_ self: ListIter a) -> Option ((a, ListIter a))
+    case self.xs
+      Nil           -> None
+      Cons(x, rest) -> Some((x, ListIter { xs: rest }))
+
+-- -------------------------------------------------------------------------
+-- Derived operations
+-- -------------------------------------------------------------------------
+
+doc
+  Collect all remaining iterator values into a list.
+
+    let it = ListIter { xs: [1, 2, 3] }
+    Iterator.collect(it)   -- => [1, 2, 3]
+fn collect(it: i) -> List (i.Item) where i: Iterator
+  collect_acc(it, [])
+
+fn collect_acc(it: i, acc: List (i.Item)) -> List (i.Item) where i: Iterator
+  case Iterator.next(it)
+    None            -> List.reverse(acc)
+    Some((x, rest)) -> collect_acc(rest, Cons(x, acc))
+
+doc
+  Apply a function to each element, yielding a mapped iterator.
+
+  Mapping is lazy: the function runs only when the mapped iterator is advanced.
+
+    let it = ListIter { xs: [1, 2, 3] }
+    Iterator.collect(Iterator.map(it, |x| x * 2))   -- => [2, 4, 6]
+fn map(it: i, f: fn(i.Item) -> b) -> MappedIter(i, i.Item, b) where i: Iterator
+  MappedIter { inner: it, func: f }
+
+doc
+  Lazy map iterator. Wraps an iterator and transforms each element.
+struct MappedIter(i, a, b)
+  inner: i
+  func: fn(a) -> b
+
+MappedIter(i, a, b) as Iterator where Item = b, i: Iterator, i.Item = a
+  fn next(_ self: MappedIter(i, a, b)) -> Option ((b, MappedIter(i, a, b)))
+    let f = self.func
+    case Iterator.next(self.inner)
+      None            -> None
+      Some((x, rest)) -> Some((f(x), MappedIter { inner: rest, func: f }))
+
+doc
+  Keep only elements satisfying `pred`, skipping the rest.
+
+  Filtering is lazy: the predicate runs only when the filtered iterator advances.
+
+    let it = ListIter { xs: [1, 2, 3, 4] }
+    Iterator.collect(Iterator.filter(it, |x| x % 2 == 0))   -- => [2, 4]
+fn filter(it: i, pred: fn(i.Item) -> Bool) -> FilteredIter(i, i.Item) where i: Iterator
+  FilteredIter { inner: it, pred: pred }
+
+doc
+  Lazy filter iterator. Wraps an iterator and skips non-matching elements.
+struct FilteredIter(i, a)
+  inner: i
+  pred: fn(a) -> Bool
+
+FilteredIter(i, a) as Iterator where Item = a, i: Iterator, i.Item = a
+  fn next(_ self: FilteredIter(i, a)) -> Option ((a, FilteredIter(i, a)))
+    let p = self.pred
+    case Iterator.next(self.inner)
+      None -> None
+      Some((x, rest)) when p(x) ->
+        Some((x, FilteredIter { inner: rest, pred: p }))
+      Some((_, rest)) ->
+        Iterator.next(FilteredIter { inner: rest, pred: p })
+
+doc
+  Reduce an iterator to a single value.
+
+    let it = ListIter { xs: [1, 2, 3] }
+    Iterator.fold(it, 0, |acc, x| acc + x)   -- => 6
+fn fold(it: i, init: b, f: fn(b, i.Item) -> b) -> b where i: Iterator
+  case Iterator.next(it)
+    None            -> init
+    Some((x, rest)) -> fold(rest, f(init, x), f)
+
+doc
+  Count the remaining elements in an iterator.
+
+    let it = ListIter { xs: [1, 2, 3] }
+    Iterator.count(it)   -- => 3
+fn count(it: i) -> Int where i: Iterator
+  Iterator.fold(it, 0, |acc, _| acc + 1)
+
+doc
+  Take the first `n` elements from an iterator, returning a list.
+
+    let it = ListIter { xs: [1, 2, 3, 4, 5] }
+    Iterator.take(it, 3)   -- => [1, 2, 3]
+fn take(it: i, n: Int) -> List (i.Item) where i: Iterator
+  take_acc(it, n, [])
+
+fn take_acc(it: i, n: Int, acc: List (i.Item)) -> List (i.Item) where i: Iterator
+  case n
+    0 -> List.reverse(acc)
+    _ ->
+      case Iterator.next(it)
+        None            -> List.reverse(acc)
+        Some((x, rest)) -> take_acc(rest, n - 1, Cons(x, acc))
