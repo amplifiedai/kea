@@ -4311,7 +4311,22 @@ fn filter_unsupported_functions_transitive(functions: Vec<MirFunction>) -> Vec<M
         }
     }
 
-    functions.into_iter().filter(|f| !unsupported.contains(&f.name)).collect()
+    // Never filter out `main` if it *directly* contains an Unsupported instruction.
+    // Codegen will surface the detail (e.g. "requires simple variable argument patterns")
+    // rather than the opaque "unknown function `main`" error.
+    // Only transitively-unsupported `main` functions (those that merely call an unsupported
+    // helper) are still filtered normally, to avoid spurious codegen "unknown callee" errors.
+    let main_directly_unsupported = functions
+        .iter()
+        .any(|f| f.name == "main" && has_unsupported(f));
+
+    functions
+        .into_iter()
+        .filter(|f| {
+            let keep_as_main = main_directly_unsupported && f.name == "main";
+            keep_as_main || !unsupported.contains(&f.name)
+        })
+        .collect()
 }
 
 /// Attempt to resolve a `Trait.method` call to a concrete `Trait.TypeName.method`
