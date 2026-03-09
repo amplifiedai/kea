@@ -908,6 +908,13 @@ unsafe extern "C" fn kea_text_trim_stub(s: *const c_char) -> *const c_char {
     }
 }
 
+unsafe extern "C" fn kea_float_to_string_stub(f: f64) -> *const c_char {
+    match CString::new(format!("{f}")) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => EMPTY_CSTR.as_ptr() as *const c_char,
+    }
+}
+
 unsafe extern "C" fn kea_text_replace_stub(
     s: *const c_char,
     old: *const c_char,
@@ -993,6 +1000,10 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
         kea_text_to_lower_stub as *const u8,
     );
     builder.symbol("__kea_text_trim", kea_text_trim_stub as *const u8);
+    builder.symbol(
+        "__kea_float_to_string",
+        kea_float_to_string_stub as *const u8,
+    );
     builder.symbol("__kea_text_replace", kea_text_replace_stub as *const u8);
     builder.symbol("__kea_text_repeat", kea_text_repeat_stub as *const u8);
     builder.symbol(

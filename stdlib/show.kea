@@ -68,3 +68,16 @@ Bool as Show
       "true"
     else
       "false"
+
+doc
+  Convert a float to its string representation.
+
+    Show.show_float(3.14)   -- => "3.14"
+    Show.show_float(0.0)    -- => "0"
+@intrinsic("__kea_float_to_string")
+fn show_float(x: Float) -> String
+  "0.0"
+
+Float as Show
+  fn show(x: Float) -> String
+    show_float(x)

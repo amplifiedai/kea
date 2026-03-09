@@ -163,6 +163,14 @@ int64_t __kea_net_recv(int64_t conn, int64_t size) {
 #endif
 }
 
+const char *__kea_float_to_string(double f) {
+  /* Use a 64-byte buffer — sufficient for any IEEE 754 double representation. */
+  char *buf = (char *)malloc(64);
+  if (buf == NULL) return KEA_EMPTY_STRING;
+  snprintf(buf, 64, "%g", f);
+  return buf;
+}
+
 int64_t __kea_sys_malloc(int64_t size) {
   if (size <= 0) return 0;
   return (int64_t)malloc((size_t)size);
