@@ -353,6 +353,14 @@ pub enum MirUnaryOp {
     TrailingZeros,
     WidenSignedToInt,
     WidenUnsignedToInt,
+    /// Truncate an `Int` (i64) value to a narrower fixed-width type.
+    /// The stored bits are the low-order bits of the i64.
+    NarrowToI8,
+    NarrowToI16,
+    NarrowToI32,
+    NarrowToU8,
+    NarrowToU16,
+    NarrowToU32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -7330,6 +7338,12 @@ impl FunctionLoweringCtx {
                 let right_value = self.lower_expr(right)?;
                 let left_value = self.lower_maybe_sum_tag_operand(*op, left, left_value, right);
                 let right_value = self.lower_maybe_sum_tag_operand(*op, right, right_value, left);
+                // Auto-widen narrow ints when mixed with `Int` (i64) in arithmetic.
+                // `Int8 + 0` and similar expressions are valid because integer
+                // literals default to `Int`; widen the narrow side to match.
+                let (left_value, right_value) = self.maybe_widen_mixed_int_operands(
+                    &left.ty, left_value, &right.ty, right_value,
+                );
                 let dest = self.new_value();
                 self.emit_inst(MirInst::Binary {
                     dest: dest.clone(),
@@ -9275,6 +9289,72 @@ impl FunctionLoweringCtx {
         tag_value
     }
 
+    /// When a narrow int (`IntN`) and `Int` (i64) are operands to a binary
+    /// operation, widen the narrow side to `Int`.  This handles the common
+    /// case where an `Int8` variable is combined with an integer literal (which
+    /// defaults to `Int`) without requiring explicit widening in user code.
+    fn maybe_widen_mixed_int_operands(
+        &mut self,
+        left_ty: &Type,
+        left: MirValueId,
+        right_ty: &Type,
+        right: MirValueId,
+    ) -> (MirValueId, MirValueId) {
+        let is_int = |ty: &Type| matches!(ty, Type::Int | Type::Dynamic);
+        let narrow_widen_op = |ty: &Type| match ty {
+            Type::IntN(_, kea_types::Signedness::Signed) => Some(MirUnaryOp::WidenSignedToInt),
+            Type::IntN(_, kea_types::Signedness::Unsigned) => Some(MirUnaryOp::WidenUnsignedToInt),
+            _ => None,
+        };
+        if is_int(right_ty)
+            && let Some(op) = narrow_widen_op(left_ty)
+        {
+            let widened = self.new_value();
+            self.emit_inst(MirInst::Unary {
+                dest: widened.clone(),
+                op,
+                operand: left,
+            });
+            return (widened, right);
+        }
+        if is_int(left_ty)
+            && let Some(op) = narrow_widen_op(right_ty)
+        {
+            let widened = self.new_value();
+            self.emit_inst(MirInst::Unary {
+                dest: widened.clone(),
+                op,
+                operand: right,
+            });
+            return (left, widened);
+        }
+        (left, right)
+    }
+
+    fn narrow_op_for_target(ty: &Type) -> Option<MirUnaryOp> {
+        match ty {
+            Type::IntN(kea_types::IntWidth::I8, kea_types::Signedness::Signed) => {
+                Some(MirUnaryOp::NarrowToI8)
+            }
+            Type::IntN(kea_types::IntWidth::I16, kea_types::Signedness::Signed) => {
+                Some(MirUnaryOp::NarrowToI16)
+            }
+            Type::IntN(kea_types::IntWidth::I32, kea_types::Signedness::Signed) => {
+                Some(MirUnaryOp::NarrowToI32)
+            }
+            Type::IntN(kea_types::IntWidth::I8, kea_types::Signedness::Unsigned) => {
+                Some(MirUnaryOp::NarrowToU8)
+            }
+            Type::IntN(kea_types::IntWidth::I16, kea_types::Signedness::Unsigned) => {
+                Some(MirUnaryOp::NarrowToU16)
+            }
+            Type::IntN(kea_types::IntWidth::I32, kea_types::Signedness::Unsigned) => {
+                Some(MirUnaryOp::NarrowToU32)
+            }
+            _ => None,
+        }
+    }
+
     fn integer_bounds_for_target(ty: &Type) -> Option<(i64, i64)> {
         match ty {
             Type::IntN(kea_types::IntWidth::I8, kea_types::Signedness::Signed) => {
@@ -9329,12 +9409,29 @@ impl FunctionLoweringCtx {
         let (min, max) = Self::integer_bounds_for_target(&target_ty)?;
 
         let source = self.lower_expr(&args[0])?;
-        let source_int = match &args[0].ty {
-            Type::Int => source.clone(),
+        // `source_int` is an i64 used for bounds comparison.
+        // `storage_value` is typed as `target_ty` for the SumInit payload.
+        let (source_int, storage_value) = match &args[0].ty {
+            Type::Int => {
+                // Already i64; narrow to target type for storage.
+                let narrow_op = Self::narrow_op_for_target(&target_ty);
+                let storage = if let Some(op) = narrow_op {
+                    let narrowed = self.new_value();
+                    self.emit_inst(MirInst::Unary {
+                        dest: narrowed.clone(),
+                        op,
+                        operand: source.clone(),
+                    });
+                    narrowed
+                } else {
+                    source.clone()
+                };
+                (source.clone(), storage)
+            }
             // Some resolved callsites still carry `Dynamic` in HIR even when
             // type checking has already constrained the argument to integer
             // input for `*.try_from(...)`.
-            Type::Dynamic => source.clone(),
+            Type::Dynamic => (source.clone(), source.clone()),
             Type::IntN(_, kea_types::Signedness::Signed) => {
                 let widened = self.new_value();
                 self.emit_inst(MirInst::Unary {
@@ -9342,7 +9439,8 @@ impl FunctionLoweringCtx {
                     op: MirUnaryOp::WidenSignedToInt,
                     operand: source.clone(),
                 });
-                widened
+                // `source` is already the right target type (IntN).
+                (widened, source.clone())
             }
             Type::IntN(_, kea_types::Signedness::Unsigned) => {
                 let widened = self.new_value();
@@ -9351,7 +9449,8 @@ impl FunctionLoweringCtx {
                     op: MirUnaryOp::WidenUnsignedToInt,
                     operand: source.clone(),
                 });
-                widened
+                // `source` is already the right target type (IntN).
+                (widened, source.clone())
             }
             _ => {
                 self.emit_inst(MirInst::Unsupported {
@@ -9426,7 +9525,7 @@ impl FunctionLoweringCtx {
             sum_type: "Option".to_string(),
             variant: "Some".to_string(),
             tag: 1,
-            fields: vec![source_int],
+            fields: vec![storage_value],
         });
         self.sum_value_types
             .insert(some_value.clone(), "Option".to_string());

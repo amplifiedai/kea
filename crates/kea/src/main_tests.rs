@@ -11724,19 +11724,17 @@ fn compile_and_execute_trait_qualified_method_single_impl_exit_code() {
 }
 
 #[test]
-fn compile_and_execute_trait_qualified_method_ambiguous_impls_error() {
+fn compile_and_execute_trait_qualified_method_multi_impl_resolves_by_arg_type() {
+    // When multiple impls exist, qualified call resolves via argument type inference.
+    // `Inc.inc(41)` resolves to `Inc.Int.inc(41)` because `41: Int`.
     let source_path = write_temp_source(
         "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n\nFloat as Inc\n  fn inc(x: Float) -> Float\n    x + 1.0\n\nfn main() -> Int\n  Inc.inc(41)\n",
         "kea-cli-trait-qualified-ambiguous-impls",
         "kea",
     );
 
-    let err =
-        run_file(&source_path).expect_err("run should reject unresolved trait dispatch target");
-    assert!(
-        err.contains("unresolved qualified call target `Inc.inc`"),
-        "expected unresolved qualified call target diagnostic, got: {err}"
-    );
+    let run = run_file(&source_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 42, "Inc.Int.inc(41) = 42");
 
     let _ = std::fs::remove_file(source_path);
 }

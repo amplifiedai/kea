@@ -5991,6 +5991,21 @@ fn lower_binary(
     let lhs_ty = builder.func.dfg.value_type(lhs);
     let rhs_ty = builder.func.dfg.value_type(rhs);
 
+    // Auto-widen mixed-width integer operands (e.g. i8 + i64 → i64 + i64).
+    // This can happen when a narrow-int SumPayloadLoad result is used with an Int literal.
+    let (lhs, rhs, lhs_ty) = if lhs_ty != rhs_ty && lhs_ty.is_int() && rhs_ty.is_int() {
+        if lhs_ty.bits() < rhs_ty.bits() {
+            let widened = builder.ins().sextend(rhs_ty, lhs);
+            (widened, rhs, rhs_ty)
+        } else {
+            let widened = builder.ins().sextend(lhs_ty, rhs);
+            (lhs, widened, lhs_ty)
+        }
+    } else {
+        (lhs, rhs, lhs_ty)
+    };
+    let rhs_ty = builder.func.dfg.value_type(rhs);
+
     if lhs_ty != rhs_ty {
         return Err(CodegenError::UnsupportedMir {
             function: function_name.to_string(),
@@ -6184,6 +6199,23 @@ fn lower_unary(
         }
         MirUnaryOp::WidenSignedToInt if value_ty == types::I64 => value,
         MirUnaryOp::WidenUnsignedToInt if value_ty == types::I64 => value,
+        MirUnaryOp::NarrowToI8 if value_ty.bits() > 8 => builder.ins().ireduce(types::I8, value),
+        MirUnaryOp::NarrowToI16 if value_ty.bits() > 16 => {
+            builder.ins().ireduce(types::I16, value)
+        }
+        MirUnaryOp::NarrowToI32 if value_ty.bits() > 32 => {
+            builder.ins().ireduce(types::I32, value)
+        }
+        MirUnaryOp::NarrowToU8 if value_ty.bits() > 8 => builder.ins().ireduce(types::I8, value),
+        MirUnaryOp::NarrowToU16 if value_ty.bits() > 16 => {
+            builder.ins().ireduce(types::I16, value)
+        }
+        MirUnaryOp::NarrowToU32 if value_ty.bits() > 32 => {
+            builder.ins().ireduce(types::I32, value)
+        }
+        MirUnaryOp::NarrowToI8 | MirUnaryOp::NarrowToU8 if value_ty == types::I8 => value,
+        MirUnaryOp::NarrowToI16 | MirUnaryOp::NarrowToU16 if value_ty == types::I16 => value,
+        MirUnaryOp::NarrowToI32 | MirUnaryOp::NarrowToU32 if value_ty == types::I32 => value,
         _ => {
             return Err(CodegenError::UnsupportedMir {
                 function: function_name.to_string(),
