@@ -316,29 +316,19 @@ impl Parser {
 
         // Type as Trait { methods }
         if self.looks_like_type_as_trait_impl_header() {
-            if doc.is_some() {
-                self.error_at_current(
-                    "doc comments can only be attached to fn, type, struct, trait, or effect declarations",
-                );
-            }
             if !annotations.is_empty() {
                 self.error_at_current("annotations are not allowed on impl blocks");
             }
-            return self.impl_block_type_as(start);
+            return self.impl_block_type_as(start, doc);
         }
 
         // Legacy alias: impl Trait for Type { methods }
         if self.check(&TokenKind::Impl) {
-            if doc.is_some() {
-                self.error_at_current(
-                    "doc comments can only be attached to fn, type, struct, trait, or effect declarations",
-                );
-            }
             if !annotations.is_empty() {
                 self.error_at_current("annotations are not allowed on impl blocks");
             }
             self.advance(); // consume 'impl'
-            return self.impl_block(start);
+            return self.impl_block(start, doc);
         }
 
         // expr name(params) -> Type { body }
@@ -1070,6 +1060,10 @@ impl Parser {
         let mut methods = Vec::new();
         self.skip_newlines();
         while !self.at_block_end(delimiter) && !self.at_eof() {
+            // Consume an optional doc block that may precede either an
+            // associated type declaration or a trait method.
+            let member_doc = self.consume_doc_comment_block();
+            self.skip_newlines();
             // Associated type declaration:
             // `type Name`
             // `type Name where Name: Constraint`
@@ -1111,9 +1105,13 @@ impl Parser {
                     name: assoc_name,
                     constraints,
                     default,
+                    doc: member_doc,
                 });
             } else {
-                methods.push(self.trait_method()?);
+                // Re-route to trait_method, which also tries to consume a doc
+                // block. Since we already consumed it above, pass it in by
+                // calling the inner parse path directly.
+                methods.push(self.trait_method_with_doc(member_doc)?);
             }
             self.skip_newlines();
         }
@@ -1287,9 +1285,8 @@ impl Parser {
         None
     }
 
-    fn trait_method(&mut self) -> Option<TraitMethod> {
+    fn trait_method_with_doc(&mut self, doc: Option<String>) -> Option<TraitMethod> {
         let method_start = self.current_span();
-        let doc = self.consume_doc_comment_block();
         self.expect(&TokenKind::Fn, "expected 'fn' in trait method")?;
         let name = self.expect_ident("expected method name")?;
         self.expect(&TokenKind::LParen, "expected '(' after method name")?;
@@ -1325,7 +1322,7 @@ impl Parser {
         })
     }
 
-    fn impl_block(&mut self, start: Span) -> Option<Decl> {
+    fn impl_block(&mut self, start: Span, doc: Option<String>) -> Option<Decl> {
         // Legacy alias: impl Trait for Type { methods }
         let trait_name = self.expect_upper_ident("expected trait name after 'impl'")?;
         self.skip_newlines();
@@ -1342,10 +1339,10 @@ impl Parser {
         self.skip_newlines();
         let type_params =
             self.parse_impl_target_type_params("expected type parameter in impl header")?;
-        self.parse_impl_block_with_header(start, trait_name, type_name, type_params)
+        self.parse_impl_block_with_header(start, trait_name, type_name, type_params, doc)
     }
 
-    fn impl_block_type_as(&mut self, start: Span) -> Option<Decl> {
+    fn impl_block_type_as(&mut self, start: Span, doc: Option<String>) -> Option<Decl> {
         // Canonical Kea syntax: Type as Trait
         let type_name = self.expect_upper_ident("expected type name before `as` in impl header")?;
         self.skip_newlines();
@@ -1360,7 +1357,7 @@ impl Parser {
         self.skip_newlines();
         let trait_name = self.expect_upper_ident("expected trait name after `as`")?;
         self.skip_newlines();
-        self.parse_impl_block_with_header(start, trait_name, type_name, type_params)
+        self.parse_impl_block_with_header(start, trait_name, type_name, type_params, doc)
     }
 
     fn parse_impl_target_type_params(&mut self, msg: &str) -> Option<Vec<Spanned<String>>> {
@@ -1425,18 +1422,52 @@ impl Parser {
                         return None;
                     }
                 } else {
-                    // lowercase ident: trait bound
+                    // lowercase ident: either `t: Trait` (TraitBound) or `t.Name = Type` (AssocTypeEqual)
                     let type_var = self.expect_ident("expected name in where clause")?;
-                    self.expect(
-                        &TokenKind::Colon,
-                        "expected ':' after type variable in where clause",
-                    )?;
-                    let trait_name =
-                        self.expect_upper_ident("expected trait name in where clause")?;
-                    impl_where_clause.push(WhereItem::TraitBound(TraitBound {
-                        type_var,
-                        trait_name,
-                    }));
+                    self.skip_newlines();
+                    if !self.peek_has_leading_space() && self.check(&TokenKind::Dot) {
+                        // `t.Name = Type` or `t.Trait.Name = Type`
+                        self.advance(); // consume '.'
+                        let first = self.expect_upper_ident("expected name after '.' in where clause")?;
+                        self.skip_newlines();
+                        if !self.peek_has_leading_space() && self.check(&TokenKind::Dot) {
+                            // qualified: `t.Trait.Name = Type`
+                            self.advance(); // consume '.'
+                            let assoc_name = self.expect_upper_ident("expected associated type name after '.' in where clause")?;
+                            self.skip_newlines();
+                            self.expect(&TokenKind::Eq, "expected '=' after associated type in where clause")?;
+                            self.skip_newlines();
+                            let ty = self.type_annotation()?;
+                            impl_where_clause.push(WhereItem::AssocTypeEqual {
+                                type_var,
+                                trait_name: Some(first),
+                                assoc_name,
+                                ty,
+                            });
+                        } else {
+                            // unqualified: `t.Name = Type`
+                            self.expect(&TokenKind::Eq, "expected '=' after associated type in where clause")?;
+                            self.skip_newlines();
+                            let ty = self.type_annotation()?;
+                            impl_where_clause.push(WhereItem::AssocTypeEqual {
+                                type_var,
+                                trait_name: None,
+                                assoc_name: first,
+                                ty,
+                            });
+                        }
+                    } else {
+                        self.expect(
+                            &TokenKind::Colon,
+                            "expected ':' after type variable in where clause",
+                        )?;
+                        let trait_name =
+                            self.expect_upper_ident("expected trait name in where clause")?;
+                        impl_where_clause.push(WhereItem::TraitBound(TraitBound {
+                            type_var,
+                            trait_name,
+                        }));
+                    }
                 }
                 self.skip_newlines();
                 if !self.match_token(&TokenKind::Comma) {
@@ -1453,6 +1484,7 @@ impl Parser {
         trait_name: Spanned<String>,
         type_name: Spanned<String>,
         type_params: Vec<Spanned<String>>,
+        doc: Option<String>,
     ) -> Option<Decl> {
         let impl_where_clause = self.parse_impl_where_clause_items()?;
         let delimiter = self.expect_block_start("expected impl body block after impl header")?;
@@ -1491,17 +1523,23 @@ impl Parser {
                 methods,
                 control_type,
                 where_clause: impl_where_clause,
+                doc,
             }),
             start.merge(end),
         ))
     }
 
-    /// Parse an optional `where T: Trait, U: Other` clause.
-    fn where_clause(&mut self) -> Option<Vec<TraitBound>> {
+    /// Parse an optional `where` clause for function declarations.
+    ///
+    /// Supports:
+    /// - `T: Trait` — trait bounds
+    /// - `T.Name = Type` — associated type equality (`f.Item = Int`)
+    /// - `T.Trait.Name = Type` — qualified associated type equality (`f.Foldable.Item = Int`)
+    fn where_clause(&mut self) -> Option<Vec<WhereItem>> {
         if !self.match_token(&TokenKind::Where) {
             return Some(Vec::new());
         }
-        let mut bounds = Vec::new();
+        let mut items = Vec::new();
         loop {
             self.skip_newlines();
             let type_var = match self.peek_kind() {
@@ -1516,21 +1554,60 @@ impl Parser {
                     return None;
                 }
             };
-            self.expect(
-                &TokenKind::Colon,
-                "expected ':' after type variable in where clause",
-            )?;
-            let trait_name = self.expect_upper_ident("expected trait name in where clause")?;
-            bounds.push(TraitBound {
-                type_var,
-                trait_name,
-            });
+
+            if self.match_token(&TokenKind::Colon) {
+                // `T: Trait` — trait bound.
+                let trait_name = self.expect_upper_ident("expected trait name in where clause")?;
+                items.push(WhereItem::TraitBound(TraitBound { type_var, trait_name }));
+            } else if self.match_token(&TokenKind::Dot) {
+                // `T.Name ...` — associated type constraint or qualified projection.
+                let first = self.expect_upper_ident(
+                    "expected associated type or trait name after '.' in where clause",
+                )?;
+                if self.match_token(&TokenKind::Dot) {
+                    // `T.Trait.Name = Type` — qualified: first ident is the trait name.
+                    let assoc_name = self.expect_upper_ident(
+                        "expected associated type name after trait name in where clause",
+                    )?;
+                    self.expect(
+                        &TokenKind::Eq,
+                        "expected '=' after associated type name in where clause",
+                    )?;
+                    let ty = self.type_annotation()?;
+                    items.push(WhereItem::AssocTypeEqual {
+                        type_var,
+                        trait_name: Some(first),
+                        assoc_name,
+                        ty,
+                    });
+                } else {
+                    // `T.Name = Type` — unqualified.
+                    self.expect(
+                        &TokenKind::Eq,
+                        "expected '=' after associated type name in where clause",
+                    )?;
+                    let ty = self.type_annotation()?;
+                    items.push(WhereItem::AssocTypeEqual {
+                        type_var,
+                        trait_name: None,
+                        assoc_name: first,
+                        ty,
+                    });
+                }
+            } else {
+                self.expect(
+                    &TokenKind::Colon,
+                    "expected ':' or '.' after type variable in where clause",
+                )?;
+                return None;
+            }
+
             self.skip_newlines();
             if !self.match_token(&TokenKind::Comma) {
                 break;
             }
         }
-        Some(bounds)
+        Some(items)
     }
 
     fn parse_effect_row_name(&mut self, msg: &str) -> Option<String> {
@@ -2271,6 +2348,23 @@ impl Parser {
                     TypeAnnotation::Applied(name_str, args),
                     start.merge(end),
                 ))
+            } else if !self.peek_has_leading_space() && self.check(&TokenKind::Dot) {
+                // `f.Item` → Projection type (type variable associated-type access).
+                // Only trigger when dot has no leading space to avoid ambiguity.
+                self.advance(); // consume '.'
+                if let Some(assoc_name) = self.try_upper_ident() {
+                    let end = assoc_name.span;
+                    Some(Spanned::new(
+                        TypeAnnotation::Projection {
+                            base: name_str,
+                            name: assoc_name.node,
+                        },
+                        start.merge(end),
+                    ))
+                } else {
+                    self.error_at_current("expected associated type name after '.'");
+                    None
+                }
             } else if self.match_token(&TokenKind::Question) {
                 let end = self.current_span();
                 Some(Spanned::new(
@@ -7489,8 +7583,13 @@ mod tests {
                 let method = &td.methods[0];
                 assert_eq!(method.name.node, "traverse");
                 assert_eq!(method.where_clause.len(), 1);
-                assert_eq!(method.where_clause[0].type_var.node, "F");
-                assert_eq!(method.where_clause[0].trait_name.node, "Applicative");
+                match &method.where_clause[0] {
+                    WhereItem::TraitBound(tb) => {
+                        assert_eq!(tb.type_var.node, "F");
+                        assert_eq!(tb.trait_name.node, "Applicative");
+                    }
+                    other => panic!("expected TraitBound, got {other:?}"),
+                }
             }
             other => panic!("expected TraitDef, got {other:?}"),
         }
@@ -7792,8 +7891,13 @@ mod tests {
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 assert_eq!(fd.where_clause.len(), 1);
-                assert_eq!(fd.where_clause[0].type_var.node, "x");
-                assert_eq!(fd.where_clause[0].trait_name.node, "Additive");
+                match &fd.where_clause[0] {
+                    WhereItem::TraitBound(tb) => {
+                        assert_eq!(tb.type_var.node, "x");
+                        assert_eq!(tb.trait_name.node, "Additive");
+                    }
+                    other => panic!("expected TraitBound, got {other:?}"),
+                }
             }
             _ => panic!("expected Function"),
         }
@@ -7805,10 +7909,20 @@ mod tests {
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 assert_eq!(fd.where_clause.len(), 2);
-                assert_eq!(fd.where_clause[0].type_var.node, "a");
-                assert_eq!(fd.where_clause[0].trait_name.node, "Show");
-                assert_eq!(fd.where_clause[1].type_var.node, "b");
-                assert_eq!(fd.where_clause[1].trait_name.node, "Additive");
+                match &fd.where_clause[0] {
+                    WhereItem::TraitBound(tb) => {
+                        assert_eq!(tb.type_var.node, "a");
+                        assert_eq!(tb.trait_name.node, "Show");
+                    }
+                    other => panic!("expected TraitBound, got {other:?}"),
+                }
+                match &fd.where_clause[1] {
+                    WhereItem::TraitBound(tb) => {
+                        assert_eq!(tb.type_var.node, "b");
+                        assert_eq!(tb.trait_name.node, "Additive");
+                    }
+                    other => panic!("expected TraitBound, got {other:?}"),
+                }
             }
             _ => panic!("expected Function"),
         }
@@ -7820,8 +7934,58 @@ mod tests {
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 assert_eq!(fd.where_clause.len(), 1);
-                assert_eq!(fd.where_clause[0].type_var.node, "F");
-                assert_eq!(fd.where_clause[0].trait_name.node, "Applicative");
+                match &fd.where_clause[0] {
+                    WhereItem::TraitBound(tb) => {
+                        assert_eq!(tb.type_var.node, "F");
+                        assert_eq!(tb.trait_name.node, "Applicative");
+                    }
+                    other => panic!("expected TraitBound, got {other:?}"),
+                }
+            }
+            _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_with_assoc_type_where_constraint() {
+        let m = parse_mod("fn sum(xs: f) -> Int where f: Foldable, f.Item = Int\n  0");
+        match &m.declarations[0].node {
+            DeclKind::Function(fd) => {
+                assert_eq!(fd.where_clause.len(), 2);
+                match &fd.where_clause[0] {
+                    WhereItem::TraitBound(tb) => {
+                        assert_eq!(tb.type_var.node, "f");
+                        assert_eq!(tb.trait_name.node, "Foldable");
+                    }
+                    other => panic!("expected TraitBound, got {other:?}"),
+                }
+                match &fd.where_clause[1] {
+                    WhereItem::AssocTypeEqual { type_var, trait_name, assoc_name, .. } => {
+                        assert_eq!(type_var.node, "f");
+                        assert!(trait_name.is_none());
+                        assert_eq!(assoc_name.node, "Item");
+                    }
+                    other => panic!("expected AssocTypeEqual, got {other:?}"),
+                }
+            }
+            _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_with_qualified_assoc_type_where_constraint() {
+        let m = parse_mod("fn sum(xs: f) -> Int where f: Foldable, f.Foldable.Item = Int\n  0");
+        match &m.declarations[0].node {
+            DeclKind::Function(fd) => {
+                assert_eq!(fd.where_clause.len(), 2);
+                match &fd.where_clause[1] {
+                    WhereItem::AssocTypeEqual { type_var, trait_name, assoc_name, .. } => {
+                        assert_eq!(type_var.node, "f");
+                        assert_eq!(trait_name.as_ref().map(|t| t.node.as_str()), Some("Foldable"));
+                        assert_eq!(assoc_name.node, "Item");
+                    }
+                    other => panic!("expected AssocTypeEqual, got {other:?}"),
+                }
             }
             _ => panic!("expected Function"),
         }
@@ -8464,7 +8628,12 @@ mod tests {
         match &m.declarations[0].node {
             DeclKind::ExprFn(ed) => {
                 assert_eq!(ed.where_clause.len(), 1);
-                assert_eq!(ed.where_clause[0].trait_name.node, "Additive");
+                match &ed.where_clause[0] {
+                    WhereItem::TraitBound(tb) => {
+                        assert_eq!(tb.trait_name.node, "Additive");
+                    }
+                    other => panic!("expected TraitBound, got {other:?}"),
+                }
             }
             other => panic!("expected ExprFn, got {other:?}"),
         }

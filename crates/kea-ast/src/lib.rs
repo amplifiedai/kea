@@ -657,7 +657,7 @@ pub struct FnDecl {
     pub effect_annotation: Option<Spanned<EffectAnnotation>>,
     pub body: Expr,
     pub span: Span,
-    pub where_clause: Vec<TraitBound>,
+    pub where_clause: Vec<WhereItem>,
 }
 
 impl FnDecl {
@@ -700,7 +700,7 @@ pub struct ExprDecl {
     pub effect_annotation: Option<Spanned<EffectAnnotation>>,
     pub body: Expr,
     pub span: Span,
-    pub where_clause: Vec<TraitBound>,
+    pub where_clause: Vec<WhereItem>,
 }
 
 impl ExprDecl {
@@ -843,6 +843,7 @@ pub struct AssociatedTypeDecl {
     pub name: Spanned<String>,
     pub constraints: Vec<Spanned<String>>,
     pub default: Option<Spanned<TypeAnnotation>>,
+    pub doc: Option<String>,
 }
 
 /// A method signature within a trait definition.
@@ -852,7 +853,7 @@ pub struct TraitMethod {
     pub params: Vec<Param>,
     pub return_annotation: Option<Spanned<TypeAnnotation>>,
     pub effect_annotation: Option<Spanned<EffectAnnotation>>,
-    pub where_clause: Vec<TraitBound>,
+    pub where_clause: Vec<WhereItem>,
     pub default_body: Option<Expr>,
     pub doc: Option<String>,
     pub span: Span,
@@ -890,6 +891,8 @@ pub struct ImplBlock {
     pub control_type: Option<Spanned<TypeAnnotation>>,
     /// Where clause on impl: `where Source = String, schema: Deserialize`.
     pub where_clause: Vec<WhereItem>,
+    /// Optional doc comment on the impl block.
+    pub doc: Option<String>,
 }
 
 
@@ -905,9 +908,18 @@ pub struct TraitBound {
 pub enum WhereItem {
     /// Trait bound: `T: Trait` or `schema: Deserialize`.
     TraitBound(TraitBound),
-    /// Associated type assignment: `Source = String`.
+    /// Associated type assignment in an impl block: `Item = String`.
     TypeAssignment {
         name: Spanned<String>,
+        ty: Spanned<TypeAnnotation>,
+    },
+    /// Associated type equality constraint in a function where clause: `f.Item = Int`.
+    /// Optionally qualified: `f.Foldable.Item = Int` when disambiguation is needed.
+    AssocTypeEqual {
+        type_var: Spanned<String>,
+        /// Optional disambiguating trait name (the `Foldable` in `f.Foldable.Item`).
+        trait_name: Option<Spanned<String>>,
+        assoc_name: Spanned<String>,
         ty: Spanned<TypeAnnotation>,
     },
 }
