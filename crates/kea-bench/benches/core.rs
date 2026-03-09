@@ -603,6 +603,7 @@ fn build_linear_heap_alias_chain_hir_module(levels: usize) -> HirModule {
         doc: None,
         annotations: vec![],
         params: vec![],
+        param_kinds: Default::default(),
         fields: vec![(
             Spanned::new("n".to_string(), span),
             TypeAnnotation::Named("Int".to_string()),

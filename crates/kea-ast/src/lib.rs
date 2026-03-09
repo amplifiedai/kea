@@ -760,6 +760,10 @@ pub struct TypeDef {
     pub doc: Option<String>,
     pub annotations: Vec<Annotation>,
     pub params: Vec<String>,
+    /// Explicit kind annotations for type parameters.
+    /// Parameters not in this map default to kind `*`.
+    /// Used by the kind checker to verify consistent usage.
+    pub param_kinds: std::collections::BTreeMap<String, KindAnnotation>,
     pub variants: Vec<TypeVariant>,
     /// Inherent methods declared inside the enum block (§2.8, §3.5).
     pub methods: Vec<FnDecl>,
@@ -790,6 +794,10 @@ pub struct RecordDef {
     pub doc: Option<String>,
     pub annotations: Vec<Annotation>,
     pub params: Vec<String>,
+    /// Explicit kind annotations for type parameters.
+    /// Parameters not in this map default to kind `*`.
+    /// Used by the kind checker to verify consistent usage.
+    pub param_kinds: std::collections::BTreeMap<String, KindAnnotation>,
     pub fields: Vec<(Spanned<String>, TypeAnnotation)>,
     pub const_fields: Vec<ConstField>,
     /// Per-field annotations aligned with `fields` by index.

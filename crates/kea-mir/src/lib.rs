@@ -10060,6 +10060,7 @@ mod tests {
                 doc: None,
                 annotations: vec![],
                 params: vec![],
+                param_kinds: Default::default(),
                 fields: vec![
                     (
                         sp("name".to_string()),
@@ -10102,6 +10103,7 @@ mod tests {
                 doc: None,
                 annotations: vec![],
                 params: vec!["a".to_string()],
+                param_kinds: Default::default(),
                 variants: vec![
                     TypeVariant {
                         annotations: vec![],
@@ -10827,6 +10829,7 @@ mod tests {
                     name: sp("Point".to_string()),
                     doc: None,
                     params: vec![],
+                    param_kinds: Default::default(),
                     fields: vec![
                         (sp("x".to_string()), kea_ast::TypeAnnotation::Named("Int".to_string())),
                         (sp("y".to_string()), kea_ast::TypeAnnotation::Named("Int".to_string())),
@@ -11503,6 +11506,7 @@ mod tests {
             doc: None,
             annotations: vec![],
             params: vec![],
+            param_kinds: Default::default(),
             variants: vec![
                 TypeVariant {
                     annotations: vec![],
@@ -11762,6 +11766,7 @@ mod tests {
                     doc: None,
                     annotations: vec![],
                     params: vec![],
+                    param_kinds: Default::default(),
                     fields: vec![
                         (
                             sp("age".to_string()),
@@ -16822,6 +16827,7 @@ mod tests {
                     doc: None,
                     annotations: vec![],
                     params: vec![],
+                    param_kinds: Default::default(),
                     fields: vec![(
                         sp("age".to_string()),
                         TypeAnnotation::Named("Int".to_string()),

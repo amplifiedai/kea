@@ -628,11 +628,19 @@ impl Parser {
         let name = self.expect_upper_ident("expected struct name")?;
         self.skip_newlines();
 
-        // Optional type parameters: struct ApiResponse(t) { ... }
+        // Optional type parameters: `struct ApiResponse(t)` or `struct Server(E: Eff)`.
         let mut params = Vec::new();
+        let mut param_kinds = std::collections::BTreeMap::new();
         if self.match_token(&TokenKind::LParen) {
             loop {
                 let p = self.expect_ident("expected type parameter")?;
+                // Optional kind annotation: `E: Eff` or `E: *`
+                if self.match_token(&TokenKind::Colon)
+                    && let Some(kind) = self.kind_annotation()
+                    && kind != KindAnnotation::Star
+                {
+                    param_kinds.insert(p.node.clone(), kind);
+                }
                 params.push(p.node);
                 if !self.match_token(&TokenKind::Comma) {
                     break;
@@ -708,6 +716,7 @@ impl Parser {
                 doc,
                 annotations,
                 params,
+                param_kinds,
                 fields,
                 const_fields,
                 field_annotations,
@@ -734,12 +743,20 @@ impl Parser {
         self.skip_newlines();
 
         // Optional type parameters:
-        // - Parenthesized form: `enum Option(T)`
+        // - Parenthesized form: `enum Option(T)` or `enum Result(T, E: Eff)`
         // - Canonical bare form: `enum Option t`
         let mut params = Vec::new();
+        let mut param_kinds = std::collections::BTreeMap::new();
         if self.match_token(&TokenKind::LParen) {
             loop {
                 let p = self.expect_type_param_name("expected type parameter")?;
+                // Optional kind annotation: `E: Eff` or `E: *`
+                if self.match_token(&TokenKind::Colon)
+                    && let Some(kind) = self.kind_annotation()
+                    && kind != KindAnnotation::Star
+                {
+                    param_kinds.insert(p.node.clone(), kind);
+                }
                 params.push(p.node);
                 if !self.match_token(&TokenKind::Comma) {
                     break;
@@ -864,6 +881,7 @@ impl Parser {
                 doc,
                 annotations,
                 params,
+                param_kinds,
                 variants,
                 methods,
             }),

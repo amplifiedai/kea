@@ -1328,6 +1328,7 @@ fn register_tagged_gadt(sum_types: &mut SumTypeRegistry, records: &RecordRegistr
         name: sp_ast("Tagged".to_string()),
         doc: None,
         params: vec!["T".to_string()],
+        param_kinds: Default::default(),
         variants: vec![
             kea_ast::TypeVariant {
                 annotations: vec![],
@@ -1366,6 +1367,7 @@ fn register_shape_sum(sum_types: &mut SumTypeRegistry, records: &RecordRegistry)
         name: sp_ast("Shape".to_string()),
         doc: None,
         params: vec![],
+        param_kinds: Default::default(),
         variants: vec![
             kea_ast::TypeVariant {
                 annotations: vec![],

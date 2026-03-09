@@ -1318,6 +1318,22 @@ impl RecordRegistry {
 
             let mut fields: Vec<(Label, Type)> = Vec::new();
             for (name, ann) in &def.fields {
+                // Kind-check before resolving: Eff params must not appear in type
+                // position, and Star params must not appear in effect row position.
+                if !def.param_kinds.is_empty()
+                    && let Err(diag) = check_param_kinds_in_annotation(
+                        ann,
+                        &def.param_kinds,
+                        &def.name.node,
+                        &name.node,
+                        name.span,
+                    )
+                {
+                    for rollback in defs {
+                        self.records.remove(&rollback.name.node);
+                    }
+                    return Err(diag);
+                }
                 match resolve_annotation_with_type_params(ann, &type_param_scope, self, sum_types) {
                     Some(ty) => fields.push((Label::new(name.node.clone()), ty)),
                     None => {
@@ -2060,6 +2076,26 @@ impl SumTypeRegistry {
                 let mut recursive_fields = Vec::new();
                 let mut variant_field_named_types = BTreeSet::new();
                 for field in &variant.fields {
+                    // Kind-check before resolving.
+                    if !def.param_kinds.is_empty() {
+                        let field_label = field
+                            .name
+                            .as_ref()
+                            .map(|n| n.node.as_str())
+                            .unwrap_or("_");
+                        if let Err(diag) = check_param_kinds_in_annotation(
+                            &field.ty.node,
+                            &def.param_kinds,
+                            &def.name.node,
+                            field_label,
+                            variant.name.span,
+                        ) {
+                            for seeded in defs {
+                                self.types.remove(&seeded.name.node);
+                            }
+                            return Err(diag);
+                        }
+                    }
                     if let Some(ty) = resolve_annotation_with_type_params(
                         &field.ty.node,
                         &type_param_scope,
@@ -2680,6 +2716,173 @@ fn ast_kind_to_kind(kind: &kea_ast::KindAnnotation) -> Kind {
     match kind {
         kea_ast::KindAnnotation::Star => Kind::Star,
         kea_ast::KindAnnotation::Eff => Kind::Eff,
+    }
+}
+
+/// Check that type parameters annotated as `Eff` are only used in effect-row
+/// positions, and that un-annotated (Star) parameters are not used as effect rows.
+///
+/// Returns the first violation found, if any.
+fn check_param_kinds_in_annotation(
+    ann: &TypeAnnotation,
+    param_kinds: &BTreeMap<String, kea_ast::KindAnnotation>,
+    type_name: &str,
+    field_name: &str,
+    field_span: kea_ast::Span,
+) -> Result<(), Diagnostic> {
+    check_param_kinds_in_type_pos(ann, param_kinds, type_name, field_name, field_span)
+}
+
+/// Walk `ann` as a type position. Eff-kinded params are forbidden here.
+fn check_param_kinds_in_type_pos(
+    ann: &TypeAnnotation,
+    param_kinds: &BTreeMap<String, kea_ast::KindAnnotation>,
+    type_name: &str,
+    field_name: &str,
+    span: kea_ast::Span,
+) -> Result<(), Diagnostic> {
+    match ann {
+        TypeAnnotation::Named(name) => {
+            if matches!(
+                param_kinds.get(name),
+                Some(kea_ast::KindAnnotation::Eff)
+            ) {
+                return Err(Diagnostic::error(
+                    Category::TypeMismatch,
+                    format!(
+                        "type parameter `{name}` has kind `Eff` but is used in type position in `{type_name}.{field_name}`; Eff parameters can only appear in effect rows (e.g. `-[{name}]>`)"
+                    ),
+                )
+                .at(SourceLocation {
+                    file_id: span.file.0,
+                    start: span.start,
+                    end: span.end,
+                }));
+            }
+            Ok(())
+        }
+        TypeAnnotation::Applied(name, args) => {
+            if matches!(
+                param_kinds.get(name),
+                Some(kea_ast::KindAnnotation::Eff)
+            ) {
+                return Err(Diagnostic::error(
+                    Category::TypeMismatch,
+                    format!(
+                        "type parameter `{name}` has kind `Eff` but is used in type position in `{type_name}.{field_name}`"
+                    ),
+                )
+                .at(SourceLocation {
+                    file_id: span.file.0,
+                    start: span.start,
+                    end: span.end,
+                }));
+            }
+            for arg in args {
+                check_param_kinds_in_type_pos(arg, param_kinds, type_name, field_name, span)?;
+            }
+            Ok(())
+        }
+        TypeAnnotation::Tuple(elems) => {
+            for elem in elems {
+                check_param_kinds_in_type_pos(elem, param_kinds, type_name, field_name, span)?;
+            }
+            Ok(())
+        }
+        TypeAnnotation::Optional(inner) => {
+            check_param_kinds_in_type_pos(inner, param_kinds, type_name, field_name, span)
+        }
+        TypeAnnotation::Function(params, ret) => {
+            for p in params {
+                check_param_kinds_in_type_pos(p, param_kinds, type_name, field_name, span)?;
+            }
+            check_param_kinds_in_type_pos(ret, param_kinds, type_name, field_name, span)
+        }
+        TypeAnnotation::FunctionWithEffect(params, effect_ann, ret) => {
+            for p in params {
+                check_param_kinds_in_type_pos(p, param_kinds, type_name, field_name, span)?;
+            }
+            check_param_kinds_in_type_pos(ret, param_kinds, type_name, field_name, span)?;
+            // Check the effect annotation: Star params used here are mismatched.
+            check_param_kinds_in_effect_pos(
+                &effect_ann.node,
+                param_kinds,
+                type_name,
+                field_name,
+                span,
+            )
+        }
+        TypeAnnotation::Row { fields, .. } => {
+            for (_, field_ann) in fields {
+                check_param_kinds_in_type_pos(
+                    field_ann, param_kinds, type_name, field_name, span,
+                )?;
+            }
+            Ok(())
+        }
+        TypeAnnotation::Forall { ty, .. } => {
+            check_param_kinds_in_type_pos(ty, param_kinds, type_name, field_name, span)
+        }
+        TypeAnnotation::Existential { .. }
+        | TypeAnnotation::Projection { .. }
+        | TypeAnnotation::EffectRow(_)
+        | TypeAnnotation::DimLiteral(_) => Ok(()),
+    }
+}
+
+/// Walk an effect annotation. Star-kinded params used here are mismatched.
+fn check_param_kinds_in_effect_pos(
+    effect: &kea_ast::EffectAnnotation,
+    param_kinds: &BTreeMap<String, kea_ast::KindAnnotation>,
+    type_name: &str,
+    field_name: &str,
+    span: kea_ast::Span,
+) -> Result<(), Diagnostic> {
+    match effect {
+        kea_ast::EffectAnnotation::Var(name) | kea_ast::EffectAnnotation::Row(kea_ast::EffectRowAnnotation { rest: Some(name), .. }) => {
+            if param_kinds.contains_key(name)
+                && !matches!(
+                    param_kinds.get(name),
+                    Some(kea_ast::KindAnnotation::Eff)
+                )
+            {
+                return Err(Diagnostic::error(
+                    Category::TypeMismatch,
+                    format!(
+                        "type parameter `{name}` has kind `*` but is used as an effect row in `{type_name}.{field_name}`; annotate it as `({name}: Eff)` if it is an effect parameter"
+                    ),
+                )
+                .at(SourceLocation {
+                    file_id: span.file.0,
+                    start: span.start,
+                    end: span.end,
+                }));
+            }
+            Ok(())
+        }
+        kea_ast::EffectAnnotation::Row(row) => {
+            if let Some(rest) = &row.rest
+                && param_kinds.contains_key(rest)
+                && !matches!(
+                    param_kinds.get(rest),
+                    Some(kea_ast::KindAnnotation::Eff)
+                )
+            {
+                return Err(Diagnostic::error(
+                    Category::TypeMismatch,
+                    format!(
+                        "type parameter `{rest}` has kind `*` but is used as an effect row in `{type_name}.{field_name}`"
+                    ),
+                )
+                .at(SourceLocation {
+                    file_id: span.file.0,
+                    start: span.start,
+                    end: span.end,
+                }));
+            }
+            Ok(())
+        }
+        _ => Ok(()),
     }
 }
 

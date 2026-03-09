@@ -241,6 +241,7 @@ TypeDef(
         doc: None,
         annotations: [],
         params: [],
+        param_kinds: {},
         variants: [
             TypeVariant {
                 annotations: [],
@@ -441,6 +442,7 @@ TraitDef(
                 },
                 constraints: [],
                 default: None,
+                doc: None,
             },
         ],
         methods: [
@@ -567,6 +569,7 @@ ImplBlock(
                 },
             },
         ],
+        doc: None,
     },
 )
 
@@ -628,6 +631,7 @@ RecordDef(
         doc: None,
         annotations: [],
         params: [],
+        param_kinds: {},
         fields: [
             (
                 Spanned {
@@ -736,6 +740,7 @@ ImplBlock(
         ],
         control_type: None,
         where_clause: [],
+        doc: None,
     },
 )
 

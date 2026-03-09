@@ -470,6 +470,7 @@ fn make_record_def(name: &str, fields: Vec<(&str, TypeAnnotation)>) -> RecordDef
         name: sp(name.to_string()),
         doc: None,
         params: Vec::new(),
+        param_kinds: Default::default(),
         fields: fields
             .into_iter()
             .map(|(n, ann)| (sp(n.to_string()), ann))
@@ -491,6 +492,7 @@ fn make_param_record_def(
         name: sp(name.to_string()),
         doc: None,
         params: params.into_iter().map(ToString::to_string).collect(),
+        param_kinds: Default::default(),
         fields: fields
             .into_iter()
             .map(|(n, ann)| (sp(n.to_string()), ann))
@@ -536,6 +538,7 @@ fn make_type_def(
         name: sp(name.to_string()),
         doc: None,
         params: params.into_iter().map(ToString::to_string).collect(),
+        param_kinds: Default::default(),
         variants: variants
             .into_iter()
             .map(|(variant_name, fields)| TypeVariant {
@@ -1507,6 +1510,7 @@ fn sum_type_variant_where_clause_registers_constraints() {
         name: sp("Tagged".to_string()),
         doc: None,
         params: vec!["T".to_string()],
+        param_kinds: Default::default(),
         variants: vec![
             TypeVariant {
                 annotations: vec![],
@@ -1547,6 +1551,7 @@ fn sum_type_variant_where_clause_unknown_param_errors() {
         name: sp("Tagged".to_string()),
         doc: None,
         params: vec!["T".to_string()],
+        param_kinds: Default::default(),
         variants: vec![TypeVariant {
             annotations: vec![],
             name: sp("TagInt".to_string()),
@@ -1579,6 +1584,7 @@ fn sum_type_variant_where_clause_accepts_phantom_constraint_param() {
         name: sp("Tagged".to_string()),
         doc: None,
         params: vec!["T".to_string()],
+        param_kinds: Default::default(),
         variants: vec![TypeVariant {
             annotations: vec![],
             name: sp("TagInt".to_string()),
@@ -1611,6 +1617,7 @@ fn constructor_enforces_variant_where_clause_constraints() {
         name: sp("Constrained".to_string()),
         doc: None,
         params: vec!["T".to_string()],
+        param_kinds: Default::default(),
         variants: vec![TypeVariant {
             annotations: vec![],
             name: sp("OnlyInt".to_string()),
@@ -1648,6 +1655,7 @@ fn constructor_enforces_variant_where_clause_constraints_bool_variant() {
         name: sp("Constrained".to_string()),
         doc: None,
         params: vec!["T".to_string()],
+        param_kinds: Default::default(),
         variants: vec![
             TypeVariant {
                 annotations: vec![],
@@ -1719,6 +1727,7 @@ fn case_arms_do_not_leak_variant_where_clause_constraints() {
         name: sp("Tagged".to_string()),
         doc: None,
         params: vec!["T".to_string()],
+        param_kinds: Default::default(),
         variants: vec![
             TypeVariant {
                 annotations: vec![],
@@ -1786,6 +1795,7 @@ fn case_exhaustiveness_ignores_unreachable_gadt_variants() {
         name: sp("Tagged".to_string()),
         doc: None,
         params: vec!["T".to_string()],
+        param_kinds: Default::default(),
         variants: vec![
             TypeVariant {
                 annotations: vec![],
@@ -1843,6 +1853,7 @@ fn case_exhaustiveness_ignores_unreachable_phantom_gadt_variants() {
         name: sp("Expr".to_string()),
         doc: None,
         params: vec!["T".to_string()],
+        param_kinds: Default::default(),
         variants: vec![
             TypeVariant {
                 annotations: vec![],
@@ -1900,6 +1911,7 @@ fn case_ignores_unreachable_gadt_arms_without_errors() {
         name: sp("Tagged".to_string()),
         doc: None,
         params: vec!["T".to_string()],
+        param_kinds: Default::default(),
         variants: vec![
             TypeVariant {
                 annotations: vec![],
@@ -4167,6 +4179,7 @@ fn infer_case_pattern_sum_constructor_arity_mismatch_errors() {
         name: sp("Pair".to_string()),
         doc: None,
         params: vec![],
+        param_kinds: Default::default(),
         variants: vec![TypeVariant {
             annotations: vec![],
             name: sp("Pair".to_string()),
@@ -12176,6 +12189,122 @@ fn mutual_recursive_structs_register() {
     records.resolve_registered_fields(&[&def_a, &def_b], None).expect("fields should resolve");
     assert!(records.to_type("RA").is_some());
     assert!(records.to_type("RB").is_some());
+}
+
+// ===========================================================================
+// Eff kind checking — Step 2 of Phase 0g
+// ===========================================================================
+
+/// `struct Server(E: Eff)` with a field using `E` in effect position is valid.
+#[test]
+fn eff_kind_param_in_effect_position_is_valid() {
+    let mut registry = RecordRegistry::new();
+    let mut param_kinds = BTreeMap::new();
+    param_kinds.insert("E".to_string(), KindAnnotation::Eff);
+    let def = RecordDef {
+        annotations: vec![],
+        public: false,
+        name: sp("Server".to_string()),
+        doc: None,
+        params: vec!["E".to_string()],
+        param_kinds,
+        fields: vec![(
+            sp("handler".to_string()),
+            // fn() -[E]> Int
+            TypeAnnotation::FunctionWithEffect(
+                vec![],
+                sp(EffectAnnotation::Var("E".to_string())),
+                Box::new(TypeAnnotation::Named("Int".to_string())),
+            ),
+        )],
+        const_fields: vec![],
+        field_annotations: vec![],
+        methods: vec![],
+    };
+    let result = registry.register(&def);
+    assert!(
+        result.is_ok(),
+        "Eff-kinded param in effect position should be valid: {:?}",
+        result.err()
+    );
+}
+
+/// `struct Broken(E: Eff)` where `E` is used directly as a field type is a KindMismatch.
+#[test]
+fn eff_kind_param_in_type_position_is_error() {
+    let mut registry = RecordRegistry::new();
+    let mut param_kinds = BTreeMap::new();
+    param_kinds.insert("E".to_string(), KindAnnotation::Eff);
+    let def = RecordDef {
+        annotations: vec![],
+        public: false,
+        name: sp("Broken".to_string()),
+        doc: None,
+        params: vec!["E".to_string()],
+        param_kinds,
+        fields: vec![(
+            sp("x".to_string()),
+            // E used as a plain type — wrong kind
+            TypeAnnotation::Named("E".to_string()),
+        )],
+        const_fields: vec![],
+        field_annotations: vec![],
+        methods: vec![],
+    };
+    let result = registry.register(&def);
+    assert!(
+        result.is_err(),
+        "Eff-kinded param used in type position should be rejected"
+    );
+    let msg = result.unwrap_err().message;
+    assert!(
+        msg.contains("kind `Eff`") && msg.contains("type position"),
+        "error should mention kind Eff and type position, got: {msg}"
+    );
+}
+
+/// `struct Broken2(T)` where `T` (Star kind by default) is used as an effect row is an error.
+#[test]
+fn star_kind_param_in_effect_position_is_error() {
+    let mut registry = RecordRegistry::new();
+    // No param_kinds entry for T → defaults to Star
+    let def = RecordDef {
+        annotations: vec![],
+        public: false,
+        name: sp("Broken2".to_string()),
+        doc: None,
+        params: vec!["T".to_string()],
+        // Note: param_kinds is empty, so T is implicitly Star-kinded,
+        // but we need to tell the checker that T is a param — we do this
+        // by adding a dummy Star entry so the checker knows T is a param.
+        param_kinds: {
+            let mut m = BTreeMap::new();
+            m.insert("T".to_string(), KindAnnotation::Star);
+            m
+        },
+        fields: vec![(
+            sp("f".to_string()),
+            // fn() -[T]> Int — T is Star, but used as effect row
+            TypeAnnotation::FunctionWithEffect(
+                vec![],
+                sp(EffectAnnotation::Var("T".to_string())),
+                Box::new(TypeAnnotation::Named("Int".to_string())),
+            ),
+        )],
+        const_fields: vec![],
+        field_annotations: vec![],
+        methods: vec![],
+    };
+    let result = registry.register(&def);
+    assert!(
+        result.is_err(),
+        "Star-kinded param used as effect row should be rejected"
+    );
+    let msg = result.unwrap_err().message;
+    assert!(
+        msg.contains("kind `*`") && msg.contains("effect row"),
+        "error should mention kind * and effect row, got: {msg}"
+    );
 }
 
 /// Regression: a generic recursive sum `Tree a = Leaf | Node(Tree a, a, Tree a)`
