@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
-use kea_types::{Substitution, Type, TypeVarId, free_type_vars};
+use kea_types::{Substitution, SumType, Type, TypeVarId, free_type_vars};
 
 use crate::{HirDecl, HirExpr, HirExprKind, HirFunction, HirHandleClause, HirModule};
 
@@ -266,11 +266,11 @@ impl<'a> MonoPass<'a> {
                         continue;
                     }
                     let name = f.name.clone();
-                    let param_bindings = param_names(&f.params);
+                    let param_var_types = param_var_types(&f.params);
                     let rewritten = HirFunction {
                         name: name.clone(),
                         params: f.params.clone(),
-                        body: self.rewrite_calls(&f.body, 0, &name, &param_bindings),
+                        body: self.rewrite_calls(&f.body, 0, &name, &param_var_types),
                         ty: f.ty.clone(),
                         effects: f.effects.clone(),
                         span: f.span,
@@ -293,8 +293,8 @@ impl<'a> MonoPass<'a> {
             // Pass orig_name as the caller context so same-module preference
             // applies even within specializations (e.g., List.zip__0 should
             // still prefer List.* for its recursive calls).
-            let spec_bindings = param_names(&specialized.params);
-            specialized.body = self.rewrite_calls(&specialized.body, depth, &orig_name, &spec_bindings);
+            let spec_var_types = param_var_types(&specialized.params);
+            specialized.body = self.rewrite_calls(&specialized.body, depth, &orig_name, &spec_var_types);
             self.specialized.push(specialized);
         }
 
@@ -311,24 +311,30 @@ impl<'a> MonoPass<'a> {
     /// being traversed.  It is used to extract the caller's module prefix for
     /// same-module name resolution (see `resolve_poly_name` step 4).
     ///
-    /// `local_bindings` tracks names that are locally bound (function params,
+    /// `local_var_types` tracks names that are locally bound (function params,
     /// `let` binders, lambda params, case-pattern binders) at the current
-    /// position in the expression tree.  A bare call whose name is locally
+    /// position in the expression tree, along with their concrete types when
+    /// known (or `Type::Dynamic` when not).  A bare call whose name is locally
     /// bound must not be renamed to a qualified module path — that local
     /// binding shadows any global function with the same short name.
+    ///
+    /// Tracking types (not just names) enables the pass to resolve `Dynamic`
+    /// argument types at call sites: e.g. when `xs` is bound as `List Int`
+    /// from a `let xs = [1,2,3]`, a call `Foldable.count(xs)` where `xs.ty`
+    /// is `Dynamic` in the HIR can still be specialised correctly.
     fn rewrite_calls(
         &mut self,
         expr: &HirExpr,
         depth: usize,
         current_fn: &str,
-        local_bindings: &BTreeSet<String>,
+        local_var_types: &BTreeMap<String, Type>,
     ) -> HirExpr {
         let caller_module = current_fn.rsplit_once('.').map(|(module, _)| module);
         let kind = match &expr.kind {
             HirExprKind::Call { func, args } => {
                 let rewritten_args: Vec<HirExpr> = args
                     .iter()
-                    .map(|a| self.rewrite_calls(a, depth, current_fn, local_bindings))
+                    .map(|a| self.rewrite_calls(a, depth, current_fn, local_var_types))
                     .collect();
                 let callee_name = match &func.kind {
                     HirExprKind::Var(name) => Some(name.as_str()),
@@ -348,7 +354,38 @@ impl<'a> MonoPass<'a> {
                     if let Type::Function(ft) = poly_ty {
                         let mut bindings = BTreeMap::new();
                         for (poly_param, arg) in ft.params.iter().zip(rewritten_args.iter()) {
-                            extract_bindings(poly_param, &arg.ty, &mut bindings);
+                            // When the HIR argument type is Dynamic but we have
+                            // tracked a concrete type for the variable in
+                            // local_var_types, use that concrete type for binding
+                            // extraction.  This allows specialising calls like
+                            // `Foldable.count(xs)` where `xs.ty = Dynamic` in
+                            // the HIR but `xs` was bound as `List Int` in the
+                            // enclosing block.
+                            // When the arg type is Dynamic, try to recover a concrete
+                            // type from the call site. Two sources:
+                            // 1. Variable: look up its type in local_var_types.
+                            // 2. Inline sum constructor (e.g. list literal `[1,2,3]`):
+                            //    use the SumConstructor's sum_type name.  We don't
+                            //    know element types here, but the sum name alone is
+                            //    enough to specialize Foldable/Iterator dispatch.
+                            let resolved_ty: Option<Type> = if matches!(arg.ty, Type::Dynamic) {
+                                match &arg.kind {
+                                    HirExprKind::Var(var_name) => {
+                                        local_var_types.get(var_name.as_str()).cloned()
+                                    }
+                                    HirExprKind::SumConstructor { sum_type, .. } => {
+                                        Some(Type::Sum(SumType {
+                                            name: sum_type.clone(),
+                                            type_args: vec![],
+                                        }))
+                                    }
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            };
+                            let effective_ty = resolved_ty.as_ref().unwrap_or(&arg.ty);
+                            extract_bindings(poly_param, effective_ty, &mut bindings);
                         }
                         // Also extract from the return type if the call expr has
                         // a concrete type.
@@ -360,7 +397,7 @@ impl<'a> MonoPass<'a> {
                         // and specialization — just recurse on the original
                         // callee expression.
                         let bare_name_is_local =
-                            callee_name.is_some_and(|n| local_bindings.contains(n));
+                            callee_name.is_some_and(|n| local_var_types.contains_key(n));
                         if !bindings.is_empty()
                             && bindings.values().all(|t| free_type_vars(t).is_empty())
                             && !bare_name_is_local
@@ -400,7 +437,7 @@ impl<'a> MonoPass<'a> {
                                     span: func.span,
                                 })
                             } else {
-                                Box::new(self.rewrite_calls(func, depth, current_fn, local_bindings))
+                                Box::new(self.rewrite_calls(func, depth, current_fn, local_var_types))
                             };
                             HirExprKind::Call {
                                 func: new_func,
@@ -409,13 +446,13 @@ impl<'a> MonoPass<'a> {
                         }
                     } else {
                         HirExprKind::Call {
-                            func: Box::new(self.rewrite_calls(func, depth, current_fn, local_bindings)),
+                            func: Box::new(self.rewrite_calls(func, depth, current_fn, local_var_types)),
                             args: rewritten_args,
                         }
                     }
                 } else {
                     HirExprKind::Call {
-                        func: Box::new(self.rewrite_calls(func, depth, current_fn, local_bindings)),
+                        func: Box::new(self.rewrite_calls(func, depth, current_fn, local_var_types)),
                         args: rewritten_args,
                     }
                 }
@@ -431,7 +468,7 @@ impl<'a> MonoPass<'a> {
                 record_type: record_type.clone(),
                 fields: fields
                     .iter()
-                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth, current_fn, local_bindings)))
+                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth, current_fn, local_var_types)))
                     .collect(),
             },
 
@@ -441,10 +478,10 @@ impl<'a> MonoPass<'a> {
                 fields,
             } => HirExprKind::RecordUpdate {
                 record_type: record_type.clone(),
-                base: Box::new(self.rewrite_calls(base, depth, current_fn, local_bindings)),
+                base: Box::new(self.rewrite_calls(base, depth, current_fn, local_var_types)),
                 fields: fields
                     .iter()
-                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth, current_fn, local_bindings)))
+                    .map(|(n, e)| (n.clone(), self.rewrite_calls(e, depth, current_fn, local_var_types)))
                     .collect(),
             },
 
@@ -459,7 +496,7 @@ impl<'a> MonoPass<'a> {
                 tag: *tag,
                 fields: fields
                     .iter()
-                    .map(|e| self.rewrite_calls(e, depth, current_fn, local_bindings))
+                    .map(|e| self.rewrite_calls(e, depth, current_fn, local_var_types))
                     .collect(),
             },
 
@@ -469,44 +506,48 @@ impl<'a> MonoPass<'a> {
                 variant,
                 field_index,
             } => HirExprKind::SumPayloadAccess {
-                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_bindings)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_var_types)),
                 sum_type: sum_type.clone(),
                 variant: variant.clone(),
                 field_index: *field_index,
             },
 
             HirExprKind::FieldAccess { expr: inner, field } => HirExprKind::FieldAccess {
-                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_bindings)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_var_types)),
                 field: field.clone(),
             },
 
             HirExprKind::Binary { op, left, right } => HirExprKind::Binary {
                 op: *op,
-                left: Box::new(self.rewrite_calls(left, depth, current_fn, local_bindings)),
-                right: Box::new(self.rewrite_calls(right, depth, current_fn, local_bindings)),
+                left: Box::new(self.rewrite_calls(left, depth, current_fn, local_var_types)),
+                right: Box::new(self.rewrite_calls(right, depth, current_fn, local_var_types)),
             },
 
             HirExprKind::Unary { op, operand } => HirExprKind::Unary {
                 op: *op,
-                operand: Box::new(self.rewrite_calls(operand, depth, current_fn, local_bindings)),
+                operand: Box::new(self.rewrite_calls(operand, depth, current_fn, local_var_types)),
             },
 
             HirExprKind::Lambda { params, body } => {
                 // Lambda params shadow any outer bindings with the same name.
-                let mut lambda_bindings = local_bindings.clone();
+                // We don't know the concrete types of lambda params here, so
+                // insert them with Dynamic as a placeholder (they will still
+                // mark the name as locally bound, preventing accidental
+                // routing to a global function with the same short name).
+                let mut lambda_var_types = local_var_types.clone();
                 for p in params {
                     if let Some(name) = &p.name {
-                        lambda_bindings.insert(name.clone());
+                        lambda_var_types.entry(name.clone()).or_insert(Type::Dynamic);
                     }
                 }
                 HirExprKind::Lambda {
                     params: params.clone(),
-                    body: Box::new(self.rewrite_calls(body, depth, current_fn, &lambda_bindings)),
+                    body: Box::new(self.rewrite_calls(body, depth, current_fn, &lambda_var_types)),
                 }
             }
 
             HirExprKind::Catch { expr: inner } => HirExprKind::Catch {
-                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_bindings)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_var_types)),
             },
 
             HirExprKind::Handle {
@@ -514,14 +555,16 @@ impl<'a> MonoPass<'a> {
                 clauses,
                 then_clause,
             } => HirExprKind::Handle {
-                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_bindings)),
+                expr: Box::new(self.rewrite_calls(inner, depth, current_fn, local_var_types)),
                 clauses: clauses
                     .iter()
                     .map(|c| {
                         // Handler clause args are locally bound within the clause body.
-                        let mut clause_bindings = local_bindings.clone();
+                        // We don't have concrete types for handler-clause pattern
+                        // bindings here, so insert them as Dynamic.
+                        let mut clause_var_types = local_var_types.clone();
                         for arg in &c.args {
-                            collect_pattern_names(arg, &mut clause_bindings);
+                            collect_pattern_names_with_dynamic(arg, &mut clause_var_types);
                         }
                         HirHandleClause {
                             effect: c.effect.clone(),
@@ -529,23 +572,23 @@ impl<'a> MonoPass<'a> {
                             args: c.args.clone(),
                             arg_types: c.arg_types.clone(),
                             return_type: c.return_type.clone(),
-                            body: self.rewrite_calls(&c.body, depth, current_fn, &clause_bindings),
+                            body: self.rewrite_calls(&c.body, depth, current_fn, &clause_var_types),
                             span: c.span,
                         }
                     })
                     .collect(),
                 then_clause: then_clause
                     .as_ref()
-                    .map(|e| Box::new(self.rewrite_calls(e, depth, current_fn, local_bindings))),
+                    .map(|e| Box::new(self.rewrite_calls(e, depth, current_fn, local_var_types))),
             },
 
             HirExprKind::Resume { value } => HirExprKind::Resume {
-                value: Box::new(self.rewrite_calls(value, depth, current_fn, local_bindings)),
+                value: Box::new(self.rewrite_calls(value, depth, current_fn, local_var_types)),
             },
 
             HirExprKind::Let { pattern, value } => HirExprKind::Let {
                 pattern: pattern.clone(),
-                value: Box::new(self.rewrite_calls(value, depth, current_fn, local_bindings)),
+                value: Box::new(self.rewrite_calls(value, depth, current_fn, local_var_types)),
             },
 
             HirExprKind::If {
@@ -553,25 +596,29 @@ impl<'a> MonoPass<'a> {
                 then_branch,
                 else_branch,
             } => HirExprKind::If {
-                condition: Box::new(self.rewrite_calls(condition, depth, current_fn, local_bindings)),
-                then_branch: Box::new(self.rewrite_calls(then_branch, depth, current_fn, local_bindings)),
+                condition: Box::new(self.rewrite_calls(condition, depth, current_fn, local_var_types)),
+                then_branch: Box::new(self.rewrite_calls(then_branch, depth, current_fn, local_var_types)),
                 else_branch: else_branch
                     .as_ref()
-                    .map(|e| Box::new(self.rewrite_calls(e, depth, current_fn, local_bindings))),
+                    .map(|e| Box::new(self.rewrite_calls(e, depth, current_fn, local_var_types))),
             },
 
             // In a Block, Let binders from earlier items are in scope for
-            // later items.  Walk items in order, extending local_bindings
-            // after each Let.
+            // later items.  Walk items in order, extending local_var_types
+            // after each Let.  We use the *rewritten* value type so that
+            // concrete types (e.g. `List Int` from a list literal) propagate
+            // to later uses, enabling the monomorphization of calls like
+            // `Foldable.count(xs)` where `xs` was bound in the same block.
             HirExprKind::Block(exprs) => {
-                let mut block_bindings = local_bindings.clone();
+                let mut block_var_types = local_var_types.clone();
                 let mut new_exprs = Vec::with_capacity(exprs.len());
                 for e in exprs {
-                    let rewritten = self.rewrite_calls(e, depth, current_fn, &block_bindings);
+                    let rewritten = self.rewrite_calls(e, depth, current_fn, &block_var_types);
                     // After rewriting this item, add any names it binds so
                     // that subsequent items in the block see them as local.
-                    if let HirExprKind::Let { pattern, .. } = &e.kind {
-                        collect_pattern_names(pattern, &mut block_bindings);
+                    // Use the rewritten value's concrete type when available.
+                    if let HirExprKind::Let { pattern, value } = &rewritten.kind {
+                        collect_let_binding_types(pattern, value.ty.clone(), &mut block_var_types);
                     }
                     new_exprs.push(rewritten);
                 }
@@ -581,7 +628,7 @@ impl<'a> MonoPass<'a> {
             HirExprKind::Tuple(exprs) => HirExprKind::Tuple(
                 exprs
                     .iter()
-                    .map(|e| self.rewrite_calls(e, depth, current_fn, local_bindings))
+                    .map(|e| self.rewrite_calls(e, depth, current_fn, local_var_types))
                     .collect(),
             ),
 
@@ -631,7 +678,8 @@ impl<'a> MonoPass<'a> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Collect all variable names bound by a pattern into `out`.
+/// Collect all variable names bound by a pattern into `out` (as a `BTreeSet`).
+/// Used internally by `collect_let_binding_types` for complex patterns.
 fn collect_pattern_names(pattern: &crate::HirPattern, out: &mut BTreeSet<String>) {
     match pattern {
         crate::HirPattern::Var(name) => {
@@ -645,9 +693,62 @@ fn collect_pattern_names(pattern: &crate::HirPattern, out: &mut BTreeSet<String>
     }
 }
 
-/// Extract parameter names from a slice of HIR function parameters.
-fn param_names(params: &[crate::HirParam]) -> BTreeSet<String> {
-    params.iter().filter_map(|p| p.name.clone()).collect()
+/// Collect all variable names bound by a pattern into a `BTreeMap<String,
+/// Type>`, using `Type::Dynamic` for every name.  Used when we know a name
+/// is locally bound but cannot determine its concrete type (e.g. lambda
+/// params, handler-clause pattern bindings).
+fn collect_pattern_names_with_dynamic(
+    pattern: &crate::HirPattern,
+    out: &mut BTreeMap<String, Type>,
+) {
+    let mut names = BTreeSet::new();
+    collect_pattern_names(pattern, &mut names);
+    for name in names {
+        out.entry(name).or_insert(Type::Dynamic);
+    }
+}
+
+/// Record let-binding types into `out`.
+///
+/// For a simple `Var` pattern the concrete value type is used directly,
+/// which is the key enabler for specialising subsequent calls whose
+/// argument types are `Dynamic` in the HIR (e.g. `let xs = [1,2,3]` gives
+/// `xs → List Int`, so `Foldable.count(xs)` can be specialised to
+/// `Foldable.count$m0$ListInt`).
+///
+/// For complex patterns (tuple destructuring, constructor patterns, etc.)
+/// the pattern-bound names are inserted with `Type::Dynamic` — they are at
+/// least marked as locally bound, preventing accidental routing to a global
+/// function with the same short name.
+fn collect_let_binding_types(
+    pattern: &crate::HirPattern,
+    value_ty: Type,
+    out: &mut BTreeMap<String, Type>,
+) {
+    match pattern {
+        crate::HirPattern::Var(name) => {
+            out.insert(name.clone(), value_ty);
+        }
+        _ => {
+            // Complex pattern: record all bound names as Dynamic.
+            let mut names = BTreeSet::new();
+            collect_pattern_names(pattern, &mut names);
+            for name in names {
+                out.entry(name).or_insert(Type::Dynamic);
+            }
+        }
+    }
+}
+
+/// Extract parameter names (with `Type::Dynamic` placeholders) from a slice
+/// of HIR function parameters.  The Dynamic placeholder marks each name as
+/// locally bound; the Block handler will upgrade individual `let`-bound names
+/// to concrete types as it encounters them during the traversal.
+fn param_var_types(params: &[crate::HirParam]) -> BTreeMap<String, Type> {
+    params
+        .iter()
+        .filter_map(|p| p.name.clone().map(|name| (name, Type::Dynamic)))
+        .collect()
 }
 
 /// Returns true when a function's type is the all-Dynamic signature that HIR

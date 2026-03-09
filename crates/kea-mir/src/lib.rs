@@ -4288,11 +4288,16 @@ fn filter_unsupported_functions_transitive(functions: Vec<MirFunction>) -> Vec<M
         })
     }
 
+    let debug = std::env::var("KEA_DEBUG_FILTER").is_ok();
+
     // Seed with directly-unsupported function names.
     let mut unsupported: BTreeSet<String> = functions
         .iter()
         .filter(|f| has_unsupported(f))
-        .map(|f| f.name.clone())
+        .map(|f| {
+            if debug { eprintln!("[filter] directly unsupported: {}", f.name); }
+            f.name.clone()
+        })
         .collect();
 
     // Fixed-point: keep adding callers of unsupported functions.
@@ -4302,7 +4307,9 @@ fn filter_unsupported_functions_transitive(functions: Vec<MirFunction>) -> Vec<M
             if unsupported.contains(&f.name) {
                 continue;
             }
-            if local_refs(f).any(|callee| unsupported.contains(callee)) {
+            let bad_callee = local_refs(f).find(|callee| unsupported.contains(*callee));
+            if let Some(callee) = bad_callee {
+                if debug { eprintln!("[filter] transitively unsupported: {} (calls {})", f.name, callee); }
                 unsupported.insert(f.name.clone());
             }
         }
@@ -4343,6 +4350,7 @@ fn try_resolve_trait_dispatch_callee(
     name: &str,
     args: &[kea_hir::HirExpr],
     known_function_types: &BTreeMap<String, Type>,
+    var_types: Option<&BTreeMap<String, Type>>,
 ) -> Option<String> {
     // Only handle `Trait.method` (exactly one dot, e.g. `Encode.encode`).
     // Skip `Trait.Type.method` forms (already fully qualified).
@@ -4351,12 +4359,29 @@ fn try_resolve_trait_dispatch_callee(
         return None;
     }
     // Strategy 1: dispatch on the first argument's concrete type.
-    if let Some(first_arg) = args.first()
-        && let Some(type_name) = nominal_type_name_for_dispatch(&first_arg.ty)
-    {
-        let candidate = format!("{trait_prefix}.{type_name}.{method}");
-        if known_function_types.contains_key(&candidate) {
-            return Some(candidate);
+    // When the HirExpr type is Dynamic (common in monomorphized functions where
+    // the HIR didn't propagate the concrete type into argument nodes), fall back
+    // to var_types (parameter bindings) or the SumConstructor sum_type (inline
+    // list/sum literals like `[1,2,3]`).
+    if let Some(first_arg) = args.first() {
+        let type_name = if !matches!(first_arg.ty, Type::Dynamic) {
+            nominal_type_name_for_dispatch(&first_arg.ty)
+        } else {
+            match &first_arg.kind {
+                kea_hir::HirExprKind::Var(var_name) => var_types
+                    .and_then(|vt| vt.get(var_name.as_str()))
+                    .and_then(nominal_type_name_for_dispatch),
+                kea_hir::HirExprKind::SumConstructor { sum_type, .. } => {
+                    Some(sum_type.clone())
+                }
+                _ => None,
+            }
+        };
+        if let Some(type_name) = type_name {
+            let candidate = format!("{trait_prefix}.{type_name}.{method}");
+            if known_function_types.contains_key(&candidate) {
+                return Some(candidate);
+            }
         }
     }
     // Strategy 2: dispatch on the return type (used by Decode.decode which
@@ -8663,7 +8688,7 @@ impl FunctionLoweringCtx {
             && !self.known_function_types.contains_key(name)
             && ptr_intrinsic_symbol(name).is_none()
             && !self.intrinsic_symbols.contains_key(name)
-            && try_resolve_trait_dispatch_callee(name, args, &self.known_function_types).is_none()
+            && try_resolve_trait_dispatch_callee(name, args, &self.known_function_types, Some(&self.var_types)).is_none()
             && try_resolve_trait_dispatch_callee_by_ret(name, &expr.ty, &self.known_function_types)
                 .is_none()
         {
@@ -8704,6 +8729,7 @@ impl FunctionLoweringCtx {
                             name,
                             args,
                             &self.known_function_types,
+                            Some(&self.var_types),
                         )
                         .or_else(|| {
                             try_resolve_trait_dispatch_callee_by_ret(
