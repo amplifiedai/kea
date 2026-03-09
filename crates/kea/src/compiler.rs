@@ -85,6 +85,12 @@ pub struct ModuleProcessResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// Return type of `typecheck_functions`: resolved expr-type map + trait-dispatch callee rewrites.
+type TypecheckResult = (
+    std::collections::BTreeMap<Span, Type>,
+    std::collections::BTreeMap<Span, String>,
+);
+
 fn span_to_loc(span: Span) -> SourceLocation {
     SourceLocation {
         file_id: span.file.0,
@@ -137,7 +143,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
         None,
     )?;
 
-    let expr_types = typecheck_functions(
+    let (expr_types, resolved_trait_callees) = typecheck_functions(
         &module,
         &mut env,
         &mut records,
@@ -148,7 +154,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
         &block_method_owners,
     )?;
 
-    let hir = lower_module(&module, &env, &expr_types);
+    let hir = lower_module(&module, &env, &expr_types, &resolved_trait_callees);
     let hir = kea_hir::monomorphize::monomorphize(&hir);
     let explicit_borrow_param_map = collect_borrow_param_positions(&module, None);
     let borrow_param_map = infer_auto_borrow_param_positions(&hir, &explicit_borrow_param_map);
@@ -1061,7 +1067,7 @@ pub fn process_module_in_env(
         return Err(diagnostics);
     }
 
-    let expr_types = match typecheck_functions(
+    let (expr_types, resolved_trait_callees) = match typecheck_functions(
         &module,
         env,
         records,
@@ -1075,7 +1081,7 @@ pub fn process_module_in_env(
         Err(_) => return Err(diagnostics),
     };
 
-    let hir = lower_module(&module, env, &expr_types);
+    let hir = lower_module(&module, env, &expr_types, &resolved_trait_callees);
     let hir = kea_hir::monomorphize::monomorphize(&hir);
     let explicit_borrow_param_map = collect_borrow_param_positions(&module, None);
     let borrow_param_map = infer_auto_borrow_param_positions(&hir, &explicit_borrow_param_map);
@@ -2407,6 +2413,8 @@ fn typecheck_loaded_modules(
     let mut diagnostics = Vec::new();
     let mut typed_modules = Vec::new();
     let mut all_expr_types = std::collections::BTreeMap::new();
+    let mut all_resolved_trait_callees: std::collections::BTreeMap<Span, String> =
+        std::collections::BTreeMap::new();
     let mut qualified_borrow_param_map = BTreeMap::new();
     let module_origins = loaded_modules
         .iter()
@@ -2510,7 +2518,7 @@ fn typecheck_loaded_modules(
         } else {
             expanded.clone()
         };
-        let expr_types = typecheck_functions(
+        let (expr_types, resolved_trait_callees_chunk) = typecheck_functions(
             &expanded_for_typeck,
             &mut env,
             &mut records,
@@ -2522,7 +2530,8 @@ fn typecheck_loaded_modules(
         )?;
 
         all_expr_types.extend(expr_types);
-        let hir = lower_module(&expanded, &env, &all_expr_types);
+        all_resolved_trait_callees.extend(resolved_trait_callees_chunk);
+        let hir = lower_module(&expanded, &env, &all_expr_types, &all_resolved_trait_callees);
         let mut borrow_param_map = qualified_borrow_param_map.clone();
         borrow_param_map.extend(collect_borrow_param_positions(
             &expanded,
@@ -2584,7 +2593,7 @@ fn typecheck_loaded_modules(
     env.set_current_package_scope(None);
 
     let module = merge_modules_for_codegen(&typed_modules, entry_module_path);
-    let hir = lower_module(&module, &env, &all_expr_types);
+    let hir = lower_module(&module, &env, &all_expr_types, &all_resolved_trait_callees);
     let hir = kea_hir::monomorphize::monomorphize(&hir);
     diagnostics.extend(validate_fip_annotations(&module, &hir));
     if has_errors(&diagnostics) {
@@ -3786,7 +3795,7 @@ fn typecheck_functions(
     // Maps method_name → owner_type_name for functions lifted from type blocks (§2.8, §3.5).
     // These are registered as inherent on their nominal type rather than the module struct.
     block_method_owners: &BTreeMap<String, String>,
-) -> Result<std::collections::BTreeMap<Span, Type>, String> {
+) -> Result<TypecheckResult, String> {
     // Pre-register all function names and effect rows so forward references
     // (including mutual recursion) resolve correctly.  This also enables
     // transitive effect inference for forward-referenced effectful callees.
@@ -3862,6 +3871,7 @@ fn typecheck_functions(
     }
 
     let mut all_expr_types = std::collections::BTreeMap::new();
+    let mut all_resolved_trait_callees = std::collections::BTreeMap::new();
 
     for decl in &module.declarations {
         let fn_decl = match &decl.node {
@@ -3881,7 +3891,7 @@ fn typecheck_functions(
         }
 
         let mut ctx = InferenceContext::new();
-        seed_fn_where_type_params_in_context(&fn_decl, traits, &mut ctx);
+        seed_fn_where_type_params_in_context(&fn_decl, traits, &mut ctx, records, sum_types);
         let expr = fn_decl.to_let_expr();
         let _ = infer_and_resolve_in_context(&expr, env, &mut ctx, records, traits, sum_types);
 
@@ -3899,6 +3909,8 @@ fn typecheck_functions(
         diagnostics.extend(ctx.errors().iter().filter(|d| !is_error(d)).cloned());
 
         all_expr_types.extend(ctx.resolve_expr_types());
+        all_resolved_trait_callees
+            .extend(ctx.take_type_annotations().resolved_trait_callees);
 
         if !fn_decl.where_clause.is_empty()
             && let Some(scheme) = env.lookup(&fn_decl.name.node).cloned()
@@ -3986,7 +3998,7 @@ fn typecheck_functions(
         }
     }
 
-    Ok(all_expr_types)
+    Ok((all_expr_types, all_resolved_trait_callees))
 }
 
 /// Try to build a concrete `Type::Function` from a function declaration's

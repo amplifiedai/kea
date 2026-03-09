@@ -1536,6 +1536,14 @@ struct LowerCtx<'a> {
     /// Used to rewrite `Var("distance")` to `Var("Point.distance")` so that
     /// UMS calls (`p.distance(q)`) compile without bare-name namespace pollution.
     type_block_aliases: &'a std::collections::BTreeMap<String, String>,
+    /// Span → qualified callee name for trait-dispatch rewrites.
+    ///
+    /// Populated by the type checker when a UMS-desugared call like `a.hash()`
+    /// resolves to a trait implementation different from the standalone function
+    /// in env.  At lowering time, `Var("hash")` at the recorded span is
+    /// rewritten to e.g. `Var("Hash.PairBox.hash")` so MIR dispatches to the
+    /// correct implementation body.
+    resolved_trait_callees: &'a std::collections::BTreeMap<Span, String>,
 }
 
 fn lower_constructor_fields(
@@ -1578,6 +1586,7 @@ pub fn lower_module(
     module: &Module,
     env: &TypeEnv,
     expr_types: &std::collections::BTreeMap<kea_ast::Span, kea_types::Type>,
+    resolved_trait_callees: &std::collections::BTreeMap<kea_ast::Span, String>,
 ) -> HirModule {
     let (unit_variant_tags, qualified_variant_tags, pattern_variant_tags, pattern_qualified_tags) =
         collect_variant_tags(module, env);
@@ -1591,6 +1600,7 @@ pub fn lower_module(
         known_record_defs: &known_record_defs,
         expr_types,
         type_block_aliases,
+        resolved_trait_callees,
     };
     let mut declarations = Vec::new();
     for decl in &module.declarations {
@@ -1620,6 +1630,7 @@ pub fn lower_module(
 }
 
 pub fn lower_function(fn_decl: &FnDecl, env: &TypeEnv) -> HirFunction {
+    let empty_callees = &std::collections::BTreeMap::new();
     let ctx = LowerCtx {
         unit_variant_tags: &UnitVariantTags::new(),
         qualified_variant_tags: &QualifiedUnitVariantTags::new(),
@@ -1628,6 +1639,7 @@ pub fn lower_function(fn_decl: &FnDecl, env: &TypeEnv) -> HirFunction {
         known_record_defs: &BTreeSet::new(),
         expr_types: &BTreeMap::new(),
         type_block_aliases: env.block_method_aliases(),
+        resolved_trait_callees: empty_callees,
     };
     lower_function_with_variants(fn_decl, env, &ctx)
 }
@@ -1839,6 +1851,11 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
         ExprKind::Var(name) => {
             if let Some(tag) = ctx.unit_variant_tags.get(name) {
                 HirExprKind::Lit(Lit::Int(*tag))
+            } else if let Some(qualified) = ctx.resolved_trait_callees.get(&expr.span) {
+                // Rewrite trait-dispatch callee: `hash` → `Hash.PairBox.hash`.
+                // Recorded by the type checker when a UMS-desugared call resolves
+                // to a different trait impl than the standalone function in env.
+                HirExprKind::Var(qualified.clone())
             } else if let Some(qualified) = ctx.type_block_aliases.get(name) {
                 // Rewrite UMS bare-name calls to the qualified type-block method name
                 // so that `p.distance(q)` (desugared to `Var("distance")`) resolves
@@ -4006,7 +4023,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4030,7 +4047,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4052,7 +4069,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4078,7 +4095,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4105,7 +4122,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4141,7 +4158,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4180,7 +4197,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4219,7 +4236,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4257,7 +4274,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4292,7 +4309,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4312,7 +4329,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4334,7 +4351,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4356,7 +4373,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4396,7 +4413,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4423,7 +4440,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4461,7 +4478,7 @@ mod tests {
         );
         env.bind("Math.answer".to_string(), TypeScheme::mono(Type::Int));
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4510,7 +4527,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4554,7 +4571,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4594,7 +4611,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4636,7 +4653,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4673,7 +4690,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4714,7 +4731,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4751,7 +4768,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4777,7 +4794,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4813,7 +4830,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Unit))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4836,7 +4853,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4875,7 +4892,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4916,7 +4933,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4969,7 +4986,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5031,7 +5048,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5087,7 +5104,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5123,7 +5140,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5170,7 +5187,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5203,7 +5220,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5253,7 +5270,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5299,7 +5316,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5349,7 +5366,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5412,7 +5429,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5444,7 +5461,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5471,7 +5488,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5506,7 +5523,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5538,7 +5555,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5578,7 +5595,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -5602,7 +5619,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5637,7 +5654,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -5670,7 +5687,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -5700,7 +5717,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -5738,7 +5755,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5779,7 +5796,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5837,7 +5854,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -5861,7 +5878,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5907,7 +5924,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -5931,7 +5948,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -5955,7 +5972,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env, &Default::default());
+        let lowered = lower_module(&module, &env, &Default::default(), &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
