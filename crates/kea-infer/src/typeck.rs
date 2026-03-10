@@ -608,13 +608,23 @@ impl TypeEnv {
             && self.module_item_visibility(module_path, name) == Some(false))
     }
 
-    /// Returns true when an item exists but is private across a package boundary.
+    /// Returns true when an item exists but is private (not `pub`).
     pub fn module_item_inaccessible(&self, module_short: &str, name: &str) -> bool {
+        // Synthetic test-case functions are always accessible to the test runner.
+        if name.starts_with("__kea_test_case_") {
+            return false;
+        }
         let Some(module_path) = self.resolve_module_path(module_short) else {
             return false;
         };
-        self.crosses_package_boundary(&module_path)
-            && self.module_item_visibility(&module_path, name) == Some(false)
+        // Only enforce visibility for real file-modules (those registered in
+        // module_package_scopes). Struct namespaces (e.g. `Math` from `struct Math`)
+        // are not file modules and their fields/consts are always accessible within
+        // the same package.
+        if !self.module_package_scopes.contains_key(&module_path) {
+            return false;
+        }
+        self.module_item_visibility(&module_path, name) == Some(false)
     }
 
     /// Register implicit module struct metadata.

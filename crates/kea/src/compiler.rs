@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use crate::package::{dependency_namespaces, resolve_graph_for_entry, resolve_graph_for_test_entry};
 
 use kea_ast::{
-    Annotation, Argument, DeclKind, Expr, ExprDecl, ExprKind, FileId, FnDecl, ImportItems,
-    Module, PatternKind, RecordDef, Span, Spanned, TestDecl, TypeAnnotation, TypeDef, VariantField,
-    collect_pattern_bindings_pub,
+    Annotation, Argument, CaseArm, CondArm, DeclKind, Expr, ExprDecl, ExprKind, FileId, FnDecl,
+    ForExpr, HandleClause, ImportItems, Module, PatternKind, RecordDef, Span, Spanned, StringInterpPart,
+    TestDecl, TypeAnnotation, TypeDef, VariantField, collect_pattern_bindings_pub,
 };
 use kea_codegen::{
     Backend, BackendConfig, CodegenMode, CraneliftBackend, PassStats, collect_pass_stats,
@@ -2481,6 +2481,186 @@ fn collect_project_modules_with_profile(
         .collect())
 }
 
+/// Collect the bare (unqualified) names of all functions defined in a module.
+fn module_bare_fn_names(module: &Module) -> BTreeSet<String> {
+    module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::Function(f) => {
+                // Take only the bare part (after the last dot, if any).
+                let bare = f.name.node.rsplit_once('.').map(|(_, m)| m).unwrap_or(&f.name.node);
+                Some(bare.to_string())
+            }
+            DeclKind::ExprFn(e) => {
+                let bare = e.name.node.rsplit_once('.').map(|(_, m)| m).unwrap_or(&e.name.node);
+                Some(bare.to_string())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Rewrite bare `Var(name)` → `Var("module_path.name")` when `name` is in
+/// `module_fn_names` and does not already contain a dot.
+///
+/// This ensures that when a non-entry module's function is included in the merged
+/// module, its intramodule calls (e.g., `is_empty`, `length`) resolve to the
+/// correct module-qualified symbol (`text.is_empty`, `text.length`) rather than
+/// whichever module first claimed those bare names.
+fn qualify_intramodule_calls(expr: &mut Expr, module_path: &str, module_fn_names: &BTreeSet<String>) {
+    match &mut expr.node {
+        ExprKind::Var(name) => {
+            if !name.contains('.') && module_fn_names.contains(name.as_str()) {
+                *name = format!("{module_path}.{name}");
+            }
+        }
+        ExprKind::Let { value, .. } => {
+            qualify_intramodule_calls(value, module_path, module_fn_names);
+        }
+        ExprKind::Lambda { body, .. } => {
+            qualify_intramodule_calls(body, module_path, module_fn_names);
+        }
+        ExprKind::Call { func, args } => {
+            qualify_intramodule_calls(func, module_path, module_fn_names);
+            for arg in args {
+                qualify_intramodule_calls(&mut arg.value, module_path, module_fn_names);
+            }
+        }
+        ExprKind::If { condition, then_branch, else_branch } => {
+            qualify_intramodule_calls(condition, module_path, module_fn_names);
+            qualify_intramodule_calls(then_branch, module_path, module_fn_names);
+            if let Some(el) = else_branch {
+                qualify_intramodule_calls(el, module_path, module_fn_names);
+            }
+        }
+        ExprKind::Case { scrutinee, arms } => {
+            qualify_intramodule_calls(scrutinee, module_path, module_fn_names);
+            for CaseArm { body, guard, .. } in arms {
+                qualify_intramodule_calls(body, module_path, module_fn_names);
+                if let Some(g) = guard {
+                    qualify_intramodule_calls(g, module_path, module_fn_names);
+                }
+            }
+        }
+        ExprKind::Cond { arms } => {
+            for CondArm { condition, body, .. } in arms {
+                qualify_intramodule_calls(condition, module_path, module_fn_names);
+                qualify_intramodule_calls(body, module_path, module_fn_names);
+            }
+        }
+        ExprKind::For(ForExpr { source, body, .. }) => {
+            qualify_intramodule_calls(source, module_path, module_fn_names);
+            qualify_intramodule_calls(body, module_path, module_fn_names);
+        }
+        ExprKind::With { call, body, .. } => {
+            qualify_intramodule_calls(call, module_path, module_fn_names);
+            qualify_intramodule_calls(body, module_path, module_fn_names);
+        }
+        ExprKind::Handle { expr, clauses, then_clause } => {
+            qualify_intramodule_calls(expr, module_path, module_fn_names);
+            for HandleClause { body, .. } in clauses {
+                qualify_intramodule_calls(body, module_path, module_fn_names);
+            }
+            if let Some(t) = then_clause {
+                qualify_intramodule_calls(t, module_path, module_fn_names);
+            }
+        }
+        ExprKind::Resume { value } => {
+            qualify_intramodule_calls(value, module_path, module_fn_names);
+        }
+        ExprKind::BinaryOp { left, right, .. } => {
+            qualify_intramodule_calls(left, module_path, module_fn_names);
+            qualify_intramodule_calls(right, module_path, module_fn_names);
+        }
+        ExprKind::UnaryOp { operand, .. } => {
+            qualify_intramodule_calls(operand, module_path, module_fn_names);
+        }
+        ExprKind::WhenGuard { body, condition } => {
+            qualify_intramodule_calls(body, module_path, module_fn_names);
+            qualify_intramodule_calls(condition, module_path, module_fn_names);
+        }
+        ExprKind::Range { start, end, .. } => {
+            qualify_intramodule_calls(start, module_path, module_fn_names);
+            qualify_intramodule_calls(end, module_path, module_fn_names);
+        }
+        ExprKind::As { expr, .. } => {
+            qualify_intramodule_calls(expr, module_path, module_fn_names);
+        }
+        ExprKind::Tuple(exprs) | ExprKind::List(exprs) => {
+            for e in exprs {
+                qualify_intramodule_calls(e, module_path, module_fn_names);
+            }
+        }
+        ExprKind::Block(exprs) => {
+            for e in exprs {
+                qualify_intramodule_calls(e, module_path, module_fn_names);
+            }
+        }
+        ExprKind::Record { fields, spread, .. } => {
+            for (_, val) in fields {
+                qualify_intramodule_calls(val, module_path, module_fn_names);
+            }
+            if let Some(s) = spread {
+                qualify_intramodule_calls(s, module_path, module_fn_names);
+            }
+        }
+        ExprKind::Update { base, fields } => {
+            qualify_intramodule_calls(base, module_path, module_fn_names);
+            for (_, val) in fields {
+                qualify_intramodule_calls(val, module_path, module_fn_names);
+            }
+        }
+        ExprKind::AnonRecord { fields, spread } => {
+            for (_, val) in fields {
+                qualify_intramodule_calls(val, module_path, module_fn_names);
+            }
+            if let Some(s) = spread {
+                qualify_intramodule_calls(s, module_path, module_fn_names);
+            }
+        }
+        ExprKind::FieldAccess { expr, .. } => {
+            qualify_intramodule_calls(expr, module_path, module_fn_names);
+        }
+        ExprKind::Unsafe { body } => {
+            qualify_intramodule_calls(body, module_path, module_fn_names);
+        }
+        ExprKind::Constructor { args, .. } => {
+            for arg in args {
+                qualify_intramodule_calls(&mut arg.value, module_path, module_fn_names);
+            }
+        }
+        ExprKind::StringInterp(parts) => {
+            for part in parts {
+                if let StringInterpPart::Expr(e) = part {
+                    qualify_intramodule_calls(e, module_path, module_fn_names);
+                }
+            }
+        }
+        ExprKind::MapLiteral(pairs) => {
+            for (k, v) in pairs {
+                qualify_intramodule_calls(k, module_path, module_fn_names);
+                qualify_intramodule_calls(v, module_path, module_fn_names);
+            }
+        }
+        ExprKind::Yield { value } => {
+            qualify_intramodule_calls(value, module_path, module_fn_names);
+        }
+        ExprKind::ActorSend { actor, args, .. } | ExprKind::ActorCall { actor, args, .. } => {
+            qualify_intramodule_calls(actor, module_path, module_fn_names);
+            for e in args {
+                qualify_intramodule_calls(e, module_path, module_fn_names);
+            }
+        }
+        ExprKind::ControlSend { actor, signal } => {
+            qualify_intramodule_calls(actor, module_path, module_fn_names);
+            qualify_intramodule_calls(signal, module_path, module_fn_names);
+        }
+        // Leaf nodes — nothing to rewrite.
+        ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::Wildcard => {}
+    }
+}
+
 fn merge_modules_for_codegen(modules: &[(String, Module)], entry_module_path: &str) -> Module {
     fn upsert_function_decl(
         name: String,
@@ -2513,6 +2693,16 @@ fn merge_modules_for_codegen(modules: &[(String, Module)], entry_module_path: &s
         function_decl_indices.insert(name, declarations.len());
         declarations.push(decl);
     }
+
+    // Pre-compute the set of bare function names for every non-entry module so we
+    // can qualify intramodule calls when creating qualified copies.  For example,
+    // `text.to_int` calls bare `is_empty` which should resolve to `text.is_empty`,
+    // not to `list.is_empty` (which happened to claim the bare name first).
+    let module_fn_name_sets: BTreeMap<&str, BTreeSet<String>> = modules
+        .iter()
+        .filter(|(path, _)| path != entry_module_path)
+        .map(|(path, module)| (path.as_str(), module_bare_fn_names(module)))
+        .collect();
 
     let mut declarations = Vec::new();
     let mut function_decl_indices: BTreeMap<String, usize> = BTreeMap::new();
@@ -2575,6 +2765,12 @@ fn merge_modules_for_codegen(modules: &[(String, Module)], entry_module_path: &s
 
                     let mut lifted = fn_decl.clone();
                     lifted.name.node = format!("{module_path}.{}", fn_decl.name.node);
+                    // Qualify intramodule calls in the lifted body so that bare calls
+                    // like `is_empty(s)` inside `text.to_int` resolve to `text.is_empty`
+                    // rather than whatever module first claimed the bare `is_empty` name.
+                    if let Some(fn_names) = module_fn_name_sets.get(module_path.as_str()) {
+                        qualify_intramodule_calls(&mut lifted.body, module_path, fn_names);
+                    }
                     upsert_function_decl(
                         lifted.name.node.clone(),
                         kea_ast::Spanned::new(DeclKind::Function(lifted), decl.span),
@@ -2605,6 +2801,10 @@ fn merge_modules_for_codegen(modules: &[(String, Module)], entry_module_path: &s
 
                     let mut lifted = expr_decl.clone();
                     lifted.name.node = format!("{module_path}.{}", expr_decl.name.node);
+                    if let Some(fn_names) = module_fn_name_sets.get(module_path.as_str()) {
+                        qualify_intramodule_calls(&mut lifted.body, module_path, fn_names);
+                        // Also qualify params that have default expressions (if any future syntax adds them).
+                    }
                     upsert_function_decl(
                         lifted.name.node.clone(),
                         kea_ast::Spanned::new(DeclKind::ExprFn(lifted), decl.span),
@@ -2875,7 +3075,6 @@ fn bind_imported_item(
     module_path: &str,
     item_name: &str,
     span: Span,
-    visibility: &ImportVisibility<'_>,
     env: &mut TypeEnv,
     diagnostics: &mut Vec<Diagnostic>,
     imported_symbols: &mut Vec<String>,
@@ -2884,7 +3083,7 @@ fn bind_imported_item(
         diagnostics.push(
             Diagnostic::error(
                 Category::TypeError,
-                format!("`{module_path}.{item_name}` is not public in its package"),
+                format!("`{module_path}.{item_name}` is not public"),
             )
             .at(SourceLocation {
                 file_id: span.file.0,
@@ -2916,14 +3115,11 @@ fn bind_imported_item(
         return;
     };
 
-    if let Some(target_origin) = visibility.module_origins.get(module_path)
-        && crosses_package_boundary(visibility.current_origin, target_origin)
-        && env.module_item_visibility(module_path, item_name) == Some(false)
-    {
+    if env.module_item_visibility(module_path, item_name) == Some(false) {
         diagnostics.push(
             Diagnostic::error(
                 Category::TypeError,
-                format!("`{module_path}.{item_name}` is not public in its package"),
+                format!("`{module_path}.{item_name}` is not public"),
             )
             .at(SourceLocation {
                 file_id: span.file.0,
@@ -3033,16 +3229,12 @@ fn extend_safe_higher_order_forwarders_with_import_aliases(
 
 fn apply_module_imports(
     module: &Module,
-    current_origin: &ModuleOrigin,
-    module_origins: &BTreeMap<String, ModuleOrigin>,
+    _current_origin: &ModuleOrigin,
+    _module_origins: &BTreeMap<String, ModuleOrigin>,
     env: &mut TypeEnv,
     traits: &TraitRegistry,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<Vec<String>, String> {
-    let visibility = ImportVisibility {
-        current_origin,
-        module_origins,
-    };
     let mut imported_symbols = Vec::new();
 
     for decl in &module.declarations {
@@ -3083,7 +3275,6 @@ fn apply_module_imports(
                                     &module_path,
                                     &method.name,
                                     import.module.span,
-                                    &visibility,
                                     env,
                                     diagnostics,
                                     &mut imported_symbols,
@@ -3105,14 +3296,11 @@ fn apply_module_imports(
         for item in items {
             let item_name = item.node.clone();
             if traits.trait_owner(&item_name) == Some(module_owner.as_str()) {
-                if let Some(target_origin) = visibility.module_origins.get(&module_path)
-                    && crosses_package_boundary(visibility.current_origin, target_origin)
-                    && env.module_item_visibility(&module_path, &item_name) == Some(false)
-                {
+                if env.module_item_visibility(&module_path, &item_name) == Some(false) {
                     diagnostics.push(
                         Diagnostic::error(
                             Category::TypeError,
-                            format!("`{module_path}.{item_name}` is not public in its package"),
+                            format!("`{module_path}.{item_name}` is not public"),
                         )
                         .at(SourceLocation {
                             file_id: item.span.file.0,
@@ -3130,7 +3318,6 @@ fn apply_module_imports(
                 &module_path,
                 &item_name,
                 item.span,
-                &visibility,
                 env,
                 diagnostics,
                 &mut imported_symbols,
@@ -3145,11 +3332,6 @@ fn apply_module_imports(
     Ok(imported_symbols)
 }
 
-struct ImportVisibility<'a> {
-    current_origin: &'a ModuleOrigin,
-    module_origins: &'a BTreeMap<String, ModuleOrigin>,
-}
-
 fn package_scope_for_origin(origin: &ModuleOrigin) -> Option<&str> {
     match origin {
         ModuleOrigin::Dependency { package_name } => Some(package_name.as_str()),
@@ -3157,24 +3339,6 @@ fn package_scope_for_origin(origin: &ModuleOrigin) -> Option<&str> {
     }
 }
 
-fn crosses_package_boundary(current: &ModuleOrigin, target: &ModuleOrigin) -> bool {
-    match (current, target) {
-        (
-            ModuleOrigin::Dependency {
-                package_name: current_package,
-            },
-            ModuleOrigin::Dependency {
-                package_name: target_package,
-            },
-        ) => current_package != target_package,
-        (ModuleOrigin::Dependency { .. }, ModuleOrigin::Local | ModuleOrigin::Stdlib) => false,
-        (ModuleOrigin::Local | ModuleOrigin::Stdlib, ModuleOrigin::Dependency { .. }) => true,
-        (ModuleOrigin::Local, ModuleOrigin::Local)
-        | (ModuleOrigin::Stdlib, ModuleOrigin::Stdlib)
-        | (ModuleOrigin::Local, ModuleOrigin::Stdlib)
-        | (ModuleOrigin::Stdlib, ModuleOrigin::Local) => false,
-    }
-}
 
 fn expand_impl_methods_for_codegen(module: &Module) -> Module {
     let mut declarations = module.declarations.clone();
@@ -3217,6 +3381,10 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
         };
         for method in &impl_block.methods {
             let mut lifted = method.clone();
+            // Impl methods always implement a public trait contract; mark them
+            // public so visibility checks on qualified calls like `Trait.method`
+            // and bare method aliases don't fail.
+            lifted.public = true;
             let trait_name = impl_block.trait_name.node.clone();
             let type_name = impl_block.type_name.node.clone();
             let method_name = method.name.node.clone();
@@ -3228,7 +3396,7 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
             let typed_runtime_name = format!("{trait_name}.{type_name}.{method_name}");
             lifted.name.node = typed_runtime_name;
             declarations.push(kea_ast::Spanned::new(
-                DeclKind::Function(lifted),
+                DeclKind::Function(lifted.clone()),
                 method.span,
             ));
 
@@ -3240,7 +3408,7 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
             // `Trait.method` aliases that collide with the owning module's
             // namespace and route calls to the wrong impl body.
             if duplicate_count == 1 && locally_defined_traits.contains(&trait_name) {
-                let mut trait_alias = method.clone();
+                let mut trait_alias = lifted.clone();
                 trait_alias.name.node = format!("{trait_name}.{method_name}");
                 declarations.push(kea_ast::Spanned::new(
                     DeclKind::Function(trait_alias),
@@ -3259,7 +3427,7 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
                 == 1
                 && existing_function_names.insert(method_name.clone())
             {
-                let mut bare = method.clone();
+                let mut bare = lifted.clone();
                 bare.name.node = method_name.clone();
                 // Mark as a synthesized trait alias so merge_modules_for_codegen
                 // treats it as non-overriding (insert_bare_if_absent).  This
