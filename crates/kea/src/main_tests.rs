@@ -580,8 +580,8 @@ fn run_algorithm_gallery_fnv1a() {
 
 #[test]
 fn run_algorithm_gallery_merge_sort_basic() {
-    let path = std::path::PathBuf::from("/tmp/sort_combo.kea");
-    let run = run_test_file(&path, &Default::default()).expect("merge_sort_test.kea should compile");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/merge_sort.kea");
+    let run = run_test_file(&path, &Default::default()).expect("merge_sort.kea should compile");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "merge failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests ran");

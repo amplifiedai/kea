@@ -6,9 +6,10 @@ use std::path::{Path, PathBuf};
 use crate::package::{dependency_namespaces, resolve_graph_for_entry, resolve_graph_for_test_entry};
 
 use kea_ast::{
-    Annotation, Argument, CaseArm, CondArm, DeclKind, Expr, ExprDecl, ExprKind, FileId, FnDecl,
-    ForExpr, HandleClause, ImportItems, Module, PatternKind, RecordDef, Span, Spanned, StringInterpPart,
-    TestDecl, TypeAnnotation, TypeDef, VariantField, collect_pattern_bindings_pub,
+    Annotation, Argument, BinOp, CaseArm, CondArm, DeclKind, Expr, ExprDecl, ExprKind, FileId,
+    FnDecl, ForExpr, HandleClause, ImportItems, Module, PatternKind, RecordDef, Span, Spanned,
+    StringInterpPart, TestDecl, TypeAnnotation, TypeDef, UnaryOp, VariantField,
+    collect_pattern_bindings_pub,
 };
 use kea_codegen::{
     Backend, BackendConfig, CodegenMode, CraneliftBackend, PassStats, collect_pass_stats,
@@ -1508,6 +1509,7 @@ fn strip_test_decls_for_runner(module: &Module) -> (Module, Vec<RunnerTestCase>)
 }
 
 fn test_decl_to_fn_decl(test_decl: &TestDecl, generated_name: &str) -> kea_ast::Decl {
+    let body = rewrite_check_expressions(test_decl.body.clone());
     let fn_decl = FnDecl {
         public: false,
         name: kea_ast::Spanned::new(generated_name.to_string(), test_decl.name.span),
@@ -1519,11 +1521,168 @@ fn test_decl_to_fn_decl(test_decl: &TestDecl, generated_name: &str) -> kea_ast::
         // IO, Net, etc.) depending on what they test.
         return_annotation: None,
         effect_annotation: None,
-        body: test_decl.body.clone(),
+        body,
         span: test_decl.span,
         where_clause: Vec::new(),
     };
     kea_ast::Spanned::new(DeclKind::Function(fn_decl), test_decl.span)
+}
+
+/// Rewrite `Test.check(<lhs> <op> <rhs>)` → `Test.check_with_message(<lhs> <op> <rhs>, "<lhs> <op> <rhs>")`
+/// for comparison operators. This gives meaningful failure messages without requiring Show or types.
+fn rewrite_check_expressions(expr: Expr) -> Expr {
+    let span = expr.span;
+    let node = match expr.node {
+        ExprKind::Call { func, args } => {
+            // Check if this is `Test.check(<single-comparison-arg>)`
+            let is_test_check = matches!(
+                &func.node,
+                ExprKind::FieldAccess { expr: recv, field }
+                    if matches!(&recv.node, ExprKind::Var(n) if n == "Test")
+                       && field.node == "check"
+            );
+            if is_test_check && args.len() == 1 {
+                let arg = &args[0];
+                if arg.label.is_none()
+                    && let Some(msg) = comparison_message(&arg.value)
+                {
+                        // Rewrite: Test.check_with_message(expr, "expr text")
+                        let check_with_msg = Spanned::new(
+                            ExprKind::FieldAccess {
+                                expr: Box::new(Spanned::new(ExprKind::Var("Test".to_string()), span)),
+                                field: Spanned::new("check_with_message".to_string(), span),
+                            },
+                            span,
+                        );
+                        let msg_arg = kea_ast::Argument {
+                            label: None,
+                            value: Spanned::new(
+                                ExprKind::Lit(kea_ast::Lit::String(msg)),
+                                span,
+                            ),
+                        };
+                        return Spanned::new(
+                            ExprKind::Call {
+                                func: Box::new(check_with_msg),
+                                args: vec![args[0].clone(), msg_arg],
+                            },
+                            span,
+                        );
+                    }
+            }
+            // Recurse into func and args without rewriting.
+            ExprKind::Call {
+                func: Box::new(rewrite_check_expressions(*func)),
+                args: args
+                    .into_iter()
+                    .map(|a| kea_ast::Argument {
+                        label: a.label,
+                        value: rewrite_check_expressions(a.value),
+                    })
+                    .collect(),
+            }
+        }
+        ExprKind::Block(exprs) => {
+            ExprKind::Block(exprs.into_iter().map(rewrite_check_expressions).collect())
+        }
+        ExprKind::Let { pattern, annotation, value } => ExprKind::Let {
+            pattern,
+            annotation,
+            value: Box::new(rewrite_check_expressions(*value)),
+        },
+        ExprKind::If { condition, then_branch, else_branch } => ExprKind::If {
+            condition: Box::new(rewrite_check_expressions(*condition)),
+            then_branch: Box::new(rewrite_check_expressions(*then_branch)),
+            else_branch: else_branch.map(|e| Box::new(rewrite_check_expressions(*e))),
+        },
+        // Leaf nodes and other expressions: pass through unchanged.
+        other => other,
+    };
+    Spanned::new(node, span)
+}
+
+/// If `expr` is a comparison binary operation, return a human-readable string like `"x == y"`.
+fn comparison_message(expr: &Expr) -> Option<String> {
+    if let ExprKind::BinaryOp { left, op, right } = &expr.node {
+        let op_str = match op.node {
+            BinOp::Eq => "==",
+            BinOp::Neq => "!=",
+            BinOp::Lt => "<",
+            BinOp::Lte => "<=",
+            BinOp::Gt => ">",
+            BinOp::Gte => ">=",
+            _ => return None,
+        };
+        Some(format!(
+            "{} {} {}",
+            expr_to_text(left),
+            op_str,
+            expr_to_text(right),
+        ))
+    } else {
+        None
+    }
+}
+
+/// Best-effort render of an expression back to source text for failure messages.
+fn expr_to_text(expr: &Expr) -> String {
+    match &expr.node {
+        ExprKind::Lit(kea_ast::Lit::Int(n)) => n.to_string(),
+        ExprKind::Lit(kea_ast::Lit::Float(f)) => format!("{f}"),
+        ExprKind::Lit(kea_ast::Lit::Bool(b)) => b.to_string(),
+        ExprKind::Lit(kea_ast::Lit::String(s)) => format!("\"{s}\""),
+        ExprKind::Lit(kea_ast::Lit::Char(c)) => format!("'{c}'"),
+        ExprKind::Lit(kea_ast::Lit::Unit) => "()".to_string(),
+        ExprKind::Var(name) => name.clone(),
+        ExprKind::BinaryOp { left, op, right } => {
+            let op_str = match op.node {
+                BinOp::Add => "+",
+                BinOp::Sub => "-",
+                BinOp::Mul => "*",
+                BinOp::Div => "/",
+                BinOp::Mod => "%",
+                BinOp::Concat => "++",
+                BinOp::Combine => "<>",
+                BinOp::Eq => "==",
+                BinOp::Neq => "!=",
+                BinOp::Lt => "<",
+                BinOp::Lte => "<=",
+                BinOp::Gt => ">",
+                BinOp::Gte => ">=",
+                BinOp::And => "&&",
+                BinOp::Or => "||",
+                BinOp::In => "in",
+                BinOp::NotIn => "not in",
+            };
+            format!("{} {} {}", expr_to_text(left), op_str, expr_to_text(right))
+        }
+        ExprKind::FieldAccess { expr, field } => {
+            format!("{}.{}", expr_to_text(expr), field.node)
+        }
+        ExprKind::Call { func, args } => {
+            let args_text = args
+                .iter()
+                .map(|a| {
+                    if let Some(label) = &a.label {
+                        format!("{}: {}", label.node, expr_to_text(&a.value))
+                    } else {
+                        expr_to_text(&a.value)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{}({})", expr_to_text(func), args_text)
+        }
+        ExprKind::UnaryOp { op, operand } => {
+            let op_str = match op.node {
+                UnaryOp::Neg => "-",
+                UnaryOp::Not => "!",
+            };
+            format!("{}{}", op_str, expr_to_text(operand))
+        }
+        // Fallback for complex expressions.
+        _ => "_".to_string(),
+    }
 }
 
 fn is_main_decl(decl: &kea_ast::Decl) -> bool {
