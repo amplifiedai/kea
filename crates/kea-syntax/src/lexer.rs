@@ -649,7 +649,23 @@ impl<'src> Lexer<'src> {
                     self.error(start, "unterminated string literal (newline in string)");
                     return;
                 }
-                _ => current_lit.push(ch as char),
+                _ => {
+                    if ch < 128 {
+                        current_lit.push(ch as char);
+                    } else {
+                        // Multi-byte UTF-8: re-decode from the byte we already consumed.
+                        let char_start = self.pos - 1;
+                        if let Some(c) = std::str::from_utf8(&self.source[char_start..])
+                            .ok()
+                            .and_then(|s| s.chars().next())
+                        {
+                            current_lit.push(c);
+                            self.pos = char_start + c.len_utf8();
+                        } else {
+                            current_lit.push('\u{FFFD}');
+                        }
+                    }
+                }
             }
         }
 
@@ -760,7 +776,22 @@ impl<'src> Lexer<'src> {
                     }
                     parts.push(crate::token::StringPart::Expr(expr_text));
                 }
-                _ => current_lit.push(ch as char),
+                _ => {
+                    if ch < 128 {
+                        current_lit.push(ch as char);
+                    } else {
+                        let char_start = self.pos - 1;
+                        if let Some(c) = std::str::from_utf8(&self.source[char_start..])
+                            .ok()
+                            .and_then(|s| s.chars().next())
+                        {
+                            current_lit.push(c);
+                            self.pos = char_start + c.len_utf8();
+                        } else {
+                            current_lit.push('\u{FFFD}');
+                        }
+                    }
+                }
             }
         }
 
