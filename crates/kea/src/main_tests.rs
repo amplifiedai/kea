@@ -13197,6 +13197,58 @@ fn compile_and_execute_associated_type_via_foldable_exit_code() {
     let _ = std::fs::remove_file(source_path);
 }
 
+#[test]
+fn compile_and_execute_chars_length_exit_code() {
+    let source = concat!(
+        "use Text\n",
+        "use List\n",
+        "\n",
+        "pub fn main() -> Int\n",
+        "  let cs = Text.chars(\"héllo\")\n",
+        "  List.length(cs)\n",
+    );
+    let source_path = write_temp_source(source, "kea-cli-chars-length", "kea");
+    let run = run_file(&source_path).expect("compile and run should succeed");
+    assert_eq!(run.exit_code, 5);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_size_of_int_exit_code() {
+    let source = concat!(
+        "pub fn main() -> Int\n",
+        "  size_of(Int)\n",
+    );
+    let source_path = write_temp_source(source, "kea-cli-size-of-int", "kea");
+    let run = run_file(&source_path).expect("compile and run should succeed");
+    assert_eq!(run.exit_code, 8);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_size_of_char_exit_code() {
+    let source = concat!(
+        "pub fn main() -> Int\n",
+        "  size_of(Char)\n",
+    );
+    let source_path = write_temp_source(source, "kea-cli-size-of-char", "kea");
+    let run = run_file(&source_path).expect("compile and run should succeed");
+    assert_eq!(run.exit_code, 4);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_align_of_int32_exit_code() {
+    let source = concat!(
+        "pub fn main() -> Int\n",
+        "  align_of(Int32)\n",
+    );
+    let source_path = write_temp_source(source, "kea-cli-align-of-int32", "kea");
+    let run = run_file(&source_path).expect("compile and run should succeed");
+    assert_eq!(run.exit_code, 4);
+    let _ = std::fs::remove_file(source_path);
+}
+
 fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
     let path = temp_artifact_path(prefix, extension);
     std::fs::write(&path, contents).expect("temp source write should succeed");
