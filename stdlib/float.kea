@@ -47,7 +47,7 @@ doc
     Float.floor(-2.7)  -- => -3.0
 @intrinsic("__kea_float_floor")
 pub fn floor(x: Float) -> Float
-  x
+  0.0
 
 doc
   Round `x` toward positive infinity (ceiling).
@@ -56,7 +56,7 @@ doc
     Float.ceil(-2.1)   -- => -2.0
 @intrinsic("__kea_float_ceil")
 pub fn ceil(x: Float) -> Float
-  x
+  0.0
 
 doc
   Round `x` to the nearest integer, ties to even (IEEE 754 default).
@@ -66,7 +66,7 @@ doc
     Float.round(-2.7)  -- => -3.0
 @intrinsic("__kea_float_nearest")
 pub fn round(x: Float) -> Float
-  x
+  0.0
 
 doc
   Compute e raised to the power `x`.
@@ -75,7 +75,7 @@ doc
     Float.exp(1.0)  -- approximately 2.718
 @intrinsic("__kea_float_exp")
 pub fn exp(x: Float) -> Float
-  x
+  0.0
 
 doc
   Compute the natural logarithm (base e) of `x`.
@@ -84,7 +84,7 @@ doc
     Float.log_e(Float.exp(1.0))  -- => 1.0
 @intrinsic("__kea_float_log_e")
 pub fn log_e(x: Float) -> Float
-  x
+  0.0
 
 doc
   Raise `base` to the power `exp`.
@@ -93,4 +93,4 @@ doc
     Float.pow(9.0, 0.5)   -- => 3.0  (square root)
 @intrinsic("__kea_float_pow")
 pub fn pow(base: Float, exp: Float) -> Float
-  base
+  0.0
