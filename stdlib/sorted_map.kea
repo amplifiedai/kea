@@ -44,7 +44,7 @@ doc
 
     let m = SortedMap.new(|x, y| Ord.compare(x, y))
     SortedMap.size(m)   -- => 0
-fn new(cmp_fn: fn(k, k) -> Ordering) -> SortedMap(k, v)
+pub fn new(cmp_fn: fn(k, k) -> Ordering) -> SortedMap(k, v)
   SortedMap { entries: [], cmp_fn: cmp_fn }
 
 doc
@@ -54,7 +54,7 @@ doc
 
     let m = SortedMap.of_list([(2, "b"), (1, "a")], |x, y| Ord.compare(x, y))
     SortedMap.to_list(m)   -- => [(1, "a"), (2, "b")]
-fn of_list(pairs: List (k, v), cmp_fn: fn(k, k) -> Ordering) -> SortedMap(k, v)
+pub fn of_list(pairs: List (k, v), cmp_fn: fn(k, k) -> Ordering) -> SortedMap(k, v)
   List.fold(pairs, new(cmp_fn), |m, pair| insert(m, pair.0, pair.1))
 
 -- -------------------------------------------------------------------------
@@ -65,14 +65,14 @@ doc
   Return the number of key/value pairs in the map.
 
     SortedMap.size(m)   -- => 3
-fn size(m: SortedMap(k, v)) -> Int
+pub fn size(m: SortedMap(k, v)) -> Int
   List.length(m.entries)
 
 doc
   Return true when the map has no entries.
 
     SortedMap.is_empty(SortedMap.new(|x, y| Ord.compare(x, y)))   -- => true
-fn is_empty(m: SortedMap(k, v)) -> Bool
+pub fn is_empty(m: SortedMap(k, v)) -> Bool
   case m.entries
     Nil -> true
     _   -> false
@@ -81,11 +81,11 @@ doc
   Look up a key, returning `Some(value)` if present or `None` if absent.
 
     SortedMap.get(m, 1)   -- => Some("a") or None
-fn get(m: SortedMap(k, v), key: k) -> Option v
+pub fn get(m: SortedMap(k, v), key: k) -> Option v
   let cmp = m.cmp_fn
   get_step(m.entries, key, cmp)
 
-fn get_step(entries: List (k, v), key: k, cmp: fn(k, k) -> Ordering) -> Option v
+pub fn get_step(entries: List (k, v), key: k, cmp: fn(k, k) -> Ordering) -> Option v
   case entries
     Nil -> None
     Cons((k, v), rest) ->
@@ -98,7 +98,7 @@ doc
   Return true if the map contains the given key.
 
     SortedMap.has(m, 42)   -- => true or false
-fn has(m: SortedMap(k, v), key: k) -> Bool
+pub fn has(m: SortedMap(k, v), key: k) -> Bool
   case get(m, key)
     None    -> false
     Some(_) -> true
@@ -113,12 +113,12 @@ doc
   The original map is unchanged.
 
     let m2 = SortedMap.insert(m, 3, "c")
-fn insert(m: SortedMap(k, v), key: k, val: v) -> SortedMap(k, v)
+pub fn insert(m: SortedMap(k, v), key: k, val: v) -> SortedMap(k, v)
   let cmp = m.cmp_fn
   let new_entries = insert_sorted(m.entries, key, val, cmp)
   m~{ entries: new_entries }
 
-fn insert_sorted(entries: List (k, v), key: k, val: v, cmp: fn(k, k) -> Ordering) -> List (k, v)
+pub fn insert_sorted(entries: List (k, v), key: k, val: v, cmp: fn(k, k) -> Ordering) -> List (k, v)
   case entries
     Nil -> [(key, val)]
     Cons((k, v), rest) ->
@@ -133,12 +133,12 @@ doc
   Returns the original map unchanged if the key is absent.
 
     let m2 = SortedMap.remove(m, 1)
-fn remove(m: SortedMap(k, v), key: k) -> SortedMap(k, v)
+pub fn remove(m: SortedMap(k, v), key: k) -> SortedMap(k, v)
   let cmp = m.cmp_fn
   let new_entries = remove_sorted(m.entries, key, cmp)
   m~{ entries: new_entries }
 
-fn remove_sorted(entries: List (k, v), key: k, cmp: fn(k, k) -> Ordering) -> List (k, v)
+pub fn remove_sorted(entries: List (k, v), key: k, cmp: fn(k, k) -> Ordering) -> List (k, v)
   case entries
     Nil -> Nil
     Cons((k, v), rest) ->
@@ -155,28 +155,28 @@ doc
   Return all key/value pairs in ascending key order.
 
     SortedMap.to_list(m)   -- => [(1, "a"), (2, "b"), (3, "c")]
-fn to_list(m: SortedMap(k, v)) -> List (k, v)
+pub fn to_list(m: SortedMap(k, v)) -> List (k, v)
   m.entries
 
 doc
   Return all keys in ascending order.
 
     SortedMap.keys(m)   -- => [1, 2, 3]
-fn keys(m: SortedMap(k, v)) -> List k
+pub fn keys(m: SortedMap(k, v)) -> List k
   List.map(m.entries, |pair| pair.0)
 
 doc
   Return all values in ascending key order.
 
     SortedMap.values(m)   -- => ["a", "b", "c"]
-fn values(m: SortedMap(k, v)) -> List v
+pub fn values(m: SortedMap(k, v)) -> List v
   List.map(m.entries, |pair| pair.1)
 
 doc
   Transform every value with a function, preserving key order.
 
     SortedMap.map_values(m, |v| v ++ "!")
-fn map_values(m: SortedMap(k, v), f: fn(v) -> w) -> SortedMap(k, w)
+pub fn map_values(m: SortedMap(k, v), f: fn(v) -> w) -> SortedMap(k, w)
   let new_entries = List.map(m.entries, |pair| (pair.0, f(pair.1)))
   SortedMap { entries: new_entries, cmp_fn: m.cmp_fn }
 
@@ -184,7 +184,7 @@ doc
   Keep only entries whose values satisfy a predicate.
 
     SortedMap.filter(m, |v| v != "b")
-fn filter(m: SortedMap(k, v), pred: fn(v) -> Bool) -> SortedMap(k, v)
+pub fn filter(m: SortedMap(k, v), pred: fn(v) -> Bool) -> SortedMap(k, v)
   let new_entries = List.filter(m.entries, |pair| pred(pair.1))
   m~{ entries: new_entries }
 
@@ -192,7 +192,7 @@ doc
   Reduce all entries to a single value, visiting in ascending key order.
 
     SortedMap.fold(m, 0, |acc, k, v| acc + v)
-fn fold(m: SortedMap(k, v), init: b, f: fn(b, k, v) -> b) -> b
+pub fn fold(m: SortedMap(k, v), init: b, f: fn(b, k, v) -> b) -> b
   List.fold(m.entries, init, |acc, pair| f(acc, pair.0, pair.1))
 
 -- -------------------------------------------------------------------------
@@ -203,7 +203,7 @@ doc
   Return all entries whose keys satisfy a predicate, in key order.
 
     SortedMap.range(m, |k| k >= 2)   -- keys >= 2 only
-fn range(m: SortedMap(k, v), pred: fn(k) -> Bool) -> SortedMap(k, v)
+pub fn range(m: SortedMap(k, v), pred: fn(k) -> Bool) -> SortedMap(k, v)
   let new_entries = List.filter(m.entries, |pair| pred(pair.0))
   m~{ entries: new_entries }
 
@@ -211,12 +211,12 @@ doc
   Return the entry with the smallest key, or `None` if empty.
 
     SortedMap.min_entry(m)   -- => Some((1, "a"))
-fn min_entry(m: SortedMap(k, v)) -> Option (k, v)
+pub fn min_entry(m: SortedMap(k, v)) -> Option (k, v)
   List.head(m.entries)
 
 doc
   Return the entry with the largest key, or `None` if empty.
 
     SortedMap.max_entry(m)   -- => Some((3, "c"))
-fn max_entry(m: SortedMap(k, v)) -> Option (k, v)
+pub fn max_entry(m: SortedMap(k, v)) -> Option (k, v)
   List.last(m.entries)

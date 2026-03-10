@@ -133,7 +133,7 @@ doc
 
   The error value is evaluated eagerly. If constructing it is expensive,
   use a case expression directly.
-fn from_option(opt: Option a, err: e) -> Result(a, e)
+pub fn from_option(opt: Option a, err: e) -> Result(a, e)
   case opt
     Some(value) -> Ok(value)
     None -> Err(err)
@@ -160,7 +160,7 @@ doc
   Result.unwrap_or(Err("!"), 0)
   -- => 0
   ```
-fn unwrap_or(res: Result(a, e), fallback: a) -> a
+pub fn unwrap_or(res: Result(a, e), fallback: a) -> a
   case res
     Ok(value) -> value
     Err(_) -> fallback
@@ -184,7 +184,7 @@ doc
   Result.map(Err("bad"), |x| x + 1)
   -- => Err("bad")
   ```
-fn map(res: Result(a, e), f: fn(a) -> b) -> Result(b, e)
+pub fn map(res: Result(a, e), f: fn(a) -> b) -> Result(b, e)
   case res
     Ok(value) -> Ok(f(value))
     Err(err) -> Err(err)
@@ -207,7 +207,7 @@ doc
   Result.map_err(Ok(5), |e| e ++ "!")
   -- => Ok(5)
   ```
-fn map_err(res: Result(a, e), f: fn(e) -> f) -> Result(a, f)
+pub fn map_err(res: Result(a, e), f: fn(e) -> f) -> Result(a, f)
   case res
     Ok(value) -> Ok(value)
     Err(err) -> Err(f(err))
@@ -235,7 +235,7 @@ doc
   Result.and_then(Err("!"), |x| Ok(x))
   -- => Err("!")
   ```
-fn and_then(res: Result(a, e), f: fn(a) -> Result(b, e)) -> Result(b, e)
+pub fn and_then(res: Result(a, e), f: fn(a) -> Result(b, e)) -> Result(b, e)
   case res
     Ok(value) -> f(value)
     Err(err) -> Err(err)
@@ -264,7 +264,7 @@ doc
   catch Result.unwrap(Err(5))
   -- => Err(5)
   ```
-fn unwrap(res: Result(a, e)) -[Fail e]> a
+pub fn unwrap(res: Result(a, e)) -[Fail e]> a
   case res
     Ok(value) -> value
     Err(err) -> Fail.fail(err)
@@ -282,7 +282,7 @@ doc
   Result.is_ok(Err(1))
   -- => false
   ```
-fn is_ok(res: Result(a, e)) -> Bool
+pub fn is_ok(res: Result(a, e)) -> Bool
   case res
     Err(_) -> false
     _ -> true
@@ -299,7 +299,7 @@ doc
   Result.is_err(Err(1))
   -- => true
   ```
-fn is_err(res: Result(a, e)) -> Bool
+pub fn is_err(res: Result(a, e)) -> Bool
   case res
     Err(_) -> true
     _ -> false

@@ -101,7 +101,7 @@ doc
   > This is a deliberate choice: degenerate ranges (`lo == hi`) have an
   > obvious result, and inverted ranges (`lo > hi`) are treated as empty
   > with the floor returned.
-fn int_between(lo: Int, hi: Int) -[Rand]> Int
+pub fn int_between(lo: Int, hi: Int) -[Rand]> Int
   if hi <= lo
     lo
   else

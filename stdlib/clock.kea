@@ -131,5 +131,5 @@ doc
 
   This is equivalent to `Clock.monotonic() - start`. It exists as a
   named function for readability and to make the intent explicit in code.
-fn elapsed_since(start: Int) -[Clock]> Int
+pub fn elapsed_since(start: Int) -[Clock]> Int
   Clock.monotonic() - start

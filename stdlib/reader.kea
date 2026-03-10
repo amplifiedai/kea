@@ -150,7 +150,7 @@ doc
   > a struct, every `Reader.ask()` call in `f` returns the same struct.
   > There is no way to update the value from inside `f` — that is the
   > point. Use `State` if you need mutation.
-fn with_reader(env: R, f: fn() -[Reader R, e]> T) -[e]> T
+pub fn with_reader(env: R, f: fn() -[Reader R, e]> T) -[e]> T
   handle f()
     Reader.ask() -> resume env
 
@@ -172,5 +172,5 @@ doc
 
   `asks` does not add a new effect — it uses the same `Reader R` effect
   that `ask` uses.
-fn asks(f: fn(R) -> T) -[Reader R]> T
+pub fn asks(f: fn(R) -> T) -[Reader R]> T
   f(Reader.ask())

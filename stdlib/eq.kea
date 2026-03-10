@@ -16,7 +16,7 @@ doc
 
     Eq.eq(4, 4)   -- => true
     Eq.eq(4, 5)   -- => false
-fn eq(x: Int, y: Int) -> Bool
+pub fn eq(x: Int, y: Int) -> Bool
   x == y
 
 Int as Eq

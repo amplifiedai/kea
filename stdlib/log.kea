@@ -148,7 +148,7 @@ doc
   The produced effect is `-[IO, e]>` — the `IO` comes from `with_stdout_logger`
   itself calling `IO.stdout`. The `Log` effect is consumed by this handler and
   does not appear in the outer signature.
-fn with_stdout_logger(f: fn() -[Log, e]> T) -[IO, e]> T
+pub fn with_stdout_logger(f: fn() -[Log, e]> T) -[IO, e]> T
   handle f()
     Log.debug(msg) ->
       IO.stdout(msg)
@@ -165,7 +165,7 @@ fn with_stdout_logger(f: fn() -[Log, e]> T) -[IO, e]> T
 
 doc
   Reverse `xs` into `acc`. Internal helper for `with_collected_logs`.
-fn reverse_logs_into(xs: LogList, acc: LogList) -> LogList
+pub fn reverse_logs_into(xs: LogList, acc: LogList) -> LogList
   case xs
     Nil -> acc
     Cons(x, rest) ->
@@ -173,14 +173,14 @@ fn reverse_logs_into(xs: LogList, acc: LogList) -> LogList
 
 doc
   Reverse a log list, preserving all messages. Internal helper.
-fn reverse_logs(xs: LogList) -> LogList
+pub fn reverse_logs(xs: LogList) -> LogList
   reverse_logs_into(xs, Nil)
 
 doc
   Internal: collect log messages into a `State LogList` accumulator.
   Messages are accumulated in reverse order for efficiency;
   `with_collected_logs` reverses before returning.
-fn collect_logs(f: fn() -[Log]> T) -[State LogList]> T
+pub fn collect_logs(f: fn() -[Log]> T) -[State LogList]> T
   handle f()
     Log.debug(msg) ->
       State.put(Cons(msg, State.get()))
@@ -233,7 +233,7 @@ doc
     check events.List.length() == 2
     check events.List.any(|e| Text.contains(e, "committed"))
   ```
-fn with_collected_logs(f: fn() -[Log]> T) -> (T, LogList)
+pub fn with_collected_logs(f: fn() -[Log]> T) -> (T, LogList)
   let pair = State.with_state(Nil, ||
     collect_logs(f)
   )

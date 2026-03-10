@@ -76,7 +76,7 @@ doc
 
     let it = ListIter { xs: [1, 2, 3] }
     Iterator.collect(it)   -- => [1, 2, 3]
-fn collect(it: i) -> List (i.Item) where i: Iterator
+pub fn collect(it: i) -> List (i.Item) where i: Iterator
   collect_acc(it, [])
 
 fn collect_acc(it: i, acc: List (i.Item)) -> List (i.Item) where i: Iterator
@@ -91,7 +91,7 @@ doc
 
     let it = ListIter { xs: [1, 2, 3] }
     Iterator.collect(Iterator.map(it, |x| x * 2))   -- => [2, 4, 6]
-fn map(it: i, f: fn(i.Item) -> b) -> MappedIter(i, i.Item, b) where i: Iterator
+pub fn map(it: i, f: fn(i.Item) -> b) -> MappedIter(i, i.Item, b) where i: Iterator
   MappedIter { inner: it, func: f }
 
 doc
@@ -114,7 +114,7 @@ doc
 
     let it = ListIter { xs: [1, 2, 3, 4] }
     Iterator.collect(Iterator.filter(it, |x| x % 2 == 0))   -- => [2, 4]
-fn filter(it: i, pred: fn(i.Item) -> Bool) -> FilteredIter(i, i.Item) where i: Iterator
+pub fn filter(it: i, pred: fn(i.Item) -> Bool) -> FilteredIter(i, i.Item) where i: Iterator
   FilteredIter { inner: it, pred: pred }
 
 doc
@@ -138,7 +138,7 @@ doc
 
     let it = ListIter { xs: [1, 2, 3] }
     Iterator.fold(it, 0, |acc, x| acc + x)   -- => 6
-fn fold(it: i, init: b, f: fn(b, i.Item) -> b) -> b where i: Iterator
+pub fn fold(it: i, init: b, f: fn(b, i.Item) -> b) -> b where i: Iterator
   case Iterator.next(it)
     None            -> init
     Some((x, rest)) -> fold(rest, f(init, x), f)
@@ -148,7 +148,7 @@ doc
 
     let it = ListIter { xs: [1, 2, 3] }
     Iterator.count(it)   -- => 3
-fn count(it: i) -> Int where i: Iterator
+pub fn count(it: i) -> Int where i: Iterator
   Iterator.fold(it, 0, |acc, _| acc + 1)
 
 doc
@@ -156,7 +156,7 @@ doc
 
     let it = ListIter { xs: [1, 2, 3, 4, 5] }
     Iterator.take(it, 3)   -- => [1, 2, 3]
-fn take(it: i, n: Int) -> List (i.Item) where i: Iterator
+pub fn take(it: i, n: Int) -> List (i.Item) where i: Iterator
   take_acc(it, n, [])
 
 fn take_acc(it: i, n: Int, acc: List (i.Item)) -> List (i.Item) where i: Iterator

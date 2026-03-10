@@ -54,7 +54,7 @@ doc
     List.is_empty(Nil)             -- => true
     List.is_empty(Cons(1, Nil))    -- => false
     List.is_empty([])              -- => true
-fn is_empty(xs: List a) -> Bool
+pub fn is_empty(xs: List a) -> Bool
   case xs
     Nil -> true
     Cons(_, _) -> false
@@ -64,7 +64,7 @@ doc
 
     List.length(Nil)                -- => 0
     List.length([1, 2, 3])         -- => 3
-fn length(xs: List a) -> Int
+pub fn length(xs: List a) -> Int
   case xs
     Nil -> 0
     Cons(_, rest) -> 1 + length(rest)
@@ -76,7 +76,7 @@ doc
 
     List.head([1, 2, 3])   -- => Some(1)
     List.head([])           -- => None
-fn head(xs: List a) -> Option a
+pub fn head(xs: List a) -> Option a
   case xs
     Cons(x, _) -> Some(x)
     Nil -> None
@@ -89,7 +89,7 @@ doc
     List.tail([1, 2, 3])   -- => [2, 3]
     List.tail([1])          -- => []
     List.tail([])           -- => []
-fn tail(xs: List a) -> List a
+pub fn tail(xs: List a) -> List a
   case xs
     Cons(_, rest) -> rest
     Nil -> Nil
@@ -99,7 +99,7 @@ doc
 
     List.last([1, 2, 3])   -- => Some(3)
     List.last([])           -- => None
-fn last(xs: List a) -> Option a
+pub fn last(xs: List a) -> Option a
   case xs
     Cons(x, Nil) -> Some(x)
     Cons(_, rest) -> last(rest)
@@ -110,7 +110,7 @@ doc
 
     List.nth([10, 20, 30], 1)   -- => Some(20)
     List.nth([10, 20, 30], 5)   -- => None
-fn nth(xs: List a, index: Int) -> Option a
+pub fn nth(xs: List a, index: Int) -> Option a
   case xs
     Cons(x, _) when index == 0 -> Some(x)
     Cons(_, rest) when index > 0 -> nth(rest, index - 1)
@@ -123,7 +123,7 @@ doc
 
     List.map([1, 2, 3], |x| x * 2)   -- => [2, 4, 6]
     List.map([], |x| x + 1)          -- => []
-fn map(xs: List a, f: fn(a) -> b) -> List b
+pub fn map(xs: List a, f: fn(a) -> b) -> List b
   case xs
     Nil -> Nil
     Cons(x, rest) -> Cons(f(x), map(rest, f))
@@ -133,7 +133,7 @@ doc
 
     List.filter([1, 2, 3, 4], |x| x > 2)   -- => [3, 4]
     List.filter([1, 2, 3], |x| x > 10)     -- => []
-fn filter(xs: List a, pred: fn(a) -> Bool) -> List a
+pub fn filter(xs: List a, pred: fn(a) -> Bool) -> List a
   case xs
     Nil -> Nil
     Cons(x, rest) ->
@@ -148,7 +148,7 @@ doc
 
     List.flat_map([1, 2], |x| [x, x * 10])
     -- => [1, 10, 2, 20]
-fn flat_map(xs: List a, f: fn(a) -> List b) -> List b
+pub fn flat_map(xs: List a, f: fn(a) -> List b) -> List b
   case xs
     Nil -> Nil
     Cons(x, rest) -> append(f(x), flat_map(rest, f))
@@ -158,7 +158,7 @@ doc
 
     List.reversed([1, 2, 3])   -- => [3, 2, 1]
     List.reversed([])          -- => []
-fn reverse(xs: List a) -> List a
+pub fn reverse(xs: List a) -> List a
   reverse_acc(xs, Nil)
 
 fn reverse_acc(xs: List a, acc: List a) -> List a
@@ -174,7 +174,7 @@ doc
 
     List.append([1, 2], [3, 4])   -- => [1, 2, 3, 4]
     List.append([], [1])          -- => [1]
-fn append(xs: List a, ys: List a) -> List a
+pub fn append(xs: List a, ys: List a) -> List a
   case xs
     Nil -> ys
     Cons(x, rest) -> Cons(x, append(rest, ys))
@@ -183,7 +183,7 @@ doc
   Pair up elements from two lists. Stops at the shorter list.
 
     List.zip([1, 2], [10, 20])   -- => [(1, 10), (2, 20)]
-fn zip(xs: List a, ys: List b) -> List ((a, b))
+pub fn zip(xs: List a, ys: List b) -> List ((a, b))
   case xs
     Cons(x, xrest) ->
       case ys
@@ -198,7 +198,7 @@ doc
 
     List.fold([1, 2, 3], 0, |acc, x| acc + x)   -- => 6
     List.fold([], 100, |acc, x| acc + x)         -- => 100
-fn fold(xs: List a, init: b, f: fn(b, a) -> b) -> b
+pub fn fold(xs: List a, init: b, f: fn(b, a) -> b) -> b
   case xs
     Nil -> init
     Cons(x, rest) -> fold(rest, f(init, x), f)
@@ -208,7 +208,7 @@ doc
 
     List.sum([1, 2, 3, 4])   -- => 10
     List.sum([])             -- => 0
-fn sum(xs: List Int) -> Int
+pub fn sum(xs: List Int) -> Int
   fold(xs, 0, |acc, x| acc + x)
 
 -- Searching --------------------------------------------------------------
@@ -219,7 +219,7 @@ doc
     List.any([1, 2, 3], |x| x > 2)    -- => true
     List.any([1, 2, 3], |x| x > 10)   -- => false
     List.any([], |_| true)             -- => false
-fn any(xs: List a, pred: fn(a) -> Bool) -> Bool
+pub fn any(xs: List a, pred: fn(a) -> Bool) -> Bool
   case xs
     Nil -> false
     Cons(x, rest) ->
@@ -236,7 +236,7 @@ doc
     List.all([2, 4, 6], |x| x % 2 == 0)   -- => true
     List.all([2, 3, 6], |x| x % 2 == 0)   -- => false
     List.all([], |_| false)                -- => true
-fn all(xs: List a, pred: fn(a) -> Bool) -> Bool
+pub fn all(xs: List a, pred: fn(a) -> Bool) -> Bool
   case xs
     Nil -> true
     Cons(x, rest) ->
@@ -250,7 +250,7 @@ doc
 
     List.find([1, 2, 3], |x| x > 1)    -- => Some(2)
     List.find([1, 2, 3], |x| x > 10)   -- => None
-fn find(xs: List a, pred: fn(a) -> Bool) -> Option a
+pub fn find(xs: List a, pred: fn(a) -> Bool) -> Option a
   case xs
     Nil -> None
     Cons(x, rest) ->
@@ -267,7 +267,7 @@ doc
     List.take([1, 2, 3, 4], 2)   -- => [1, 2]
     List.take([1, 2], 5)         -- => [1, 2]
     List.take([], 3)             -- => []
-fn take(xs: List a, n: Int) -> List a
+pub fn take(xs: List a, n: Int) -> List a
   if n <= 0
     Nil
   else
@@ -281,7 +281,7 @@ doc
     List.drop([1, 2, 3, 4], 2)   -- => [3, 4]
     List.drop([1, 2], 5)         -- => []
     List.drop([], 3)             -- => []
-fn drop(xs: List a, n: Int) -> List a
+pub fn drop(xs: List a, n: Int) -> List a
   if n <= 0
     xs
   else

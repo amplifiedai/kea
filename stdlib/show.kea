@@ -15,7 +15,7 @@ doc
 
     Show.digit_to_string(0)   -- => "0"
     Show.digit_to_string(9)   -- => "9"
-fn digit_to_string(digit: Int) -> String
+pub fn digit_to_string(digit: Int) -> String
   case digit
     0 -> "0"
     1 -> "1"
@@ -33,7 +33,7 @@ doc
 
     Show.show_non_negative(0)    -- => "0"
     Show.show_non_negative(42)   -- => "42"
-fn show_non_negative(x: Int) -> String
+pub fn show_non_negative(x: Int) -> String
   if x < 10
     digit_to_string(x)
   else
@@ -44,7 +44,7 @@ doc
 
     Show.show(0)     -- => "0"
     Show.show(-42)   -- => "-42"
-fn show_int(x: Int) -> String
+pub fn show_int(x: Int) -> String
   if x < 0
     "-" ++ show_non_negative(0 - x)
   else
@@ -55,7 +55,7 @@ doc
 
     Show.show(7)    -- => "7"
     Show.show(-7)   -- => "-7"
-fn show(x: Int) -> String
+pub fn show(x: Int) -> String
   show_int(x)
 
 Int as Show
@@ -75,7 +75,7 @@ doc
     Show.show_float(3.14)   -- => "3.14"
     Show.show_float(0.0)    -- => "0"
 @intrinsic("__kea_float_to_string")
-fn show_float(x: Float) -> String
+pub fn show_float(x: Float) -> String
   "0.0"
 
 Float as Show

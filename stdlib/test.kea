@@ -14,7 +14,7 @@ doc
   Assert a condition, failing with a default message when false.
 
     Test.assert(true)    -- => ()
-fn assert(value: Bool) -[Fail String]> Unit
+pub fn assert(value: Bool) -[Fail String]> Unit
   if value
     ()
   else
@@ -24,7 +24,7 @@ doc
   Assert a condition with a custom failure message.
 
     Test.assert_with_message(1 == 2, "math broke")   -- => Fail("math broke")
-fn assert_with_message(value: Bool, message: String) -[Fail String]> Unit
+pub fn assert_with_message(value: Bool, message: String) -[Fail String]> Unit
   if value
     ()
   else

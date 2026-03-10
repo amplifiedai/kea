@@ -86,18 +86,18 @@ doc
 
     let m = Map.new(|x| x, |x, y| x == y)
     Map.size(m)   -- => 0
-fn new(hash_fn: fn(k) -> Int, eq_fn: fn(k, k) -> Bool) -> Map(k, v)
+pub fn new(hash_fn: fn(k) -> Int, eq_fn: fn(k, k) -> Bool) -> Map(k, v)
   Map { root: None, size: 0, hash_fn: hash_fn, eq_fn: eq_fn }
 
 doc
   Build a map from a list of key/value pairs.
 
     let m = Map.of_list([(1, "a"), (2, "b")], |x| x, |x, y| x == y)
-fn of_list(pairs: List (k, v), hash_fn: fn(k) -> Int, eq_fn: fn(k, k) -> Bool) -> Map(k, v)
+pub fn of_list(pairs: List (k, v), hash_fn: fn(k) -> Int, eq_fn: fn(k, k) -> Bool) -> Map(k, v)
   let m = new(hash_fn, eq_fn)
   of_list_step(pairs, m)
 
-fn of_list_step(pairs: List (k, v), m: Map(k, v)) -> Map(k, v)
+pub fn of_list_step(pairs: List (k, v), m: Map(k, v)) -> Map(k, v)
   case pairs
     Nil -> m
     Cons((k, v), rest) -> of_list_step(rest, insert(m, k, v))
@@ -107,24 +107,24 @@ fn of_list_step(pairs: List (k, v), m: Map(k, v)) -> Map(k, v)
 -- -----------------------------------------------------------------------
 
 -- Extract the 5-bit slot index at a given trie depth.
-fn slot_index(hash: Int, depth: Int) -> Int
+pub fn slot_index(hash: Int, depth: Int) -> Int
   hash.shift_right(5 * depth).bit_and(31)
 
 -- Compressed array index: count set bits below position `pos` in `bitmap`.
-fn compressed_index(bitmap: Int, pos: Int) -> Int
+pub fn compressed_index(bitmap: Int, pos: Int) -> Int
   let mask = (1).shift_left(pos) - 1
   bitmap.bit_and(mask).popcount()
 
 -- Test whether bit `pos` is set in `bitmap`.
-fn bit_set(bitmap: Int, pos: Int) -> Bool
+pub fn bit_set(bitmap: Int, pos: Int) -> Bool
   bitmap.bit_and((1).shift_left(pos)) != 0
 
 -- Set bit `pos` in `bitmap`.
-fn set_bit(bitmap: Int, pos: Int) -> Int
+pub fn set_bit(bitmap: Int, pos: Int) -> Int
   bitmap.bit_or((1).shift_left(pos))
 
 -- Clear bit `pos` in `bitmap`.
-fn clear_bit(bitmap: Int, pos: Int) -> Int
+pub fn clear_bit(bitmap: Int, pos: Int) -> Int
   bitmap.bit_and(((1).shift_left(pos)).bit_not())
 
 -- -----------------------------------------------------------------------
@@ -132,7 +132,7 @@ fn clear_bit(bitmap: Int, pos: Int) -> Int
 -- -----------------------------------------------------------------------
 
 -- Insert element at index into a list.
-fn list_insert(xs: List a, idx: Int, x: a) -> List a
+pub fn list_insert(xs: List a, idx: Int, x: a) -> List a
   if idx <= 0
     Cons(x, xs)
   else
@@ -141,7 +141,7 @@ fn list_insert(xs: List a, idx: Int, x: a) -> List a
       Cons(h, t) -> Cons(h, list_insert(t, idx - 1, x))
 
 -- Remove element at index from a list.
-fn list_remove(xs: List a, idx: Int) -> List a
+pub fn list_remove(xs: List a, idx: Int) -> List a
   if idx <= 0
     case xs
       Nil -> Nil
@@ -152,7 +152,7 @@ fn list_remove(xs: List a, idx: Int) -> List a
       Cons(h, t) -> Cons(h, list_remove(t, idx - 1))
 
 -- Replace element at index in a list.
-fn list_set(xs: List a, idx: Int, x: a) -> List a
+pub fn list_set(xs: List a, idx: Int, x: a) -> List a
   if idx <= 0
     case xs
       Nil -> Cons(x, Nil)
@@ -163,14 +163,14 @@ fn list_set(xs: List a, idx: Int, x: a) -> List a
       Cons(h, t) -> Cons(h, list_set(t, idx - 1, x))
 
 -- Get element at index from a list.
-fn list_get(xs: List a, idx: Int) -> Option a
+pub fn list_get(xs: List a, idx: Int) -> Option a
   List.nth(xs, idx)
 
 -- -----------------------------------------------------------------------
 -- Empty node
 -- -----------------------------------------------------------------------
 
-fn empty_node() -> ChampNode(k, v)
+pub fn empty_node() -> ChampNode(k, v)
   ChampNode { data_map: 0, node_map: 0, values: [], children: [] }
 
 -- -----------------------------------------------------------------------
@@ -181,7 +181,7 @@ doc
   Look up a key, returning Some(value) if present or None if absent.
 
     Map.get(m, 42)   -- => Some("hello") or None
-fn get(m: Map(k, v), key: k) -> Option v
+pub fn get(m: Map(k, v), key: k) -> Option v
   let eq = m.eq_fn
   let hsh = m.hash_fn
   let h = hsh(key)
@@ -189,7 +189,7 @@ fn get(m: Map(k, v), key: k) -> Option v
     None -> None
     Some(node) -> node_get(node, key, h, 0, eq)
 
-fn node_get(node: ChampNode(k, v), key: k, hash: Int, depth: Int, eq: fn(k, k) -> Bool) -> Option v
+pub fn node_get(node: ChampNode(k, v), key: k, hash: Int, depth: Int, eq: fn(k, k) -> Bool) -> Option v
   let pos = slot_index(hash, depth)
   if bit_set(node.data_map, pos)
     let idx = compressed_index(node.data_map, pos)
@@ -212,7 +212,7 @@ doc
   Return true if the map contains the given key.
 
     Map.has(m, 42)   -- => true or false
-fn has(m: Map(k, v), key: k) -> Bool
+pub fn has(m: Map(k, v), key: k) -> Bool
   case get(m, key)
     None -> false
     Some(_) -> true
@@ -226,7 +226,7 @@ doc
   Persistent — the original map is unchanged.
 
     let m2 = Map.insert(m, 42, "hello")
-fn insert(m: Map(k, v), key: k, val: v) -> Map(k, v)
+pub fn insert(m: Map(k, v), key: k, val: v) -> Map(k, v)
   let eq = m.eq_fn
   let hsh = m.hash_fn
   let h = hsh(key)
@@ -239,7 +239,7 @@ fn insert(m: Map(k, v), key: k, val: v) -> Map(k, v)
       m~{ root: Some(result.0), size: m.size + result.1 }
 
 -- Returns (new_node, delta_size) where delta_size is 1 if inserted, 0 if replaced.
-fn node_insert(node: ChampNode(k, v), key: k, val: v, hash: Int, depth: Int, eq: fn(k, k) -> Bool) -> (ChampNode(k, v), Int)
+pub fn node_insert(node: ChampNode(k, v), key: k, val: v, hash: Int, depth: Int, eq: fn(k, k) -> Bool) -> (ChampNode(k, v), Int)
   let pos = slot_index(hash, depth)
   if bit_set(node.data_map, pos)
     let idx = compressed_index(node.data_map, pos)
@@ -274,7 +274,7 @@ fn node_insert(node: ChampNode(k, v), key: k, val: v, hash: Int, depth: Int, eq:
     (node_insert_kv(node, key, val, hash, depth), 1)
 
 -- Insert a KV pair directly into the data section of a node (no collision check).
-fn node_insert_kv(node: ChampNode(k, v), key: k, val: v, hash: Int, depth: Int) -> ChampNode(k, v)
+pub fn node_insert_kv(node: ChampNode(k, v), key: k, val: v, hash: Int, depth: Int) -> ChampNode(k, v)
   let pos = slot_index(hash, depth)
   let idx = compressed_index(node.data_map, pos)
   let new_data_map = set_bit(node.data_map, pos)
@@ -290,7 +290,7 @@ doc
   Returns the original map unchanged if the key is absent.
 
     let m2 = Map.remove(m, 42)
-fn remove(m: Map(k, v), key: k) -> Map(k, v)
+pub fn remove(m: Map(k, v), key: k) -> Map(k, v)
   let eq = m.eq_fn
   let hsh = m.hash_fn
   let h = hsh(key)
@@ -311,7 +311,7 @@ fn remove(m: Map(k, v), key: k) -> Map(k, v)
             m
 
 -- Returns None if key not found; Some((new_node, removed)) otherwise.
-fn node_remove(node: ChampNode(k, v), key: k, hash: Int, depth: Int, eq: fn(k, k) -> Bool) -> Option ((ChampNode(k, v), Bool))
+pub fn node_remove(node: ChampNode(k, v), key: k, hash: Int, depth: Int, eq: fn(k, k) -> Bool) -> Option ((ChampNode(k, v), Bool))
   let pos = slot_index(hash, depth)
   if bit_set(node.data_map, pos)
     let idx = compressed_index(node.data_map, pos)
@@ -351,7 +351,7 @@ fn node_remove(node: ChampNode(k, v), key: k, hash: Int, depth: Int, eq: fn(k, k
     None
 
 -- If a node has exactly one KV and no children, return that KV for inlining.
-fn try_inline_child(node: ChampNode(k, v)) -> Option (k, v)
+pub fn try_inline_child(node: ChampNode(k, v)) -> Option (k, v)
   case node.children
     Cons(_, _) -> None
     Nil ->
@@ -359,7 +359,7 @@ fn try_inline_child(node: ChampNode(k, v)) -> Option (k, v)
         Cons(kv, Nil) -> Some(kv)
         _ -> None
 
-fn is_empty_node(node: ChampNode(k, v)) -> Bool
+pub fn is_empty_node(node: ChampNode(k, v)) -> Bool
   node.data_map == 0 and node.node_map == 0
 
 -- -----------------------------------------------------------------------
@@ -370,14 +370,14 @@ doc
   Return the number of key/value pairs in the map.
 
     Map.size(m)   -- => 3
-fn size(m: Map(k, v)) -> Int
+pub fn size(m: Map(k, v)) -> Int
   m.size
 
 doc
   Return true when the map has no entries.
 
     Map.is_empty(m)   -- => true or false
-fn is_empty(m: Map(k, v)) -> Bool
+pub fn is_empty(m: Map(k, v)) -> Bool
   m.size == 0
 
 -- -----------------------------------------------------------------------
@@ -389,12 +389,12 @@ doc
   Order is determined by hash distribution — not insertion order.
 
     Map.to_list(m)   -- => [(k1, v1), (k2, v2), ...]
-fn to_list(m: Map(k, v)) -> List (k, v)
+pub fn to_list(m: Map(k, v)) -> List (k, v)
   case m.root
     None -> []
     Some(node) -> node_to_list(node, [])
 
-fn node_to_list(node: ChampNode(k, v), acc: List (k, v)) -> List (k, v)
+pub fn node_to_list(node: ChampNode(k, v), acc: List (k, v)) -> List (k, v)
   let from_children = List.fold(node.children, acc, |a, child| node_to_list(child, a))
   List.append(node.values, from_children)
 
@@ -402,13 +402,13 @@ doc
   Transform every value with a function, returning a new map.
 
     Map.map_values(m, |v| v + 1)
-fn map_values(m: Map(k, v), f: fn(v) -> w) -> Map(k, w)
+pub fn map_values(m: Map(k, v), f: fn(v) -> w) -> Map(k, w)
   let new_root = case m.root
     None -> None
     Some(node) -> Some(node_map_values(node, f))
   Map { root: new_root, size: m.size, hash_fn: m.hash_fn, eq_fn: m.eq_fn }
 
-fn node_map_values(node: ChampNode(k, v), f: fn(v) -> w) -> ChampNode(k, w)
+pub fn node_map_values(node: ChampNode(k, v), f: fn(v) -> w) -> ChampNode(k, w)
   let new_values = List.map(node.values, |pair| (pair.0, f(pair.1)))
   let new_children = List.map(node.children, |child| node_map_values(child, f))
   ChampNode { data_map: node.data_map, node_map: node.node_map, values: new_values, children: new_children }
@@ -418,7 +418,7 @@ doc
   Returns a new map; the original is unchanged.
 
     Map.filter(m, |v| v > 0)
-fn filter(m: Map(k, v), pred: fn(v) -> Bool) -> Map(k, v)
+pub fn filter(m: Map(k, v), pred: fn(v) -> Bool) -> Map(k, v)
   let pairs = to_list(m)
   let kept = List.filter(pairs, |pair| pred(pair.1))
   of_list(kept, m.hash_fn, m.eq_fn)

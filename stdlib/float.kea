@@ -7,7 +7,7 @@ doc
 
     Float.fabs(-3.5)   -- => 3.5
     Float.fabs(2.0)    -- => 2.0
-fn fabs(x: Float) -> Float
+pub fn fabs(x: Float) -> Float
   if x < 0.0
     -x
   else
@@ -19,7 +19,7 @@ doc
     Float.from_int(42)   -- => 42.0
     Float.from_int(-7)   -- => -7.0
 @intrinsic("__kea_int_to_float")
-fn from_int(x: Int) -> Float
+pub fn from_int(x: Int) -> Float
   0.0
 
 doc
@@ -28,7 +28,7 @@ doc
     Float.to_int(3.9)    -- => 3
     Float.to_int(-2.1)   -- => -2
 @intrinsic("__kea_float_to_int")
-fn to_int(x: Float) -> Int
+pub fn to_int(x: Float) -> Int
   0
 
 doc
@@ -37,5 +37,5 @@ doc
     Float.sqrt(4.0)   -- => 2.0
     Float.sqrt(9.0)   -- => 3.0
 @intrinsic("__kea_float_sqrt")
-fn sqrt(x: Float) -> Float
+pub fn sqrt(x: Float) -> Float
   0.0

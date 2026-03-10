@@ -14,7 +14,7 @@ doc
   Hash an integer (identity function).
 
     Hash.hash(42)   -- => 42
-fn hash(x: Int) -> Int
+pub fn hash(x: Int) -> Int
   x
 
 Int as Hash
@@ -29,7 +29,7 @@ Bool as Hash
       0
 
 @intrinsic("__kea_hash_string")
-fn hash_string(s: String) -> Int
+pub fn hash_string(s: String) -> Int
   0
 
 String as Hash

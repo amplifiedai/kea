@@ -81,7 +81,7 @@ doc
 
     Json.field([("x", JInt(1)), ("y", JInt(2))], "x")   -- => Some(JInt(1))
     Json.field([("x", JInt(1))], "z")                   -- => None
-fn field(fields: List (String, Json), name: String) -> Option Json
+pub fn field(fields: List (String, Json), name: String) -> Option Json
   case fields
     Nil -> None
     Cons((k, v), rest) ->
@@ -100,7 +100,7 @@ doc
     Json.to_string(JNull)             -- => "null"
     Json.to_string(JString("hi"))     -- => "\"hi\""
     Json.to_string(JArray([JInt(1)])) -- => "[1]"
-fn to_string(j: Json) -> String
+pub fn to_string(j: Json) -> String
   case j
     Json.JNull      -> "null"
     Json.JBool(b)   ->
@@ -119,10 +119,10 @@ fn to_string(j: Json) -> String
         "\"" ++ pair.0 ++ "\": " ++ to_string(pair.1))
       "{{" ++ join_strings(parts, ", ") ++ "}}"
 
-fn escape_string(s: String) -> String
+pub fn escape_string(s: String) -> String
   Text.replace(Text.replace(s, "\\", "\\\\"), "\"", "\\\"")
 
-fn join_strings(xs: List String, sep: String) -> String
+pub fn join_strings(xs: List String, sep: String) -> String
   case xs
     Nil -> ""
     Cons(s, Nil) -> s

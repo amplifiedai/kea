@@ -70,7 +70,7 @@ doc
     Foldable.count([])          -- => 0
     Foldable.count(Some(7))     -- => 1
     Foldable.count(None)        -- => 0
-fn count(xs: f) -> Int where f: Foldable
+pub fn count(xs: f) -> Int where f: Foldable
   Foldable.fold(xs, 0, |acc, _| acc + 1)
 
 doc
@@ -79,7 +79,7 @@ doc
     Foldable.any([1, 2, 3], |x| x > 2)    -- => true
     Foldable.any([1, 2, 3], |x| x > 10)   -- => false
     Foldable.any([], |_| true)             -- => false
-fn any(xs: List a, pred: fn(a) -> Bool) -> Bool
+pub fn any(xs: List a, pred: fn(a) -> Bool) -> Bool
   Foldable.fold(xs, false, |acc, x| acc or pred(x))
 
 doc
@@ -90,7 +90,7 @@ doc
     Foldable.all([2, 4, 6], |x| x % 2 == 0)   -- => true
     Foldable.all([2, 3, 6], |x| x % 2 == 0)   -- => false
     Foldable.all([], |_| false)                -- => true
-fn all(xs: List a, pred: fn(a) -> Bool) -> Bool
+pub fn all(xs: List a, pred: fn(a) -> Bool) -> Bool
   Foldable.fold(xs, true, |acc, x| acc and pred(x))
 
 doc
@@ -98,7 +98,7 @@ doc
 
     Foldable.sum([1, 2, 3, 4])   -- => 10
     Foldable.sum([])             -- => 0
-fn sum(xs: f) -> Int where f: Foldable, f.Item = Int
+pub fn sum(xs: f) -> Int where f: Foldable, f.Item = Int
   Foldable.fold(xs, 0, |acc, x| acc + x)
 
 doc
@@ -107,5 +107,5 @@ doc
     Foldable.to_list(Some(42))   -- => [42]
     Foldable.to_list(None)       -- => []
     Foldable.to_list([3, 1, 2])  -- => [3, 1, 2]
-fn to_list(xs: f) -> List (f.Item) where f: Foldable
+pub fn to_list(xs: f) -> List (f.Item) where f: Foldable
   List.reverse(Foldable.fold(xs, [], |acc, x| Cons(x, acc)))

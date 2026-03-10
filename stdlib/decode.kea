@@ -134,7 +134,7 @@ List a as Decode where a: Decode
       Json.JArray(items) -> decode_list(items)
       _                  -> None
 
-fn decode_list(items: List Json) -> Option (List a) where a: Decode
+pub fn decode_list(items: List Json) -> Option (List a) where a: Decode
   case items
     Nil -> Some([])
     Cons(item, rest) ->

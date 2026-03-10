@@ -24,6 +24,6 @@ doc
   Send a payload and then read a response size from the same connection.
 
     Net.send_and_recv(conn, "ping", 4)   -- => 4
-fn send_and_recv(conn: Int, data: String, size: Int) -[Net]> Int
+pub fn send_and_recv(conn: Int, data: String, size: Int) -[Net]> Int
   Net.send(conn, data)
   Net.recv(conn, size)

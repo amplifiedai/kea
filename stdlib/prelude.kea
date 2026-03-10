@@ -13,5 +13,5 @@ doc
   Small prelude smoke function for bootstrap wiring checks.
 
     Prelude.ping()   -- => 7
-fn ping() -> Int
+pub fn ping() -> Int
   7

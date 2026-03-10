@@ -49,26 +49,26 @@ doc
   Write text to stdout.
 
     IO.print("hello")
-fn print(msg: String) -[IO]> Unit
+pub fn print(msg: String) -[IO]> Unit
   IO.stdout(msg)
 
 doc
   Write text plus a trailing newline to stdout.
 
     IO.println("hello")
-fn println(msg: String) -[IO]> Unit
+pub fn println(msg: String) -[IO]> Unit
   IO.stdout(msg ++ "\n")
 
 doc
   Write text to stderr.
 
     IO.eprint("warning")
-fn eprint(msg: String) -[IO]> Unit
+pub fn eprint(msg: String) -[IO]> Unit
   IO.stderr(msg)
 
 doc
   Write text plus a trailing newline to stderr.
 
     IO.eprintln("warning")
-fn eprintln(msg: String) -[IO]> Unit
+pub fn eprintln(msg: String) -[IO]> Unit
   IO.stderr(msg ++ "\n")

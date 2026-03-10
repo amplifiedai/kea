@@ -35,7 +35,7 @@ doc
   Create an empty vector with no allocated backing store.
 
     Vector.new()   -- => Vector { len: 0, cap: 0 }
-fn new() -> Vector a
+pub fn new() -> Vector a
   let p = unsafe Ptr.null()
   Vector { ptr: p, len: 0, cap: 0 }
 
@@ -44,7 +44,7 @@ doc
   Avoids repeated reallocation when the final size is known upfront.
 
     Vector.with_capacity(8)   -- => Vector { len: 0, cap: 8 }
-fn with_capacity(n: Int) -> Vector a
+pub fn with_capacity(n: Int) -> Vector a
   if n <= 0
     new()
   else
@@ -57,7 +57,7 @@ doc
 
     let v = Vector.with_capacity(4)
     Vector.free(v)
-fn free(v: Vector a) -> Unit
+pub fn free(v: Vector a) -> Unit
   if v.cap > 0
     unsafe Ptr.free(v.ptr)
   else
@@ -71,19 +71,19 @@ doc
   Number of elements currently stored.
 
     Vector.length(Vector.new())   -- => 0
-fn length(v: Vector a) -> Int
+pub fn length(v: Vector a) -> Int
   v.len
 
 doc
   Current allocated capacity. `length(v) <= capacity(v)` always holds.
-fn capacity(v: Vector a) -> Int
+pub fn capacity(v: Vector a) -> Int
   v.cap
 
 doc
   True when the vector contains no elements.
 
     Vector.is_empty(Vector.new())   -- => true
-fn is_empty(v: Vector a) -> Bool
+pub fn is_empty(v: Vector a) -> Bool
   v.len == 0
 
 -- -----------------------------------------------------------------------
@@ -97,7 +97,7 @@ doc
     Vector.get(v, 1)    -- => Some(20)
     Vector.get(v, 99)   -- => None
     Vector.free(v)
-fn get(v: Vector a, i: Int) -> Option a
+pub fn get(v: Vector a, i: Int) -> Option a
   if i < 0 or i >= v.len
     None
   else
@@ -112,7 +112,7 @@ doc
     let v2 = Vector.set(v, 1, 99)
     Vector.get(v2, 1)   -- => Some(99)
     Vector.free(v2)
-fn set(v: Vector a, i: Int, x: a) -> Vector a
+pub fn set(v: Vector a, i: Int, x: a) -> Vector a
   if i < 0 or i >= v.len
     v
   else
@@ -132,7 +132,7 @@ doc
     let v2 = Vector.push(v, 42)
     Vector.length(v2)   -- => 1
     Vector.free(v2)
-fn push(v: Vector a, x: a) -> Vector a
+pub fn push(v: Vector a, x: a) -> Vector a
   if v.len == v.cap
     let new_cap = if v.cap == 0
       4
@@ -145,7 +145,7 @@ fn push(v: Vector a, x: a) -> Vector a
       v~{ len: v.len + 1 }
 
 -- Internal: grow backing store to new_cap, then append x.
-fn push_grow(v: Vector a, x: a, new_cap: Int) -> Vector a
+pub fn push_grow(v: Vector a, x: a, new_cap: Int) -> Vector a
   let new_ptr = unsafe Ptr.alloc(new_cap)
   copy_range(v.ptr, new_ptr, 0, v.len)
   if v.cap > 0
@@ -158,7 +158,7 @@ fn push_grow(v: Vector a, x: a, new_cap: Int) -> Vector a
     v2~{ len: v2.len + 1 }
 
 -- Internal: copy count elements from src[i..] to dst[i..].
-fn copy_range(src: Ptr a, dst: Ptr a, i: Int, count: Int) -> Unit
+pub fn copy_range(src: Ptr a, dst: Ptr a, i: Int, count: Int) -> Unit
   if i < count
     unsafe
       Ptr.write(Ptr.offset(dst, i), Ptr.read(Ptr.offset(src, i)))
@@ -169,7 +169,7 @@ fn copy_range(src: Ptr a, dst: Ptr a, i: Int, count: Int) -> Unit
 doc
   Swap elements at indices `i` and `j`. Returns the updated vector.
   No-op when indices are equal, negative, or out of bounds.
-fn swap(v: Vector a, i: Int, j: Int) -> Vector a
+pub fn swap(v: Vector a, i: Int, j: Int) -> Vector a
   if i < 0 or j < 0 or i >= v.len or j >= v.len or i == j
     v
   else
@@ -185,7 +185,7 @@ doc
   Returns the vector unchanged when empty.
 
     let v2 = Vector.pop(v)   -- length decreases by 1
-fn pop(v: Vector a) -> Vector a
+pub fn pop(v: Vector a) -> Vector a
   if v.len == 0
     v
   else
@@ -201,10 +201,10 @@ doc
     let v = Vector.from_list([1, 2, 3])
     Vector.to_list(v)   -- => [1, 2, 3]
     Vector.free(v)
-fn to_list(v: Vector a) -> List a
+pub fn to_list(v: Vector a) -> List a
   to_list_step(v, 0, [])
 
-fn to_list_step(v: Vector a, i: Int, acc: List a) -> List a
+pub fn to_list_step(v: Vector a, i: Int, acc: List a) -> List a
   if i >= v.len
     List.reverse(acc)
   else
@@ -218,10 +218,10 @@ doc
     let v = Vector.from_list([1, 2, 3])
     Vector.length(v)   -- => 3
     Vector.free(v)
-fn from_list(xs: List a) -> Vector a
+pub fn from_list(xs: List a) -> Vector a
   from_list_step(xs, new())
 
-fn from_list_step(xs: List a, v: Vector a) -> Vector a
+pub fn from_list_step(xs: List a, v: Vector a) -> Vector a
   case xs
     Nil -> v
     Cons(x, rest) -> from_list_step(rest, push(v, x))
@@ -231,7 +231,7 @@ fn from_list_step(xs: List a, v: Vector a) -> Vector a
 -- -----------------------------------------------------------------------
 
 -- True when opt is None. Avoids requiring Eq on the element type.
-fn is_none_opt(o: Option a) -> Bool
+pub fn is_none_opt(o: Option a) -> Bool
   case o
     None -> true
     Some(_) -> false

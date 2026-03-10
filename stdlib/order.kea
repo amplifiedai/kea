@@ -17,7 +17,7 @@ doc
 
     Order.reverse(Less)      -- => Greater
     Order.reverse(Equal)     -- => Equal
-fn reverse(value: Ordering) -> Ordering
+pub fn reverse(value: Ordering) -> Ordering
   case value
     Less -> Greater
     Equal -> Equal
@@ -27,7 +27,7 @@ doc
   Regression helper for reverse(Less).
 
     Order.reversed_less_is_greater()   -- => true
-fn reversed_less_is_greater() -> Bool
+pub fn reversed_less_is_greater() -> Bool
   case Order.reverse(Less)
     Greater -> true
     _ -> false
@@ -37,7 +37,7 @@ doc
 
     Order.is_less(Less)      -- => true
     Order.is_less(Greater)   -- => false
-fn is_less(value: Ordering) -> Bool
+pub fn is_less(value: Ordering) -> Bool
   case value
     Less -> true
     _ -> false
@@ -47,7 +47,7 @@ doc
 
     Order.is_equal(Equal)   -- => true
     Order.is_equal(Less)    -- => false
-fn is_equal(value: Ordering) -> Bool
+pub fn is_equal(value: Ordering) -> Bool
   case value
     Equal -> true
     _ -> false
@@ -57,7 +57,7 @@ doc
 
     Order.is_greater(Greater)   -- => true
     Order.is_greater(Equal)     -- => false
-fn is_greater(value: Ordering) -> Bool
+pub fn is_greater(value: Ordering) -> Bool
   case value
     Greater -> true
     _ -> false
@@ -67,7 +67,7 @@ doc
 
     Order.compare_int(1, 2)   -- => Less
     Order.compare_int(3, 3)   -- => Equal
-fn compare_int(x: Int, y: Int) -> Ordering
+pub fn compare_int(x: Int, y: Int) -> Ordering
   if x < y
     Less
   else if x > y
