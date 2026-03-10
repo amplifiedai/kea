@@ -2854,6 +2854,14 @@ impl Parser {
             return self.resume_expr();
         }
 
+        // Layout intrinsics: size_of(Type) and align_of(Type)
+        if self.check_ident("size_of") {
+            return self.size_of_expr();
+        }
+        if self.check_ident("align_of") {
+            return self.align_of_expr();
+        }
+
         // Fail sugar: fail expr -> Fail.fail(expr)
         if self.check_ident("fail") {
             return self.fail_expr();
@@ -3366,6 +3374,26 @@ impl Parser {
             },
             span,
         ))
+    }
+
+    fn size_of_expr(&mut self) -> Option<Expr> {
+        let start = self.current_span();
+        self.advance(); // consume `size_of`
+        self.expect(&TokenKind::LParen, "expected '(' after 'size_of'")?;
+        let ty = self.type_annotation()?;
+        let end = self.current_span();
+        self.expect(&TokenKind::RParen, "expected ')' after type in 'size_of'")?;
+        Some(Spanned::new(ExprKind::SizeOf(ty.node), start.merge(end)))
+    }
+
+    fn align_of_expr(&mut self) -> Option<Expr> {
+        let start = self.current_span();
+        self.advance(); // consume `align_of`
+        self.expect(&TokenKind::LParen, "expected '(' after 'align_of'")?;
+        let ty = self.type_annotation()?;
+        let end = self.current_span();
+        self.expect(&TokenKind::RParen, "expected ')' after type in 'align_of'")?;
+        Some(Spanned::new(ExprKind::AlignOf(ty.node), start.merge(end)))
     }
 
     fn fail_expr(&mut self) -> Option<Expr> {

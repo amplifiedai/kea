@@ -522,7 +522,12 @@ fn check_unique_moves_ast_expr(
     borrow_param_map: &BorrowParamMap,
 ) {
     match &expr.node {
-        ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::Wildcard => {}
+        ExprKind::Lit(_)
+        | ExprKind::None
+        | ExprKind::Atom(_)
+        | ExprKind::Wildcard
+        | ExprKind::SizeOf(_)
+        | ExprKind::AlignOf(_) => {}
         ExprKind::Var(name) => consume_unique_binding(name, expr.span, state, diagnostics),
         ExprKind::Let {
             pattern,
@@ -1840,6 +1845,25 @@ fn intrinsic_symbol_from_annotations(annotations: &[Annotation]) -> Option<Strin
     None
 }
 
+/// Return the in-memory size in bytes for a type annotation (named concrete types only).
+/// Defaults to 8 (one machine word) for aggregate/opaque types — same as Ptr layout.
+fn size_of_annotation(ty: &TypeAnnotation) -> i64 {
+    match ty {
+        TypeAnnotation::Named(name) => match name.as_str() {
+            "Bool" | "Unit" | "Int8" | "UInt8" => 1,
+            "Int16" | "UInt16" => 2,
+            "Float16" => 2,
+            "Int32" | "UInt32" | "Float32" | "Char" => 4,
+            _ => 8, // Int, Int64, UInt64, Float, Float64, String, List T, Ptr T, …
+        },
+        TypeAnnotation::Tuple(items) => {
+            // Tuples are heap-allocated structs; size is the word count × 8.
+            items.len() as i64 * 8
+        }
+        _ => 8,
+    }
+}
+
 fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
     // NOTE: expr_types are available via ctx.expr_types for future use by
     // monomorphization.  We do NOT use them for default_ty yet because MIR
@@ -2163,6 +2187,9 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
                 HirExprKind::Raw(expr.node.clone())
             }
         }
+        ExprKind::SizeOf(ty) => HirExprKind::Lit(Lit::Int(size_of_annotation(ty))),
+        ExprKind::AlignOf(ty) => HirExprKind::Lit(Lit::Int(size_of_annotation(ty))),
+
         ExprKind::Cond { arms } => {
             // Desugar `cond { c1 -> e1; c2 -> e2; _ -> eN }` into nested `if` expressions.
             // Arms are folded right-to-left: the last arm becomes the innermost else-branch.

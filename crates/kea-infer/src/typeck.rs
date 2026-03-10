@@ -10293,7 +10293,9 @@ fn collect_resume_usage(
         | ExprKind::Var(_)
         | ExprKind::None
         | ExprKind::Atom(_)
-        | ExprKind::Wildcard => {}
+        | ExprKind::Wildcard
+        | ExprKind::SizeOf(_)
+        | ExprKind::AlignOf(_) => {}
         ExprKind::Let { value, .. } => {
             collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
         }
@@ -11015,6 +11017,9 @@ fn infer_expr_bidir(
             let inner = unifier.fresh_type();
             Type::option(inner)
         }
+
+        // -- Layout intrinsics --
+        ExprKind::SizeOf(_) | ExprKind::AlignOf(_) => Type::Int,
 
         // -- Atom literal --
         ExprKind::Atom(_) => Type::Atom,

@@ -821,7 +821,9 @@ fn collect_unsafe_call_site_diagnostics_in_expr(
         | ExprKind::Var(_)
         | ExprKind::None
         | ExprKind::Atom(_)
-        | ExprKind::Wildcard => {}
+        | ExprKind::Wildcard
+        | ExprKind::SizeOf(_)
+        | ExprKind::AlignOf(_) => {}
     }
 }
 
@@ -2657,7 +2659,12 @@ fn qualify_intramodule_calls(expr: &mut Expr, module_path: &str, module_fn_names
             qualify_intramodule_calls(signal, module_path, module_fn_names);
         }
         // Leaf nodes — nothing to rewrite.
-        ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::Wildcard => {}
+        ExprKind::Lit(_)
+        | ExprKind::None
+        | ExprKind::Atom(_)
+        | ExprKind::Wildcard
+        | ExprKind::SizeOf(_)
+        | ExprKind::AlignOf(_) => {}
     }
 }
 
@@ -3933,13 +3940,20 @@ fn const_expr_references(
         | ExprKind::ActorSend { .. }
         | ExprKind::ActorCall { .. }
         | ExprKind::ControlSend { .. }
-        | ExprKind::Wildcard => {}
+        | ExprKind::Wildcard
+        | ExprKind::SizeOf(_)
+        | ExprKind::AlignOf(_) => {}
     }
 }
 
 fn const_expr_supported(expr: &Expr) -> bool {
     match &expr.node {
-        ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::Var(_) => true,
+        ExprKind::Lit(_)
+        | ExprKind::None
+        | ExprKind::Atom(_)
+        | ExprKind::Var(_)
+        | ExprKind::SizeOf(_)
+        | ExprKind::AlignOf(_) => true,
         ExprKind::UnaryOp { operand, .. } => const_expr_supported(operand),
         ExprKind::Unsafe { .. } => false,
         ExprKind::BinaryOp { left, right, .. } => {

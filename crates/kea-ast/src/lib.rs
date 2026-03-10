@@ -288,6 +288,12 @@ pub enum ExprKind {
 
     /// `_` catch-all marker used in `cond` arm conditions.
     Wildcard,
+
+    /// Size in bytes of a type: `size_of(Int32)` returns 4.
+    SizeOf(TypeAnnotation),
+
+    /// Alignment in bytes of a type: `align_of(Float32)` returns 4.
+    AlignOf(TypeAnnotation),
 }
 
 /// A part of a string interpolation expression.
@@ -1154,6 +1160,7 @@ fn collect_free_vars(
             collect_free_vars(&signal.node, free, bound);
         }
         ExprKind::Wildcard => {}
+        ExprKind::SizeOf(_) | ExprKind::AlignOf(_) => {}
     }
 }
 
