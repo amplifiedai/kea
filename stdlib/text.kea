@@ -1,3 +1,4 @@
+use Char
 use List
 use Option
 
@@ -296,3 +297,40 @@ doc
 @intrinsic("__kea_text_to_float")
 pub fn to_float(s: String) -> Option Float
   None
+
+-- Decode one UTF-8 codepoint starting at byte index `i`. Returns the
+-- codepoint as an Int and the byte index of the start of the next codepoint.
+-- Returns (-1, i+1) for invalid byte sequences (skips one byte).
+fn utf8_cont(s: String, i: Int) -> Int
+  raw_byte_at(s, i) - 128
+
+fn decode_one(s: String, i: Int) -> (Int, Int)
+  let b0 = raw_byte_at(s, i)
+  cond
+    b0 < 0    -> (-1, i + 1)
+    b0 < 128  -> (b0, i + 1)
+    b0 < 192  -> (-1, i + 1)  -- Lone continuation byte — invalid, skip
+    b0 < 224  -> (((b0 - 192) * 64) + utf8_cont(s, i + 1), i + 2)
+    b0 < 240  -> (((b0 - 224) * 4096) + (utf8_cont(s, i + 1) * 64) + utf8_cont(s, i + 2), i + 3)
+    _ -> (((b0 - 240) * 262144) + (utf8_cont(s, i + 1) * 4096) + (utf8_cont(s, i + 2) * 64) + utf8_cont(s, i + 3), i + 4)
+
+fn chars_acc(s: String, i: Int, len: Int, acc: List Char) -> List Char
+  if i >= len
+    List.reverse(acc)
+  else
+    let step = decode_one(s, i)
+    case Char.from_int(step.0)
+      None -> chars_acc(s, step.1, len, acc)
+      Some(c) -> chars_acc(s, step.1, len, Cons(c, acc))
+
+doc
+  Decode a UTF-8 string into a list of Unicode codepoints.
+
+  Invalid byte sequences are silently skipped. For ASCII strings, each
+  element corresponds to one byte.
+
+    Text.chars("hi")         -- => ['h', 'i']
+    Text.chars("")           -- => []
+    Text.chars("café")       -- => ['c', 'a', 'f', 'é']
+pub fn chars(s: String) -> List Char
+  chars_acc(s, 0, length(s), [])

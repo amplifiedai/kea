@@ -2163,6 +2163,38 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
                 HirExprKind::Raw(expr.node.clone())
             }
         }
+        ExprKind::Cond { arms } => {
+            // Desugar `cond { c1 -> e1; c2 -> e2; _ -> eN }` into nested `if` expressions.
+            // Arms are folded right-to-left: the last arm becomes the innermost else-branch.
+            let mut result_kind: Option<HirExprKind> = None;
+            for arm in arms.iter().rev() {
+                let body = lower_expr(&arm.body, ty_hint.clone(), ctx);
+                result_kind = Some(if matches!(arm.condition.node, ExprKind::Wildcard) {
+                    // Wildcard catch-all arm: just the body (becomes the else branch)
+                    if result_kind.is_none() {
+                        body.kind
+                    } else {
+                        // Wildcard in non-tail position: treat as unconditional branch
+                        body.kind
+                    }
+                } else {
+                    let condition = lower_expr(&arm.condition, None, ctx);
+                    let else_branch = result_kind.map(|k| {
+                        Box::new(HirExpr {
+                            kind: k,
+                            ty: body.ty.clone(),
+                            span: arm.body.span,
+                        })
+                    });
+                    HirExprKind::If {
+                        condition: Box::new(condition),
+                        then_branch: Box::new(body),
+                        else_branch,
+                    }
+                });
+            }
+            result_kind.unwrap_or(HirExprKind::Lit(Lit::Unit))
+        }
         other => HirExprKind::Raw(other.clone()),
     };
 
