@@ -1,3 +1,4 @@
+use List
 use Option
 
 -- Text provides string helper operations.
@@ -26,7 +27,7 @@ doc
     Text.length("")       -- => 0
     Text.length("kea")    -- => 3
 @intrinsic("strlen")
-fn length(s: String) -> Int
+pub fn length(s: String) -> Int
   0
 
 doc
@@ -34,7 +35,7 @@ doc
 
     Text.is_empty("")      -- => true
     Text.is_empty("kea")   -- => false
-fn is_empty(s: String) -> Bool
+pub fn is_empty(s: String) -> Bool
   Text.length(s) == 0
 
 doc
@@ -42,7 +43,7 @@ doc
 
     Text.non_empty("")      -- => false
     Text.non_empty("kea")   -- => true
-fn non_empty(s: String) -> Bool
+pub fn non_empty(s: String) -> Bool
   not Text.is_empty(s)
 
 doc
@@ -52,7 +53,7 @@ doc
     Text.starts_with("hello", "ell")   -- => false
     Text.starts_with("hello", "")      -- => true
 @intrinsic("__kea_text_starts_with")
-fn starts_with(s: String, prefix: String) -> Bool
+pub fn starts_with(s: String, prefix: String) -> Bool
   false
 
 doc
@@ -61,7 +62,7 @@ doc
     Text.ends_with("hello", "llo")   -- => true
     Text.ends_with("hello", "hel")   -- => false
 @intrinsic("__kea_text_ends_with")
-fn ends_with(s: String, suffix: String) -> Bool
+pub fn ends_with(s: String, suffix: String) -> Bool
   false
 
 doc
@@ -71,7 +72,7 @@ doc
     Text.contains("hello", "xyz")   -- => false
     Text.contains("hello", "")      -- => true
 @intrinsic("__kea_text_contains")
-fn contains(s: String, needle: String) -> Bool
+pub fn contains(s: String, needle: String) -> Bool
   false
 
 doc
@@ -80,7 +81,7 @@ doc
 
     Text.find("hello", "ell")   -- => Some(1)
     Text.find("hello", "xyz")   -- => None
-fn find(s: String, needle: String) -> Option Int
+pub fn find(s: String, needle: String) -> Option Int
   let idx = raw_index_of(s, needle)
   if idx < 0
     None
@@ -95,7 +96,7 @@ doc
 
     Text.byte_at("abc", 0)   -- => Some(97)
     Text.byte_at("abc", 5)   -- => None
-fn byte_at(s: String, index: Int) -> Option Int
+pub fn byte_at(s: String, index: Int) -> Option Int
   let b = raw_byte_at(s, index)
   if b < 0
     None
@@ -110,7 +111,7 @@ doc
     Text.slice("hello", 0, 5)   -- => "hello"
     Text.slice("hello", 2, 2)   -- => ""
 @intrinsic("__kea_text_slice")
-fn slice(s: String, from: Int, to: Int) -> String
+pub fn slice(s: String, from: Int, to: Int) -> String
   ""
 
 doc
@@ -119,7 +120,7 @@ doc
     Text.to_upper("Hello!")   -- => "HELLO!"
     Text.to_upper("abc123")   -- => "ABC123"
 @intrinsic("__kea_text_to_upper")
-fn to_upper(s: String) -> String
+pub fn to_upper(s: String) -> String
   s
 
 doc
@@ -128,7 +129,7 @@ doc
     Text.to_lower("Hello!")   -- => "hello!"
     Text.to_lower("ABC123")   -- => "abc123"
 @intrinsic("__kea_text_to_lower")
-fn to_lower(s: String) -> String
+pub fn to_lower(s: String) -> String
   s
 
 doc
@@ -137,7 +138,7 @@ doc
     Text.trim("  hello  ")   -- => "hello"
     Text.trim("no spaces")   -- => "no spaces"
 @intrinsic("__kea_text_trim")
-fn trim(s: String) -> String
+pub fn trim(s: String) -> String
   s
 
 doc
@@ -146,7 +147,7 @@ doc
     Text.replace("hello world", "world", "kea")   -- => "hello kea"
     Text.replace("aaa", "a", "bb")                -- => "bbbbbb"
 @intrinsic("__kea_text_replace")
-fn replace(s: String, old: String, new: String) -> String
+pub fn replace(s: String, old: String, new: String) -> String
   s
 
 doc
@@ -155,12 +156,143 @@ doc
     Text.repeat("ab", 3)   -- => "ababab"
     Text.repeat("x", 0)    -- => ""
 @intrinsic("__kea_text_repeat")
-fn repeat(s: String, count: Int) -> String
+pub fn repeat(s: String, count: Int) -> String
   s
 
 doc
   Concatenate two strings.
 
     Text.concat("hello", " world")   -- => "hello world"
-fn concat(a: String, b: String) -> String
+pub fn concat(a: String, b: String) -> String
   a ++ b
+
+doc
+  Split a string on every occurrence of `sep`, returning the parts as a list.
+
+  Returns a single-element list when `sep` does not appear in `s`.
+  Returns an empty string for parts that appear between consecutive separators.
+
+    Text.split("a,b,c", ",")        -- => ["a", "b", "c"]
+    Text.split("hello", ",")        -- => ["hello"]
+    Text.split("a,,b", ",")         -- => ["a", "", "b"]
+    Text.split("", ",")             -- => [""]
+fn split_acc(s: String, sep: String, acc: List String) -> List String
+  case find(s, sep)
+    None ->
+      List.reverse(Cons(s, acc))
+    Some(idx) ->
+      let before = slice(s, 0, idx)
+      let after  = slice(s, idx + length(sep), length(s))
+      split_acc(after, sep, Cons(before, acc))
+
+doc
+  Split a string on every occurrence of `sep`, returning the parts as a list.
+
+  Returns a single-element list when `sep` does not appear in `s`.
+  Returns an empty string for parts that appear between consecutive separators.
+
+    Text.split("a,b,c", ",")        -- => ["a", "b", "c"]
+    Text.split("hello", ",")        -- => ["hello"]
+    Text.split("a,,b", ",")         -- => ["a", "", "b"]
+    Text.split("", ",")             -- => [""]
+pub fn split(s: String, sep: String) -> List String
+  split_acc(s, sep, [])
+
+doc
+  Split a string on every line ending (`\n`), returning lines as a list.
+
+  A trailing newline produces a trailing empty string.
+
+    Text.lines("a\nb\nc")   -- => ["a", "b", "c"]
+    Text.lines("a\nb\n")    -- => ["a", "b", ""]
+    Text.lines("hello")     -- => ["hello"]
+pub fn lines(s: String) -> List String
+  split(s, "\n")
+
+fn join_acc(xs: List String, sep: String, acc: String) -> String
+  case xs
+    Nil -> acc
+    Cons(x, rest) -> join_acc(rest, sep, acc ++ sep ++ x)
+
+doc
+  Join a list of strings with a separator between each element.
+
+  Returns an empty string for an empty list.
+
+    Text.join(["a", "b", "c"], ", ")   -- => "a, b, c"
+    Text.join([], ", ")                -- => ""
+    Text.join(["only"], ", ")          -- => "only"
+pub fn join(xs: List String, sep: String) -> String
+  case xs
+    Nil -> ""
+    Cons(first, rest) -> join_acc(rest, sep, first)
+
+fn bytes_acc(s: String, idx: Int, len: Int, acc: List Int) -> List Int
+  if idx >= len
+    List.reverse(acc)
+  else
+    case byte_at(s, idx)
+      None -> List.reverse(acc)
+      Some(b) -> bytes_acc(s, idx + 1, len, Cons(b, acc))
+
+doc
+  Return a list of byte values for every byte in the string, in order.
+
+  Each element is an integer in 0–255. For ASCII text this is equivalent
+  to codepoints. For multi-byte UTF-8 sequences, individual bytes are
+  returned — not codepoints.
+
+    Text.bytes("ab")   -- => [97, 98]
+    Text.bytes("")     -- => []
+pub fn bytes(s: String) -> List Int
+  bytes_acc(s, 0, length(s), [])
+
+fn parse_digits(s: String, idx: Int, acc: Int, len: Int, negative: Bool) -> Option Int
+  if idx >= len
+    if negative then Some(0 - acc) else Some(acc)
+  else
+    case byte_at(s, idx)
+      None -> None
+      Some(b) ->
+        if b < 48 or b > 57
+          None
+        else
+          parse_digits(s, idx + 1, acc * 10 + (b - 48), len, negative)
+
+doc
+  Parse a decimal integer string, returning `Some(n)` on success or
+  `None` on failure.
+
+  Accepts optional leading `-`. Rejects empty strings and strings with
+  non-digit characters after the optional sign.
+
+    Text.to_int("42")    -- => Some(42)
+    Text.to_int("-7")    -- => Some(-7)
+    Text.to_int("abc")   -- => None
+    Text.to_int("")      -- => None
+pub fn to_int(s: String) -> Option Int
+  if is_empty(s)
+    None
+  else
+    let len = length(s)
+    let negative = starts_with(s, "-")
+    let digits = if negative then slice(s, 1, len) else s
+    if is_empty(digits)
+      None
+    else
+      parse_digits(digits, 0, 0, length(digits), negative)
+
+doc
+  Parse a decimal floating-point string, returning `Some(f)` on success
+  or `None` on failure.
+
+  Delegates to the C `strtod` intrinsic. Returns `None` when the string
+  is not a valid floating-point literal.
+
+    Text.to_float("3.14")   -- => Some(3.14)
+    Text.to_float("-1.5")   -- => Some(-1.5)
+    Text.to_float("abc")    -- => None
+    Text.to_float("")       -- => None
+@intrinsic("__kea_text_to_float")
+pub fn to_float(s: String) -> Option Float
+  None
