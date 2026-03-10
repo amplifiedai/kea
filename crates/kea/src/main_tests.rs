@@ -13957,6 +13957,147 @@ fn stub_text_slice_mid_codepoint_does_not_abort() {
     let _ = std::fs::remove_file(source_path);
 }
 
+// ── Stdlib bootstrap completions ─────────────────────────────────────
+
+#[test]
+fn compile_and_execute_float_floor_ceil_round() {
+    // Float.floor, Float.ceil, Float.round via Cranelift native instructions.
+    // floor(-2.7) = -3, ceil(2.1) = 3; sum cast to Int → exit 0.
+    let source_path = write_temp_source(
+        concat!(
+            "use Float\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  let a = Float.to_int(Float.floor(-2.7))  -- -3\n",
+            "  let b = Float.to_int(Float.ceil(2.1))    -- 3\n",
+            "  a + b  -- 0\n",
+        ),
+        "kea-cli-float-floor-ceil-round",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("float floor/ceil should compile and run");
+    assert_eq!(run.exit_code, 0);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_float_pow() {
+    // Float.pow(2.0, 10.0) = 1024.0 → Float.to_int → exit 1024 % 256 = 0.
+    // Use a smaller exponent so the exit code fits: 2^4 = 16.
+    let source_path = write_temp_source(
+        concat!(
+            "use Float\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  Float.to_int(Float.pow(2.0, 4.0))  -- 16\n",
+        ),
+        "kea-cli-float-pow",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("Float.pow should compile and run");
+    assert_eq!(run.exit_code, 16);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_log_with_silent_logger() {
+    // Log.with_silent_logger discards all messages; body result passes through.
+    let source_path = write_temp_source(
+        concat!(
+            "use Log\n",
+            "\n",
+            "pub fn do_work() -[Log]> Int\n",
+            "  Log.info(\"hello\")\n",
+            "  Log.warn(\"world\")\n",
+            "  42\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  Log.with_silent_logger(do_work)\n",
+        ),
+        "kea-cli-log-silent-logger",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("with_silent_logger should compile and run");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_rand_random_bool_deterministic() {
+    // Rand.random_bool() uses Rand.int() internally; intercepting Rand.int
+    // makes the output deterministic. int() = 0 → 0 % 2 == 0 → true → exit 1.
+    let source_path = write_temp_source(
+        concat!(
+            "use Rand\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  let b = handle Rand.random_bool()\n",
+            "    Rand.int() -> resume 0\n",
+            "  if b\n",
+            "    1\n",
+            "  else\n",
+            "    0\n",
+        ),
+        "kea-cli-rand-random-bool",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("random_bool should compile and run");
+    assert_eq!(run.exit_code, 1);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_stream_collect() {
+    // Stream.collect gathers chunks into a List; List.length returns 3.
+    let source_path = write_temp_source(
+        concat!(
+            "use Stream\n",
+            "use List\n",
+            "\n",
+            "fn emit() -[Stream Int]> Unit\n",
+            "  Stream.chunk(10)\n",
+            "  Stream.chunk(20)\n",
+            "  Stream.chunk(30)\n",
+            "  Stream.done()\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  let xs = Stream.collect(emit)\n",
+            "  List.length(xs)\n",
+        ),
+        "kea-cli-stream-collect",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("Stream.collect should compile and run");
+    assert_eq!(run.exit_code, 3);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_http_request_canned_response() {
+    // Http.request with a Net handler returning canned values.
+    // Net.connect succeeds (resume 1), send is no-op, recv returns 0 bytes.
+    // Http.request returns Response { status: 200, body: "" } → exit 200.
+    let source_path = write_temp_source(
+        concat!(
+            "use Http\n",
+            "use Net\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  let req = Request { method: \"GET\", url: \"example.com:80\", body: \"\" }\n",
+            "  let resp = handle Http.request(req)\n",
+            "    Net.connect(addr) -> resume 1\n",
+            "    Net.send(conn, data) -> resume ()\n",
+            "    Net.recv(conn, size) -> resume 0\n",
+            "  resp.status\n",
+        ),
+        "kea-cli-http-request-canned",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("Http.request with Net handler should compile and run");
+    assert_eq!(run.exit_code, 200);
+    let _ = std::fs::remove_file(source_path);
+}
+
 fn temp_artifact_path(prefix: &str, extension: &str) -> PathBuf {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

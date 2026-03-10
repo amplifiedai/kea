@@ -917,6 +917,18 @@ unsafe extern "C" fn kea_float_to_string_stub(f: f64) -> *const c_char {
     }
 }
 
+unsafe extern "C" fn kea_float_exp_stub(f: f64) -> f64 {
+    f.exp()
+}
+
+unsafe extern "C" fn kea_float_log_e_stub(f: f64) -> f64 {
+    f.ln()
+}
+
+unsafe extern "C" fn kea_float_pow_stub(base: f64, exp: f64) -> f64 {
+    base.powf(exp)
+}
+
 unsafe extern "C" fn kea_text_replace_stub(
     s: *const c_char,
     old: *const c_char,
@@ -1008,6 +1020,9 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     );
     builder.symbol("__kea_text_replace", kea_text_replace_stub as *const u8);
     builder.symbol("__kea_text_repeat", kea_text_repeat_stub as *const u8);
+    builder.symbol("__kea_float_exp", kea_float_exp_stub as *const u8);
+    builder.symbol("__kea_float_log_e", kea_float_log_e_stub as *const u8);
+    builder.symbol("__kea_float_pow", kea_float_pow_stub as *const u8);
     builder.symbol(
         "__kea_get_fail_payload",
         kea_get_fail_payload_stub as *const u8,
@@ -5035,6 +5050,39 @@ fn lower_instruction<M: Module>(
                                 types::F64,
                             );
                             Some(builder.ins().sqrt(float_val))
+                        }
+                        "__kea_float_floor" => {
+                            if lowered_args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_float_floor expects one float argument"
+                                        .to_string(),
+                                });
+                            }
+                            let f = coerce_value_to_clif_type(builder, lowered_args[0], types::F64);
+                            Some(builder.ins().floor(f))
+                        }
+                        "__kea_float_ceil" => {
+                            if lowered_args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_float_ceil expects one float argument"
+                                        .to_string(),
+                                });
+                            }
+                            let f = coerce_value_to_clif_type(builder, lowered_args[0], types::F64);
+                            Some(builder.ins().ceil(f))
+                        }
+                        "__kea_float_nearest" => {
+                            if lowered_args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_float_nearest expects one float argument"
+                                        .to_string(),
+                                });
+                            }
+                            let f = coerce_value_to_clif_type(builder, lowered_args[0], types::F64);
+                            Some(builder.ins().nearest(f))
                         }
                         _ => {
                             let callee_id = *ctx.external_func_ids.get(name).ok_or_else(|| {

@@ -45,6 +45,8 @@ doc
   - `Gen` (Tier 3) — property-based testing built on top of `Rand`, with
     seeded generation, shrinking, and `@derive(Arbitrary)`
 
+use Float
+
 doc
   The randomness effect. Declare `-[Rand]>` in a function's signature to
   indicate it generates random values. Intercept with a handler in tests
@@ -112,3 +114,37 @@ pub fn int_between(lo: Int, hi: Int) -[Rand]> Int
     else
       raw
     lo + (non_negative % span)
+
+doc
+  Generate a random float in `[0.0, 1.0)`.
+
+  Uses `Rand.int()` internally — intercepting `Rand.int()` in a handler
+  controls the output of this function too, making it fully deterministic
+  in tests.
+
+  ```kea doctest
+  handle Rand.random_float()
+    Rand.int() -> resume 500000
+  -- => 0.5
+  ```
+pub fn random_float() -[Rand]> Float
+  let raw = Rand.int()
+  let non_negative = if raw < 0
+    0 - raw
+  else
+    raw
+  Float.from_int(non_negative % 1000000) / 1000000.0
+
+doc
+  Generate a random boolean (`true` or `false` with equal probability).
+
+  Uses `Rand.int()` internally — intercepting `Rand.int()` in a handler
+  controls the output.
+
+  ```kea doctest
+  handle Rand.random_bool()
+    Rand.int() -> resume 0
+  -- => true
+  ```
+pub fn random_bool() -[Rand]> Bool
+  Rand.int() % 2 == 0

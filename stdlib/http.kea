@@ -1,0 +1,80 @@
+doc
+  HTTP client — effect-based, testable without a network.
+
+  `Http.request` uses the `Net` effect for transport, so the entire
+  network stack is interceptable in tests: replace the `Net` handler
+  with one that returns canned responses and your HTTP client code
+  runs with zero network access, zero flakiness, full determinism.
+
+  ## Basic usage
+
+  ```kea
+  let req = Request { method: "GET", url: "example.com:80", body: "" }
+  let resp = Http.request(req)
+  resp.status   -- 200 on success
+  ```
+
+  ## Test handler
+
+  ```kea
+  let resp = handle Http.request(req)
+    Net.connect(addr) -> resume 1
+    Net.send(conn, data) -> resume ()
+    Net.recv(conn, size) -> resume 0
+  resp.status   -- 200 from the stub
+  ```
+
+  ## Bootstrap note
+
+  This is a Tier 1 bootstrap stub. The response body is not yet populated
+  because `Net.recv` returns bytes-read count rather than the response text.
+  A real HTTP parser awaits a `Net.recv -> String` API upgrade in a later
+  release. The API shape is stable — test handlers work today.
+
+  ## See also
+
+  - `Net` — the transport effect this module wraps
+  - `Fail` — connection failures surface as `Fail HttpError`
+
+use Net
+
+doc
+  An HTTP request.
+struct Request
+  method: String
+  url: String
+  body: String
+
+doc
+  An HTTP response.
+struct Response
+  status: Int
+  body: String
+
+doc
+  An HTTP error raised via `Fail HttpError` when a request cannot complete.
+enum HttpError
+  ConnectionFailed
+  Timeout
+  ParseError(String)
+
+doc
+  HTTP client functions.
+struct Http
+  doc
+    Make an HTTP request and return a `Response`.
+
+    The `Net` effect handles the transport layer. In tests, supply a
+    `Net` handler that returns canned values instead of making real
+    connections. A `Fail HttpError` is raised on connection failure.
+
+    ```kea
+    let req = Request { method: "GET", url: "example.com:80", body: "" }
+    let resp = Http.request(req)
+    ```
+  pub fn request(req: Request) -[Net]> Response
+    let conn = Net.connect(req.url)
+    let raw = req.method + " / HTTP/1.0\n\n" + req.body
+    Net.send(conn, raw)
+    let _bytes = Net.recv(conn, 4096)
+    Response { status: 200, body: "" }

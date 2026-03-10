@@ -1,0 +1,96 @@
+doc
+  Push-based chunked producer effect.
+
+  `Stream A` is an algebraic effect for functions that emit values one at a
+  time. A producer function declares `-[Stream A]>` in its signature; a
+  consumer installs a handler that decides what to do with each chunk.
+
+  The canonical consumer is `Stream.collect`, which gathers all emitted
+  values into a `List A` in emission order.
+
+  ## Basic usage
+
+  ```kea
+  fn emit_numbers() -[Stream Int]> Unit
+    Stream.chunk(1)
+    Stream.chunk(2)
+    Stream.chunk(3)
+    Stream.done()
+
+  fn main() -> Int
+    let xs = Stream.collect(emit_numbers)
+    List.length(xs)   -- => 3
+  ```
+
+  ## Custom consumers
+
+  Because `Stream` is an effect, any handler can consume it:
+
+  ```kea
+  -- Sum all emitted values
+  let total = handle emit_numbers()
+    Stream.chunk(v) ->
+      State.put(State.get() + v)
+      resume ()
+    Stream.done() -> resume ()
+  ```
+
+  ## See also
+
+  - `List` — the most common consumer result type
+  - `State` — used internally by `Stream.collect` for accumulation
+  - `Log` — same effect-as-producer pattern, but for logging
+
+use List
+use State
+
+doc
+  The chunked-producer effect. Declare `-[Stream A]>` to indicate
+  a function emits values of type `A`.
+effect Stream A
+  doc
+    Emit one value. The installed handler decides what to do with it.
+
+    ```kea
+    Stream.chunk(42)
+    ```
+  fn chunk(value: A) -> Unit
+
+  doc
+    Signal that the producer is done emitting values.
+    This is optional — handlers may not require it — but it is the
+    idiomatic way to indicate end-of-stream.
+
+    ```kea
+    Stream.done()
+    ```
+  fn done() -> Unit
+
+doc
+  Collect all chunks emitted by `f` into a `List A`, in emission order.
+
+  `Stream.done()` calls are consumed silently. The result is in the
+  same order as the `Stream.chunk` calls — earliest chunk is the head.
+
+  ```kea
+  fn emit_abc() -[Stream String]> Unit
+    Stream.chunk("a")
+    Stream.chunk("b")
+    Stream.chunk("c")
+    Stream.done()
+
+  Stream.collect(emit_abc)
+  -- => ["a", "b", "c"]
+  ```
+fn collect_into(f: fn() -[Stream A]> Unit) -[State (List A)]> Unit
+  handle f()
+    Stream.chunk(v) ->
+      State.put(Cons(v, State.get()))
+      resume ()
+    Stream.done() -> resume ()
+
+pub fn collect(f: fn() -[Stream A, e]> Unit) -[e]> List A
+  let pair = State.with_state(Nil, ||
+    collect_into(f)
+  )
+  List.reverse(pair.1)

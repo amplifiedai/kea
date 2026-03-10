@@ -662,6 +662,7 @@ impl Parser {
                 if self.at_block_end(delimiter) {
                     break;
                 }
+                let item_doc = self.consume_doc_comment_block();
                 let anns = self.parse_annotations()?;
                 self.skip_newlines();
                 // Method declaration: `fn name(params) -> Type { body }` or `pub fn ...`
@@ -672,7 +673,7 @@ impl Parser {
                     let method_start = self.current_span();
                     let method_public = self.match_token(&TokenKind::Pub);
                     self.expect(&TokenKind::Fn, "expected 'fn'")?;
-                    let decl = self.fn_decl(method_public, method_start, None, anns)?;
+                    let decl = self.fn_decl(method_public, method_start, item_doc, anns)?;
                     if let DeclKind::Function(fn_decl) = decl.node {
                         methods.push(fn_decl);
                     }
