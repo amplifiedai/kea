@@ -7550,7 +7550,24 @@ impl FunctionLoweringCtx {
                     Type::AnonRecord(row) => self.infer_unique_record_type_for_row(row),
                     Type::Tuple(items) => Some(tuple_layout_name(items.len())),
                     _ => match &base.kind {
-                        HirExprKind::Var(name) => self.var_record_types.get(name).cloned(),
+                        HirExprKind::Var(name) => self
+                            .var_record_types
+                            .get(name)
+                            .cloned()
+                            .or_else(|| self.record_value_types.get(&record).cloned())
+                            .or_else(|| {
+                                // Last resort: infer from field name when the base
+                                // variable's concrete type was not propagated (e.g.
+                                // effect operations returning structs where the HIR
+                                // type is still an unresolved type variable).
+                                if field.parse::<usize>().is_err() {
+                                    let fields =
+                                        std::collections::BTreeSet::from([field.clone()]);
+                                    self.infer_unique_record_type_for_fields(&fields)
+                                } else {
+                                    None
+                                }
+                            }),
                         HirExprKind::Call { func, .. } => self.infer_record_type_from_call(func),
                         _ => self.record_value_types.get(&record).cloned(),
                     },
@@ -7590,8 +7607,23 @@ impl FunctionLoweringCtx {
                     record,
                     record_type,
                     field: field.clone(),
-                    field_ty,
+                    field_ty: field_ty.clone(),
                 });
+                // When the field type is a record/struct, register the dest so
+                // that subsequent field accesses on this value (e.g. `t.0.field`)
+                // can look up its record type even when the HIR Var's type is Dynamic.
+                let field_record_name = match &field_ty {
+                    Type::Record(rt) => Some(rt.name.clone()),
+                    Type::AnonRecord(row) => self.infer_unique_record_type_for_row(row),
+                    _ => None,
+                };
+                if let Some(rname) = field_record_name {
+                    self.record_value_types.insert(dest.clone(), rname);
+                }
+                // Similarly, propagate tuple element types for chained tuple accesses.
+                if let Type::Tuple(items) = &field_ty {
+                    self.tuple_value_types.insert(dest.clone(), items.clone());
+                }
                 Some(dest)
             }
             HirExprKind::SumPayloadAccess {
@@ -8231,11 +8263,36 @@ impl FunctionLoweringCtx {
                         });
                         return None;
                     }
+                    // Resolve parameter type: prefer the lambda's function type
+                    // (which carries the concrete parameter type from type inference),
+                    // then fall back to the body expression's return type.
+                    let param_ty = if let Type::Function(ft) = &then_expr.ty {
+                        ft.params.first().cloned().unwrap_or_else(|| handled.ty.clone())
+                    } else {
+                        handled.ty.clone()
+                    };
                     let incoming_scope = self.snapshot_var_scope();
                     if let Some(param_name) = &params[0].name {
-                        self.vars.insert(param_name.clone(), handled_value);
+                        self.vars.insert(param_name.clone(), handled_value.clone());
                         self.var_types
-                            .insert(param_name.clone(), handled.ty.clone());
+                            .insert(param_name.clone(), param_ty.clone());
+                        // Propagate record type for the parameter so field accesses
+                        // like `then result -> result.field` can resolve the record.
+                        let record_name = match &param_ty {
+                            Type::Record(rt) => Some(rt.name.clone()),
+                            Type::AnonRecord(row) => self.infer_unique_record_type_for_row(row),
+                            _ => None,
+                        };
+                        if let Some(rname) = record_name {
+                            self.var_record_types
+                                .insert(param_name.clone(), rname.clone());
+                            self.record_value_types
+                                .insert(handled_value.clone(), rname);
+                        }
+                        if let Type::Tuple(items) = &param_ty {
+                            self.tuple_value_types
+                                .insert(handled_value.clone(), items.clone());
+                        }
                     }
                     lowered_result = self.lower_expr(body);
                     self.restore_var_scope(&incoming_scope);

@@ -878,9 +878,11 @@ unsafe extern "C" fn kea_text_slice_stub(s: *const c_char, from: i64, to: i64) -
     if from >= to {
         return EMPTY_CSTR.as_ptr() as *const c_char;
     }
-    match CString::new(&s[from..to]) {
-        Ok(cs) => cs.into_raw(),
-        Err(_) => EMPTY_CSTR.as_ptr() as *const c_char,
+    // Use `get` instead of direct indexing so we never panic on non-char-boundary offsets.
+    // If the range is not on a UTF-8 char boundary, return an empty string.
+    match s.get(from..to).and_then(|sub| CString::new(sub).ok()) {
+        Some(cs) => cs.into_raw(),
+        None => EMPTY_CSTR.as_ptr() as *const c_char,
     }
 }
 

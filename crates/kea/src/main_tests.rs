@@ -13548,6 +13548,415 @@ fn compile_and_execute_derive_encode_decode_sum_with_payload_exit_code() {
     let _ = std::fs::remove_file(source_path);
 }
 
+// ── Tranche 1: Adversarial edge cases ────────────────────────────────
+
+#[test]
+fn compile_rejects_empty_function_body() {
+    // T1.1: `pub fn main() -> Int` with no indented body — must give a
+    // clear parse/type error, not panic.
+    let source_path = write_temp_source(
+        "pub fn main() -> Int\n",
+        "kea-cli-empty-fn-body",
+        "kea",
+    );
+    let err =
+        run_file(&source_path).expect_err("empty function body should be a compile error");
+    assert!(
+        err.contains("expected function body") || err.contains("expected expression"),
+        "expected function-body diagnostic, got: {err}"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_five_line_continuation_expression() {
+    // T1.2: expression spanning 6 continuation lines — operators at the
+    // start of each indented continuation line.  1+2+3+4+5+6 = 21.
+    let source_path = write_temp_source(
+        "pub fn main() -> Int\n  1\n  + 2\n  + 3\n  + 4\n  + 5\n  + 6\n",
+        "kea-cli-multi-line-continuation",
+        "kea",
+    );
+    let run =
+        run_file(&source_path).expect("multi-line continuation expression should compile");
+    assert_eq!(run.exit_code, 21);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_self_referential_lambda_type() {
+    // T1.3: `let f = |x| f(x)` — self-referential closure.  The
+    // unifier must handle the self-reference without panicking; the
+    // compiler is allowed to reject it at codegen (unknown function) or
+    // report a type cycle, but must not crash.
+    let source_path = write_temp_source(
+        "pub fn main() -> Int\n  let f = |x| f(x)\n  0\n",
+        "kea-cli-self-referential-lambda",
+        "kea",
+    );
+    let err = run_file(&source_path)
+        .expect_err("self-referential closure should be a compile error");
+    assert!(
+        err.contains("unknown function") || err.contains("cycle") || err.contains("type"),
+        "expected a clear error for self-referential lambda, got: {err}"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_type_alias_to_nonexistent_type() {
+    // T1.4: `type Foo = NonExistentBar` — clear error, no panic.
+    let source_path = write_temp_source(
+        "type Foo = NonExistentBar\n\npub fn main() -> Int\n  0\n",
+        "kea-cli-alias-nonexistent",
+        "kea",
+    );
+    let err = run_file(&source_path)
+        .expect_err("alias to nonexistent type should be a compile error");
+    assert!(
+        err.contains("NonExistentBar") || err.contains("unknown type") || err.contains("alias"),
+        "expected a diagnostic naming the missing type, got: {err}"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_rejects_keywords_as_struct_field_names() {
+    // T1.9: Keyword tokens (`let`, `fn`) in struct field position must
+    // produce a parser error, not panic.
+    let source_path = write_temp_source(
+        "struct Foo\n  let: Int\n  fn: Int\n\npub fn main() -> Int\n  0\n",
+        "kea-cli-keyword-struct-field",
+        "kea",
+    );
+    let err = run_file(&source_path)
+        .expect_err("keywords as struct field names should be a parse error");
+    assert!(
+        err.contains("expected field name") || err.contains("expected") || err.contains("parsing"),
+        "expected a parse error for keyword field names, got: {err}"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_handler_clause_io_propagates_through_handle() {
+    // T1.8: Handler clause body that uses IO — IO must propagate out
+    // through the `handle` expression so the top-level signature
+    // `-[IO]>` is satisfied.  Compiles and runs cleanly.
+    let source_path = write_temp_source(
+        concat!(
+            "use IO\n",
+            "\n",
+            "effect Echo\n",
+            "  fn say(msg: String) -> Unit\n",
+            "\n",
+            "pub fn speak() -[Echo]> Int\n",
+            "  Echo.say(\"hello\")\n",
+            "  42\n",
+            "\n",
+            "pub fn main() -[IO]> Int\n",
+            "  handle speak()\n",
+            "    Echo.say(msg) ->\n",
+            "      IO.stdout(msg)\n",
+            "      resume ()\n",
+        ),
+        "kea-cli-handler-clause-io-propagates",
+        "kea",
+    );
+    let run = run_file(&source_path)
+        .expect("IO propagation through handler clause should compile and run");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+// ── Tranche 2: Structural + regression tests ─────────────────────────
+
+#[test]
+fn compile_rejects_non_exhaustive_enum_case() {
+    // T2.2: non-exhaustive case on a user-defined enum with no wildcard
+    // must produce a clear diagnostic, not panic.
+    let source_path = write_temp_source(
+        concat!(
+            "enum Color\n",
+            "  Red\n",
+            "  Green\n",
+            "  Blue\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  let c = Color.Red\n",
+            "  case c\n",
+            "    Color.Red -> 1\n",
+            "    Color.Green -> 2\n",
+        ),
+        "kea-cli-non-exhaustive-enum-case",
+        "kea",
+    );
+    let err = run_file(&source_path)
+        .expect_err("non-exhaustive case should be a compile error");
+    assert!(
+        err.contains("non-exhaustive") || err.contains("Blue") || err.contains("missing"),
+        "expected non-exhaustive diagnostic mentioning missing variant, got: {err}"
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_deep_recursive_tree_drop() {
+    // T2.3: deep binary tree (10 levels = 2047 nodes) — build and drop
+    // without stack overflow.  Uses a recursive size function to force
+    // the tree to be fully evaluated before being dropped.
+    let source_path = write_temp_source(
+        concat!(
+            "enum Tree\n",
+            "  Leaf\n",
+            "  Node(Int, Tree, Tree)\n",
+            "\n",
+            "fn build(depth: Int) -> Tree\n",
+            "  if depth <= 0\n",
+            "    Tree.Leaf\n",
+            "  else\n",
+            "    Tree.Node(depth, build(depth - 1), build(depth - 1))\n",
+            "\n",
+            "fn size(t: Tree) -> Int\n",
+            "  case t\n",
+            "    Tree.Leaf -> 0\n",
+            "    Tree.Node(_, l, r) -> 1 + size(l) + size(r)\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  let t = build(10)\n",
+            "  let s = size(t)\n",
+            "  if s > 0 then 42 else 0\n",
+        ),
+        "kea-cli-deep-tree-drop",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("deep tree build/drop should not stack-overflow");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_state_with_struct_value_round_trip() {
+    // T2.4: State effect with a struct-typed state value — put/get round-trip.
+    // This exercises field access on a value returned by an effect operation
+    // whose HIR type is an unresolved type variable at lowering time.
+    let source_path = write_temp_source(
+        concat!(
+            "struct BigVal\n",
+            "  a: Int\n",
+            "  b: Int\n",
+            "  c: Int\n",
+            "  d: Int\n",
+            "\n",
+            "effect State S\n",
+            "  fn get() -> S\n",
+            "  fn put(next: S) -> Unit\n",
+            "\n",
+            "fn update(count: Int) -[State BigVal]> Int\n",
+            "  if count <= 0\n",
+            "    let s = State.get()\n",
+            "    s.a\n",
+            "  else\n",
+            "    let s = State.get()\n",
+            "    State.put(BigVal { a: s.a + 1, b: s.b, c: s.c, d: s.d })\n",
+            "    update(count - 1)\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  let init = BigVal { a: 0, b: 10, c: 20, d: 30 }\n",
+            "  handle update(42)\n",
+            "    State.get() -> resume init\n",
+            "    State.put(next) -> resume ()\n",
+        ),
+        "kea-cli-state-struct-value-round-trip",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("State with struct value should round-trip");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_handler_clause_reentrant_same_effect() {
+    // T2.1: Handler clause body that performs the SAME effect being handled.
+    // The inner call should dispatch to the OUTER handler (nearest enclosing),
+    // not re-enter the current handler.  Exit code 99 = inner handler gives
+    // clause_body() to outer handler which resumes 99.
+    let source_path = write_temp_source(
+        concat!(
+            "effect Counter\n",
+            "  fn tick() -> Int\n",
+            "\n",
+            "pub fn body() -[Counter]> Int\n",
+            "  Counter.tick()\n",
+            "\n",
+            "pub fn calls_outer() -[Counter]> Int\n",
+            "  Counter.tick()\n",
+            "\n",
+            "pub fn run() -[Counter]> Int\n",
+            "  let inner = handle body()\n",
+            "    Counter.tick() ->\n",
+            "      let x = calls_outer()\n",
+            "      resume x\n",
+            "  inner\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  handle run()\n",
+            "    Counter.tick() -> resume 99\n",
+        ),
+        "kea-cli-handler-clause-same-effect-reentrant",
+        "kea",
+    );
+    let run = run_file(&source_path)
+        .expect("re-entrant same-effect handler clause should dispatch to outer handler");
+    assert_eq!(run.exit_code, 99);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_pattern_match_on_resume_value() {
+    // T2.6: Pattern match on the value returned from `resume`.
+    // Verifies memory safety after resumption: the body's return value
+    // is accessible via case after the handler continues.
+    let source_path = write_temp_source(
+        concat!(
+            "effect Picker\n",
+            "  fn pick() -> Int\n",
+            "\n",
+            "pub fn body() -[Picker]> Int\n",
+            "  Picker.pick()\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  handle body()\n",
+            "    Picker.pick() ->\n",
+            "      let result = resume 99\n",
+            "      case result\n",
+            "        0 -> 0\n",
+            "        _ -> result\n",
+        ),
+        "kea-cli-pattern-match-on-resume-value",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("pattern match on resume value should run");
+    assert_eq!(run.exit_code, 99);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_polymorphic_effect_tail_io_plus_row_var() {
+    // T2.5: `fn f(g: () -[IO]> Int) -[IO]> Int` — calls `g` with IO in scope.
+    // Verifies effect row variable unification through a generic call.
+    let source_path = write_temp_source(
+        concat!(
+            "use IO\n",
+            "\n",
+            "pub fn run(g: fn() -[IO]> Int) -[IO]> Int\n",
+            "  g()\n",
+            "\n",
+            "pub fn greet() -[IO]> Int\n",
+            "  IO.stdout(\"hi\")\n",
+            "  42\n",
+            "\n",
+            "pub fn main() -[IO]> Int\n",
+            "  run(greet)\n",
+        ),
+        "kea-cli-polymorphic-effect-tail-io-row",
+        "kea",
+    );
+    let run = run_file(&source_path)
+        .expect("polymorphic effect tail with IO + row var should compile");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_tuple_containing_struct_field_access() {
+    // Regression: field access on a struct extracted from a tuple (t.0.field)
+    // must work correctly.  Previously failed with "no return value" due to
+    // missing record type propagation after RecordFieldLoad.
+    let source_path = write_temp_source(
+        concat!(
+            "struct V\n",
+            "  a: Int\n",
+            "\n",
+            "fn make_pair() -> (V, Int)\n",
+            "  (V { a: 42 }, 7)\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  let t = make_pair()\n",
+            "  let v = t.0\n",
+            "  v.a\n",
+        ),
+        "kea-cli-tuple-struct-field-access",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("struct field access via tuple should work");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_then_clause_struct_result_field_access() {
+    // Regression: `then result -> result.field` where result is a struct type
+    // must compile and execute correctly.  Previously failed with "no return value"
+    // because the then-clause parameter's record type wasn't propagated.
+    let source_path = write_temp_source(
+        concat!(
+            "effect Echo\n",
+            "  fn say(msg: String) -> Unit\n",
+            "\n",
+            "struct V\n",
+            "  a: Int\n",
+            "\n",
+            "fn body() -[Echo]> V\n",
+            "  Echo.say(\"x\")\n",
+            "  V { a: 42 }\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  handle body()\n",
+            "    Echo.say(msg) -> resume ()\n",
+            "    then result -> result.a\n",
+        ),
+        "kea-cli-then-clause-struct-field-access",
+        "kea",
+    );
+    let run = run_file(&source_path)
+        .expect("then-clause struct field access should compile and run");
+    assert_eq!(run.exit_code, 42);
+    let _ = std::fs::remove_file(source_path);
+}
+
+// ── Tranche 3: Panic boundary hardening ──────────────────────────────
+
+#[test]
+fn stub_text_slice_mid_codepoint_does_not_abort() {
+    // T3: `Text.slice("é", 0, 1)` passes byte offset 1 which falls
+    // mid-codepoint in the 2-byte UTF-8 encoding of "é" (0xC3 0xA9).
+    // Previously the stub used `&s[from..to]` which panics and aborts
+    // the process with exit code 101.  After the fix the stub uses
+    // `.get(from..to)` and returns an empty string — no abort, exit 0.
+    let source_path = write_temp_source(
+        concat!(
+            "use Text\n",
+            "\n",
+            "pub fn main() -> Int\n",
+            "  let s = Text.slice(\"\u{00e9}\", 0, 1)\n",
+            "  Text.length(s)\n",
+        ),
+        "kea-cli-stub-slice-mid-codepoint",
+        "kea",
+    );
+    let run = run_file(&source_path)
+        .expect("mid-codepoint slice should not abort the process");
+    // The invalid slice returns "" → length 0 → exit 0.  Any exit other
+    // than 101 (old panic) is already a win, but 0 is what we expect.
+    assert_eq!(
+        run.exit_code, 0,
+        "expected exit 0 (empty slice), got {}; diagnostics: {:?}",
+        run.exit_code, run.diagnostics
+    );
+    let _ = std::fs::remove_file(source_path);
+}
+
 fn temp_artifact_path(prefix: &str, extension: &str) -> PathBuf {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
