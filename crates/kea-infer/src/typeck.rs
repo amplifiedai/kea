@@ -10667,6 +10667,61 @@ fn infer_handle_expr_type(
         return unifier.fresh_type();
     }
 
+    // ── E0016: unused handler (non-catch) ───────────────────────────────
+    //
+    // We detect an unnecessary handler when we have *positive evidence* that
+    // the target effect is absent from the body's ambient effect row:
+    //
+    //   Evidence of absence (fires E0016):
+    //     a) Body has a CLOSED row (no tail) and target not in fields.
+    //     b) Body has concrete named effects in its fields but target is not
+    //        among them.  The open tail is an extensibility artifact from the
+    //        Call arm, not a genuine polymorphic escape.
+    //
+    //   No evidence of absence (suppresses E0016):
+    //     c) Body has an open tail but NO concrete fields — the body's effects
+    //        are unresolved (e.g., the callee is a generic callback whose type
+    //        wasn't fully resolved at the annotation level).  We can't tell
+    //        whether the target effect is actually performed.
+    //     d) Body has an outer-scope polymorphic tail (tail ID older than
+    //        body_ambient) — the body accepts an open effect parameter from
+    //        its caller and could include any effect.
+    //
+    // Cases (c) is the key false-positive guard: when the call annotation is
+    // something like `f: fn() -[Reader C]> T` with an uppercase type param `C`
+    // that the annotation resolver can't map, the callee type remains an
+    // unresolved Var and the ELSE branch of the Call arm produces an empty open
+    // effect row for the body.  We must not fire E0016 there.
+    let body_has_poly_tail = resolved_body_effects
+        .rest
+        .is_some_and(|r| r.0 < body_ambient.0);
+
+    // Positive evidence of absence: closed row, or open row with known fields.
+    let body_effects_are_known = !resolved_body_effects.fields.is_empty()
+        || resolved_body_effects.rest.is_none();
+
+    if !is_catch_desugar_shape(clauses, then_clause)
+        && !body_has_poly_tail
+        && body_effects_are_known
+        && !resolved_body_effects.has(&Label::new(target_effect.as_str()))
+    {
+        unifier.push_error(
+            Diagnostic::error(
+                Category::UnusedHandler,
+                format!("handler clause for `{target_effect}` is unnecessary"),
+            )
+            .at(span_to_loc(
+                clauses.first().map_or(expr_span, |c| c.effect.span),
+            ))
+            .with_label(
+                span_to_loc(expr_span),
+                format!("the expression does not perform `{target_effect}`"),
+            )
+            .with_help(format!("remove the `{target_effect}` handler")),
+        );
+        return result_ty;
+    }
+
     // ── Decompose ambient to extract residual effects ───────────────────
     //
     // The ambient now contains all effects performed by the body AND the

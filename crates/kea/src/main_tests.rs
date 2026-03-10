@@ -3645,14 +3645,24 @@ fn compile_rejects_handle_without_operation_clauses() {
 
 #[test]
 fn compile_and_execute_mismatched_handler_target_is_noop_exit_code() {
+    // E0016: the State handler is unnecessary — body() only performs Log.
+    // This should fail to compile with an "unused handler" error.
     let source_path = write_temp_source(
         "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\npub fn body() -[Log]> Int\n  Log.log(7)\n  42\n\npub fn wrap() -[Log]> Int\n  handle body()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n\npub fn main() -> Int\n  handle wrap()\n    Log.log(msg) -> resume ()\n",
         "kea-cli-mismatched-handler-noop",
         "kea",
     );
 
-    let run = run_file(&source_path).expect("run should succeed");
-    assert_eq!(run.exit_code, 42);
+    let result = run_file(&source_path);
+    assert!(
+        result.is_err(),
+        "compilation should fail: State handler is unnecessary when body only performs Log"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("State") || err.contains("handler") || err.contains("E0016"),
+        "error message should mention the unused handler: {err}"
+    );
 
     let _ = std::fs::remove_file(source_path);
 }
