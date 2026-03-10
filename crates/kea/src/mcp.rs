@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::process_module_in_env;
 use kea_ast::FileId;
-use kea_diag::{Diagnostic, Severity};
+use kea_diag::{Diagnostic, ErrorRegistry, Severity};
 use kea_infer::InferenceContext;
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitGoal, TraitRegistry, TypeEnv,
@@ -451,16 +451,24 @@ impl ServerHandler for KeaMcpServer {
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListResourcesResult, rmcp::ErrorData>> + Send + '_
     {
-        let resources = vec![
+        let mut resources = vec![
             make_resource("kea://syntax", "Kea Syntax Reference", "Kea language syntax: indentation rules, case expressions, handle/resume, effect rows, lambdas, and operators."),
             make_resource("kea://types", "Kea Type System", "Kea type system overview: Hindley-Milner inference, row polymorphism, effect rows, traits, and UMS dispatch."),
             make_resource("kea://effects", "Kea Effect System", "Kea algebraic effects: effect declarations, handle blocks, resume, built-in effects (IO, Fail, State, Log, Rand)."),
             make_resource("kea://style", "Kea Idioms and Style", "Idiomatic Kea: dot syntax, Fail over Result, effects as capabilities, handlers at the boundary."),
             make_resource("kea://examples", "Kea Code Examples", "Canonical Kea examples: pure functions, effects, handlers, structs, enums, traits, and collections."),
+            make_resource("kea://errors", "Kea Error Registry", "Index of all Kea diagnostic codes (E0001–E0017, E0801, W1001) with titles and descriptions."),
             make_resource("session://bindings", "Session Bindings", "All names currently bound in the type-check session with their inferred types."),
             make_resource("session://effects", "Session Effects", "Effect declarations and their operations currently registered in the session."),
             make_resource("session://traits", "Session Traits", "Trait definitions and implementations currently registered in the session."),
         ];
+        // Add one resource per error code for direct lookup.
+        let registry = ErrorRegistry::global();
+        for entry in registry.all() {
+            let uri = format!("kea://errors/{}", entry.code);
+            let desc = format!("{} — {}", entry.title, &entry.description[..entry.description.len().min(100)]);
+            resources.push(make_resource(&uri, &format!("{}: {}", entry.code, entry.name), &desc));
+        }
         std::future::ready(Ok(ListResourcesResult {
             resources,
             ..Default::default()
@@ -492,6 +500,27 @@ impl ServerHandler for KeaMcpServer {
             "session://traits" => {
                 let text = self.handle_resolve_traits();
                 text_resource_contents(&uri, &text)
+            }
+            "kea://errors" => {
+                let text = format_error_registry_index();
+                text_resource_contents(&uri, &text)
+            }
+            _ if uri.starts_with("kea://errors/") => {
+                let code = &uri["kea://errors/".len()..];
+                let registry = ErrorRegistry::global();
+                match registry.get(code) {
+                    Some(entry) => {
+                        let json = format_error_entry_json(entry);
+                        text_resource_contents(&uri, &json)
+                    }
+                    None => {
+                        return std::future::ready(Err(rmcp::ErrorData::new(
+                            ErrorCode::INVALID_PARAMS,
+                            format!("unknown error code: {code}"),
+                            None,
+                        )));
+                    }
+                }
             }
             _ => {
                 return std::future::ready(Err(rmcp::ErrorData::new(
@@ -738,6 +767,47 @@ fn text_resource_contents(uri: &str, text: &str) -> ResourceContents {
         text: text.to_string(),
         meta: None,
     }
+}
+
+fn format_error_registry_index() -> String {
+    let registry = ErrorRegistry::global();
+    let mut out = String::from("# Kea Error Registry\n\n");
+    out.push_str("All diagnostic codes with titles and severity.\n\n");
+    for entry in registry.all() {
+        let sev = match entry.severity {
+            kea_diag::Severity::Error => "error",
+            kea_diag::Severity::Warning => "warning",
+            kea_diag::Severity::Info => "info",
+        };
+        out.push_str(&format!("- {} [{}] {}\n", entry.code, sev, entry.title));
+    }
+    out
+}
+
+fn format_error_entry_json(entry: &kea_diag::ErrorEntry) -> String {
+    let related = entry
+        .related
+        .iter()
+        .map(|s| format!("\"{}\"", s))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let example = match entry.example {
+        Some(e) => format!("\"{}\"", e.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")),
+        None => "null".to_string(),
+    };
+    format!(
+        "{{\n  \"code\": \"{code}\",\n  \"name\": \"{name}\",\n  \"title\": \"{title}\",\n  \"severity\": \"{sev}\",\n  \"description\": \"{desc}\",\n  \"example\": {example},\n  \"fix\": \"{fix}\",\n  \"related\": [{related}]\n}}",
+        code = entry.code,
+        name = entry.name,
+        title = entry.title,
+        sev = match entry.severity {
+            kea_diag::Severity::Error => "error",
+            kea_diag::Severity::Warning => "warning",
+            kea_diag::Severity::Info => "info",
+        },
+        desc = entry.description.replace('"', "\\\""),
+        fix = entry.fix.replace('"', "\\\""),
+    )
 }
 
 fn format_param_types(types: &[kea_types::Type]) -> String {

@@ -12,6 +12,7 @@ use kea::{
     emit_diagnostics, execute_pkg_command, find_manifest, run_file, run_test_file, serve_mcp_stdio,
 };
 use kea_codegen::CodegenMode;
+use kea_diag::ErrorRegistry;
 
 static TEMP_NONCE: AtomicU64 = AtomicU64::new(0);
 
@@ -187,6 +188,16 @@ fn run() -> Result<(), String> {
                 .map_err(|err| format!("kea mcp: {err}"))?;
             Ok(())
         }
+        Command::Explain { code } => {
+            let registry = ErrorRegistry::global();
+            match registry.get(&code) {
+                Some(entry) => {
+                    println!("{}", format_explain(entry));
+                    Ok(())
+                }
+                None => Err(format!("unknown error code {code}")),
+            }
+        }
     }
 }
 
@@ -217,6 +228,9 @@ enum Command {
     Mcp {
         show_help: bool,
         show_version: bool,
+    },
+    Explain {
+        code: String,
     },
 }
 
@@ -325,6 +339,18 @@ fn parse_cli(args: &[String]) -> Result<Command, String> {
         }
         "pkg" => parse_pkg_cli(args),
         "mcp" => parse_mcp_cli(args),
+        "explain" => {
+            let code = args
+                .get(2)
+                .ok_or_else(|| {
+                    format!("usage: kea explain <code>  (e.g. kea explain E0013)\n{}", usage())
+                })?
+                .clone();
+            if args.len() > 3 {
+                return Err(format!("unexpected arguments for `explain`\n{}", usage()));
+            }
+            Ok(Command::Explain { code })
+        }
         _ => Err(usage()),
     }
 }
@@ -475,7 +501,53 @@ fn parse_pkg_cli(args: &[String]) -> Result<Command, String> {
 }
 
 fn usage() -> String {
-    "usage:\n  kea check [file.kea]\n  kea run [file.kea]\n  kea build [file.kea] [-o output|output.o]\n  kea test [file.kea]\n  kea mcp [--help|--version]\n  kea pkg init\n  kea pkg add <name> (--git <url> [--tag <tag>|--rev <rev>|--branch <branch>] | --path <path>)\n  kea pkg update [dependency-name]".to_string()
+    "usage:\n  kea check [file.kea]\n  kea run [file.kea]\n  kea build [file.kea] [-o output|output.o]\n  kea test [file.kea]\n  kea explain <E0001..E0017|E0801|W1001>\n  kea mcp [--help|--version]\n  kea pkg init\n  kea pkg add <name> (--git <url> [--tag <tag>|--rev <rev>|--branch <branch>] | --path <path>)\n  kea pkg update [dependency-name]".to_string()
+}
+
+fn format_explain(entry: &kea_diag::ErrorEntry) -> String {
+    let severity = match entry.severity {
+        kea_diag::Severity::Error => "error",
+        kea_diag::Severity::Warning => "warning",
+        kea_diag::Severity::Info => "info",
+    };
+    let mut out = format!("{severity}[{}]: {}\n\n", entry.code, entry.title);
+    // Wrap description to ~80 chars at word boundaries.
+    out.push_str(&wrap_text(entry.description, 80));
+    out.push('\n');
+    if let Some(example) = entry.example {
+        out.push_str("\nExample:\n");
+        for line in example.lines() {
+            out.push_str("  ");
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out.push('\n');
+    out.push_str(&format!("Fix: {}\n", entry.fix));
+    if !entry.related.is_empty() {
+        out.push_str(&format!("\nRelated: {}\n", entry.related.join(", ")));
+    }
+    out
+}
+
+fn wrap_text(text: &str, width: usize) -> String {
+    let mut out = String::new();
+    let mut line_len = 0usize;
+    for word in text.split_whitespace() {
+        if line_len == 0 {
+            out.push_str(word);
+            line_len = word.len();
+        } else if line_len + 1 + word.len() > width {
+            out.push('\n');
+            out.push_str(word);
+            line_len = word.len();
+        } else {
+            out.push(' ');
+            out.push_str(word);
+            line_len += 1 + word.len();
+        }
+    }
+    out
 }
 
 fn print_mcp_help() {

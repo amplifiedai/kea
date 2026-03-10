@@ -8,7 +8,9 @@
 //! rendered here for display.
 
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::OnceLock;
 
 // ---------------------------------------------------------------------------
 // Diagnostic severity and categories
@@ -227,7 +229,364 @@ impl Category {
             }
         }
     }
+
+    /// Reverse lookup: `"E0013"` → `Some(Category::RecordRowMismatch)`.
+    pub fn from_code(code: &str) -> Option<Category> {
+        Category::all().iter().copied().find(|c| c.code() == code)
+    }
 }
+
+// ---------------------------------------------------------------------------
+// Error registry — queryable metadata for every diagnostic code
+// ---------------------------------------------------------------------------
+
+/// Rich metadata for a single diagnostic code.
+#[derive(Debug, Clone)]
+pub struct ErrorEntry {
+    /// Stable code, e.g. `"E0013"`.
+    pub code: &'static str,
+    pub category: Category,
+    pub severity: Severity,
+    /// Snake-case name, e.g. `"record_row_mismatch"`.
+    pub name: &'static str,
+    /// Short human title, e.g. `"Record fields do not match"`.
+    pub title: &'static str,
+    /// Paragraph-length prose explanation.
+    pub description: &'static str,
+    /// Triggering Kea source snippet (may be multi-line), or `None`.
+    pub example: Option<&'static str>,
+    /// Suggested fix (one sentence).
+    pub fix: &'static str,
+    /// Codes of related diagnostics.
+    pub related: &'static [&'static str],
+}
+
+/// Global registry of all diagnostic codes.
+pub struct ErrorRegistry {
+    by_code: BTreeMap<&'static str, &'static ErrorEntry>,
+    all: Vec<&'static ErrorEntry>,
+}
+
+impl ErrorRegistry {
+    /// Returns the lazily-initialised global registry.
+    pub fn global() -> &'static Self {
+        static REGISTRY: OnceLock<ErrorRegistry> = OnceLock::new();
+        REGISTRY.get_or_init(ErrorRegistry::build)
+    }
+
+    fn build() -> Self {
+        let entries: &[&'static ErrorEntry] = &[
+            &E0001, &E0002, &E0003, &E0004, &E0005, &E0006, &E0007, &E0008, &E0009,
+            &E0010, &E0011, &E0012, &E0013, &E0014, &E0015, &E0016, &E0017, &E0801, &W1001,
+        ];
+        let mut by_code = BTreeMap::new();
+        for &entry in entries {
+            by_code.insert(entry.code, entry);
+        }
+        Self {
+            by_code,
+            all: entries.to_vec(),
+        }
+    }
+
+    /// Look up an entry by its code string (e.g. `"E0013"`).
+    pub fn get(&self, code: &str) -> Option<&ErrorEntry> {
+        self.by_code.get(code).copied()
+    }
+
+    /// All entries, in code order.
+    pub fn all(&self) -> &[&ErrorEntry] {
+        &self.all
+    }
+}
+
+// Static error entries — one per diagnostic code.
+// Keep descriptions factual; fix sentences imperative.
+
+static E0001: ErrorEntry = ErrorEntry {
+    code: "E0001",
+    category: Category::TypeMismatch,
+    severity: Severity::Error,
+    name: "type_mismatch",
+    title: "Type mismatch",
+    description: "The type of an expression does not match what the context requires. \
+        This can occur when passing the wrong argument type, returning the wrong type from a \
+        function, or using a value in an incompatible context.",
+    example: Some(
+        "fn double(x: Int) -> Int\n  x * 2\n\nfn main()\n  double(\"hello\")  -- error[E0001]: expected Int, got String",
+    ),
+    fix: "Adjust the expression or add a conversion to produce the expected type.",
+    related: &["E0013"],
+};
+
+static E0002: ErrorEntry = ErrorEntry {
+    code: "E0002",
+    category: Category::MissingField,
+    severity: Severity::Error,
+    name: "missing_field",
+    title: "Missing record field",
+    description: "A required field is absent from a record literal or the provided record \
+        type is missing a field that the context requires.",
+    example: Some(
+        "fn get_y(p: { x: Float, y: Float }) -> Float\n  p.y\n\nfn main()\n  get_y({ x: 1.0 })  -- error[E0002]: missing field `y`",
+    ),
+    fix: "Add the missing field to the record literal or widen the expected type.",
+    related: &["E0011", "E0013"],
+};
+
+static E0003: ErrorEntry = ErrorEntry {
+    code: "E0003",
+    category: Category::DuplicateField,
+    severity: Severity::Error,
+    name: "duplicate_field",
+    title: "Duplicate record field",
+    description: "The same field label appears more than once in a record literal or \
+        type annotation.",
+    example: Some(
+        "let p = { x: 1.0, x: 2.0 }  -- error[E0003]: duplicate field `x`",
+    ),
+    fix: "Remove or rename the duplicate field.",
+    related: &[],
+};
+
+static E0004: ErrorEntry = ErrorEntry {
+    code: "E0004",
+    category: Category::LacksViolation,
+    severity: Severity::Error,
+    name: "lacks_violation",
+    title: "Row lacks-constraint violated",
+    description: "A row-polymorphism `lacks` constraint was violated: a label that must \
+        not appear in a row is present. This ensures safe row extension.",
+    example: None,
+    fix: "Avoid introducing the forbidden label in the row, or use a different row variable.",
+    related: &[],
+};
+
+static E0005: ErrorEntry = ErrorEntry {
+    code: "E0005",
+    category: Category::UndefinedName,
+    severity: Severity::Error,
+    name: "undefined_name",
+    title: "Undefined name",
+    description: "A variable, function, or module member reference could not be resolved. \
+        The name is either not in scope, misspelled, or not yet declared.",
+    example: Some(
+        "fn main()\n  print(greet())  -- error[E0005]: undefined name `greet`",
+    ),
+    fix: "Define or import the missing name, or fix the spelling.",
+    related: &[],
+};
+
+static E0006: ErrorEntry = ErrorEntry {
+    code: "E0006",
+    category: Category::Syntax,
+    severity: Severity::Error,
+    name: "syntax",
+    title: "Syntax error",
+    description: "The source text could not be parsed as valid Kea syntax. This is \
+        commonly caused by incorrect indentation, missing keywords, or mismatched delimiters.",
+    example: None,
+    fix: "Follow the highlighted span to locate and fix the syntax error.",
+    related: &[],
+};
+
+static E0007: ErrorEntry = ErrorEntry {
+    code: "E0007",
+    category: Category::NonExhaustive,
+    severity: Severity::Error,
+    name: "non_exhaustive",
+    title: "Non-exhaustive pattern match",
+    description: "A `case` expression is missing one or more constructor patterns. \
+        Every possible value of the scrutinee type must be covered.",
+    example: Some(
+        "fn describe(b: Bool) -> String\n  case b\n    True -> \"yes\"  -- error[E0007]: non-exhaustive, `False` not covered",
+    ),
+    fix: "Add the missing patterns or a wildcard `_` arm.",
+    related: &[],
+};
+
+static E0008: ErrorEntry = ErrorEntry {
+    code: "E0008",
+    category: Category::PurityViolation,
+    severity: Severity::Error,
+    name: "purity_violation",
+    title: "Purity violation",
+    description: "An expression that performs effects was used where a pure expression \
+        is required. Functions declared with `->` must have an empty effect row.",
+    example: Some(
+        "fn greet() -> String\n  IO.print(\"hi\")  -- error[E0008]: IO effect in pure function",
+    ),
+    fix: "Either declare the function with an effect row (`-[IO]>`) or remove the effectful call.",
+    related: &["E0014", "E0015"],
+};
+
+static E0009: ErrorEntry = ErrorEntry {
+    code: "E0009",
+    category: Category::ArityMismatch,
+    severity: Severity::Error,
+    name: "arity_mismatch",
+    title: "Arity mismatch",
+    description: "A function was called with a different number of arguments than it \
+        was declared to accept.",
+    example: Some(
+        "fn add(x: Int, y: Int) -> Int\n  x + y\n\nfn main()\n  add(1)  -- error[E0009]: expected 2 arguments, got 1",
+    ),
+    fix: "Call the function with exactly its declared number of parameters.",
+    related: &[],
+};
+
+static E0010: ErrorEntry = ErrorEntry {
+    code: "E0010",
+    category: Category::TraitBound,
+    severity: Severity::Error,
+    name: "trait_bound",
+    title: "Trait bound not satisfied",
+    description: "A required trait is not implemented for the given type. Traits are \
+        Kea's mechanism for principled overloading and generic programming.",
+    example: Some(
+        "fn show_it[A: Show](x: A) -> String\n  show(x)\n\nfn main()\n  show_it({ x: 1 })  -- error[E0010]: Show not satisfied for { x: Int }",
+    ),
+    fix: "Implement the required trait for the type, or constrain the type parameter.",
+    related: &[],
+};
+
+static E0011: ErrorEntry = ErrorEntry {
+    code: "E0011",
+    category: Category::ExtraField,
+    severity: Severity::Error,
+    name: "extra_field",
+    title: "Extra record field",
+    description: "A record literal or value contains a field that is not expected by the \
+        context type. The receiver type does not have that label.",
+    example: Some(
+        "fn get_x(p: { x: Float }) -> Float\n  p.x\n\nfn main()\n  get_x({ x: 1.0, y: 2.0 })  -- error[E0011]: extra field `y`",
+    ),
+    fix: "Remove the extra field or widen the expected type to include it.",
+    related: &["E0002", "E0013"],
+};
+
+static E0012: ErrorEntry = ErrorEntry {
+    code: "E0012",
+    category: Category::TypeError,
+    severity: Severity::Error,
+    name: "type_error",
+    title: "General type error",
+    description: "A general type checking failure that does not fit a more specific \
+        category. Follow the labeled spans in the diagnostic for context.",
+    example: None,
+    fix: "Follow the labeled spans and help text to align the involved types.",
+    related: &["E0001"],
+};
+
+static E0013: ErrorEntry = ErrorEntry {
+    code: "E0013",
+    category: Category::RecordRowMismatch,
+    severity: Severity::Error,
+    name: "record_row_mismatch",
+    title: "Record fields do not match",
+    description: "A record value is missing required fields and/or contains extra fields \
+        that the expected type does not allow. This is an aggregated diff covering both \
+        missing and extra fields in a single message.",
+    example: Some(
+        "fn get_y(p: { x: Float, y: Float }) -> Float\n  p.y\n\nfn main()\n  get_y({ x: 1.0, name: \"pt\" })  -- error[E0013]: missing y: Float, extra name: String",
+    ),
+    fix: "Add the missing fields and remove the extra fields to match the expected record type.",
+    related: &["E0002", "E0011"],
+};
+
+static E0014: ErrorEntry = ErrorEntry {
+    code: "E0014",
+    category: Category::EffectRowMismatch,
+    severity: Severity::Error,
+    name: "effect_row_mismatch",
+    title: "Function effects do not match",
+    description: "The effect row inferred from the function body does not match the \
+        declared effect signature. The body performs effects that are not in the signature, \
+        or the signature declares effects the body does not perform.",
+    example: Some(
+        "fn process(data: String) -> String\n  IO.print(data)  -- error[E0014]: body requires IO, signature is pure",
+    ),
+    fix: "Either add the required effects to the function signature or handle them in the body.",
+    related: &["E0015", "E0016", "E0008"],
+};
+
+static E0015: ErrorEntry = ErrorEntry {
+    code: "E0015",
+    category: Category::UnhandledEffect,
+    severity: Severity::Error,
+    name: "unhandled_effect",
+    title: "Unhandled effect",
+    description: "An effect is performed by the function body but is neither declared in \
+        the function's effect signature nor handled by a surrounding `handle` block.",
+    example: Some(
+        "fn fetch() -> String\n  Http.get(\"http://example.com\")  -- error[E0015]: Net effect not in signature",
+    ),
+    fix: "Add the effect to the function signature or wrap the effectful code in a handler.",
+    related: &["E0014", "E0008"],
+};
+
+static E0016: ErrorEntry = ErrorEntry {
+    code: "E0016",
+    category: Category::UnusedHandler,
+    severity: Severity::Error,
+    name: "unused_handler",
+    title: "Unnecessary effect handler",
+    description: "A handler clause covers an effect that the handled expression does not \
+        perform. This is detected conservatively: the diagnostic only fires when there is \
+        positive evidence that the effect is absent (a closed effect row, or an open row \
+        whose concrete fields do not include the target effect).",
+    example: Some(
+        "pub fn body() -[Log]> Int\n  Log.log(7)\n  42\n\nfn main()\n  handle body()\n    State.get() -> resume 0   -- error[E0016]: State is not performed by body",
+    ),
+    fix: "Remove the handler clause for the effect that is not performed by the expression.",
+    related: &["E0014"],
+};
+
+static E0017: ErrorEntry = ErrorEntry {
+    code: "E0017",
+    category: Category::CatchTypeMismatch,
+    severity: Severity::Error,
+    name: "catch_type_mismatch",
+    title: "Catch type mismatch",
+    description: "`catch` converts a `Fail E` effect into a `Result T E` value. This \
+        error fires when the `Fail` error type does not match the `Result` error type \
+        declared at the binding site.",
+    example: None,
+    fix: "Adjust the catch binding type annotation to match the actual Fail error type.",
+    related: &["E0014"],
+};
+
+static E0801: ErrorEntry = ErrorEntry {
+    code: "E0801",
+    category: Category::MissingAnnotation,
+    severity: Severity::Error,
+    name: "missing_annotation",
+    title: "Missing type annotation",
+    description: "A named function declaration at module or struct level is missing an \
+        explicit type annotation on its parameters or return type. Kea requires explicit \
+        annotations at declaration boundaries for readability and reliable error messages.",
+    example: Some(
+        "fn greet(name)  -- error[E0801]: parameter `name` lacks a type annotation\n  IO.print(name)",
+    ),
+    fix: "Add explicit parameter and return type annotations to the declaration.",
+    related: &[],
+};
+
+static W1001: ErrorEntry = ErrorEntry {
+    code: "W1001",
+    category: Category::MissingModuleDoc,
+    severity: Severity::Warning,
+    name: "missing_module_doc",
+    title: "Missing module doc block",
+    description: "A public module (file) does not have a module-level documentation \
+        block. Kea enforces documentation on public modules to support `kea doc` and \
+        tooling consumers.",
+    example: Some(
+        "-- missing doc block at top of file\npub fn greet() -[IO]> Unit\n  IO.print(\"hello\")",
+    ),
+    fix: "Add a `doc` block followed by a blank line at the top of the file, before any `use` statements.",
+    related: &[],
+};
 
 // ---------------------------------------------------------------------------
 // Source locations (independent of kea-ast's Span)
@@ -407,5 +766,41 @@ mod tests {
                 cat.code()
             );
         }
+    }
+
+    #[test]
+    fn category_from_code_round_trips() {
+        for cat in Category::all() {
+            let code = cat.code();
+            let found = Category::from_code(code);
+            assert_eq!(
+                found,
+                Some(*cat),
+                "from_code({code}) should return {cat:?}"
+            );
+        }
+        assert_eq!(Category::from_code("E9999"), None);
+    }
+
+    #[test]
+    fn error_registry_covers_all_codes() {
+        let registry = ErrorRegistry::global();
+        // Every category code must be in the registry.
+        for cat in Category::all() {
+            let entry = registry.get(cat.code());
+            assert!(
+                entry.is_some(),
+                "ErrorRegistry missing entry for {}",
+                cat.code()
+            );
+            let entry = entry.unwrap();
+            assert_eq!(entry.category, *cat);
+            assert!(!entry.name.is_empty());
+            assert!(!entry.title.is_empty());
+            assert!(!entry.description.is_empty());
+            assert!(!entry.fix.is_empty());
+        }
+        // all() length matches.
+        assert_eq!(registry.all().len(), Category::ALL.len());
     }
 }

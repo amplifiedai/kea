@@ -91,6 +91,68 @@ fn parse_mcp_help_command() {
 }
 
 #[test]
+fn parse_explain_command() {
+    let args = vec![
+        "kea".to_string(),
+        "explain".to_string(),
+        "E0013".to_string(),
+    ];
+    let command = parse_cli(&args).expect("explain parse should succeed");
+    assert_eq!(command, Command::Explain { code: "E0013".to_string() });
+}
+
+#[test]
+fn parse_explain_command_missing_code_errors() {
+    let args = vec!["kea".to_string(), "explain".to_string()];
+    let err = parse_cli(&args).expect_err("missing code should fail");
+    assert!(err.contains("kea explain"), "error should mention usage: {err}");
+}
+
+#[test]
+fn parse_explain_command_extra_args_errors() {
+    let args = vec![
+        "kea".to_string(),
+        "explain".to_string(),
+        "E0013".to_string(),
+        "extra".to_string(),
+    ];
+    let err = parse_cli(&args).expect_err("extra args should fail");
+    assert!(err.contains("unexpected arguments"), "error should mention extra args: {err}");
+}
+
+#[test]
+fn explain_e0013_contains_expected_content() {
+    let registry = kea_diag::ErrorRegistry::global();
+    let entry = registry.get("E0013").expect("E0013 should be in registry");
+    let output = format_explain(entry);
+    assert!(output.contains("E0013"), "output should contain code: {output}");
+    assert!(output.contains("Record fields do not match"), "output should contain title: {output}");
+    assert!(output.contains("Fix:"), "output should have Fix section: {output}");
+    assert!(output.contains("Related:"), "output should have Related section: {output}");
+    assert!(output.contains("E0002"), "output should list related E0002: {output}");
+}
+
+#[test]
+fn explain_unknown_code_returns_error() {
+    // Simulates what `run()` does for an unknown code.
+    let registry = kea_diag::ErrorRegistry::global();
+    assert!(registry.get("E9999").is_none(), "E9999 should not be in registry");
+}
+
+#[test]
+fn error_registry_has_all_categories() {
+    let registry = kea_diag::ErrorRegistry::global();
+    // All known categories must have entries.
+    for cat in kea_diag::Category::all() {
+        assert!(
+            registry.get(cat.code()).is_some(),
+            "registry missing entry for {}",
+            cat.code()
+        );
+    }
+}
+
+#[test]
 fn discover_package_test_files_finds_tests_and_src_test_suffixes() {
     let project_dir = temp_project_dir("kea-cli-package-test-discovery");
     let src_dir = project_dir.join("src");
