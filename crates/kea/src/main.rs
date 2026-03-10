@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kea::{
-    DepSpec, PackageCommand, PackageManifest, check_file, compile_file,
+    DepSpec, PackageCommand, PackageManifest, TestRunOptions, check_file, compile_file,
     emit_diagnostics, execute_pkg_command, find_manifest, run_file, run_test_file, serve_mcp_stdio,
 };
 use kea_codegen::CodegenMode;
@@ -73,7 +73,12 @@ fn run() -> Result<(), String> {
             }
             Ok(())
         }
-        Command::Test { input } => {
+        Command::Test {
+            input,
+            filter,
+            tag,
+            exclude_tag,
+        } => {
             let mut passed = 0usize;
             let mut failed = 0usize;
             let mut observed_cases = 0usize;
@@ -87,9 +92,15 @@ fn run() -> Result<(), String> {
                 return Ok(());
             }
 
+            let options = TestRunOptions {
+                filter,
+                tag,
+                exclude_tag,
+            };
+
             let multi_file = test_targets.files.len() > 1;
             for file in test_targets.files {
-                let result = run_test_file(&file)?;
+                let result = run_test_file(&file, &options)?;
                 if result.cases.is_empty() {
                     continue;
                 }
@@ -193,6 +204,12 @@ enum Command {
     },
     Test {
         input: Option<PathBuf>,
+        /// Only run tests whose name contains this substring.
+        filter: Option<String>,
+        /// Only run tests with this tag.
+        tag: Option<String>,
+        /// Skip tests with this tag.
+        exclude_tag: Option<String>,
     },
     Pkg {
         command: PackageCommand,
@@ -256,11 +273,55 @@ fn parse_cli(args: &[String]) -> Result<Command, String> {
             Ok(Command::Build { input, output })
         }
         "test" => {
-            let input = args.get(2).map(PathBuf::from);
-            if args.len() > 3 {
-                return Err(format!("unexpected arguments for `test`\n{}", usage()));
+            let mut input = None;
+            let mut filter = None;
+            let mut tag = None;
+            let mut exclude_tag = None;
+            let mut idx = 2;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--filter" => {
+                        if idx + 1 >= args.len() {
+                            return Err("missing value for --filter".to_string());
+                        }
+                        filter = Some(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--tag" => {
+                        if idx + 1 >= args.len() {
+                            return Err("missing value for --tag".to_string());
+                        }
+                        tag = Some(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--exclude-tag" => {
+                        if idx + 1 >= args.len() {
+                            return Err("missing value for --exclude-tag".to_string());
+                        }
+                        exclude_tag = Some(args[idx + 1].clone());
+                        idx += 2;
+                    }
+                    unknown => {
+                        if unknown.starts_with('-') {
+                            return Err(format!("unknown argument `{unknown}`\n{}", usage()));
+                        }
+                        if input.is_some() {
+                            return Err(format!(
+                                "multiple input files are not supported (`{unknown}` is extra)\n{}",
+                                usage()
+                            ));
+                        }
+                        input = Some(PathBuf::from(unknown));
+                        idx += 1;
+                    }
+                }
             }
-            Ok(Command::Test { input })
+            Ok(Command::Test {
+                input,
+                filter,
+                tag,
+                exclude_tag,
+            })
         }
         "pkg" => parse_pkg_cli(args),
         "mcp" => parse_mcp_cli(args),

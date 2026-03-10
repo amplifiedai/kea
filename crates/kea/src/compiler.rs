@@ -898,7 +898,7 @@ pub fn check_file(input: &Path) -> Result<CheckResult, String> {
     })
 }
 
-pub fn run_test_file(input: &Path) -> Result<TestRunResult, String> {
+pub fn run_test_file(input: &Path, options: &TestRunOptions) -> Result<TestRunResult, String> {
     let loaded_modules = collect_project_modules_for_tests(input)?;
     let entry_module_path = module_path_from_entry(input);
     let Some(entry_module) = loaded_modules
@@ -910,7 +910,31 @@ pub fn run_test_file(input: &Path) -> Result<TestRunResult, String> {
         ));
     };
 
-    let (prepared_entry_module, tests) = strip_test_decls_for_runner(&entry_module.module);
+    let (prepared_entry_module, all_tests) = strip_test_decls_for_runner(&entry_module.module);
+
+    // Apply filtering.
+    let tests: Vec<RunnerTestCase> = all_tests
+        .into_iter()
+        .filter(|t| {
+            if let Some(f) = &options.filter
+                && !t.name.contains(f.as_str())
+            {
+                return false;
+            }
+            if let Some(tag) = &options.tag
+                && !t.tags.iter().any(|tg| tg == tag)
+            {
+                return false;
+            }
+            if let Some(ex) = &options.exclude_tag
+                && t.tags.iter().any(|tg| tg == ex)
+            {
+                return false;
+            }
+            true
+        })
+        .collect();
+
     if tests.is_empty() {
         return Ok(TestRunResult { cases: Vec::new() });
     }
@@ -970,11 +994,19 @@ pub fn run_test_file(input: &Path) -> Result<TestRunResult, String> {
             match execute_jit(&compiled_ctx) {
                 Ok(run) => {
                     result.diagnostics.extend(run.diagnostics);
+                    // Check Test.check accumulation failures (thread-local counter).
+                    let check_failures = kea_codegen::get_and_reset_test_failure_count();
                     if run.exit_code != 0 {
                         result.passed = false;
                         result.error = Some(format!(
                             "test returned non-zero exit code {}",
                             run.exit_code
+                        ));
+                        break;
+                    } else if check_failures > 0 {
+                        result.passed = false;
+                        result.error = Some(format!(
+                            "{check_failures} check(s) failed"
                         ));
                         break;
                     }
@@ -1424,6 +1456,18 @@ struct RunnerTestCase {
     name: String,
     function_name: String,
     iterations: usize,
+    tags: Vec<String>,
+}
+
+/// Options that control which test cases are executed.
+#[derive(Debug, Clone, Default)]
+pub struct TestRunOptions {
+    /// Only run tests whose name contains this substring.
+    pub filter: Option<String>,
+    /// Only run tests that carry this tag.
+    pub tag: Option<String>,
+    /// Skip tests that carry this tag.
+    pub exclude_tag: Option<String>,
 }
 
 fn strip_test_decls_for_runner(module: &Module) -> (Module, Vec<RunnerTestCase>) {
@@ -1445,6 +1489,7 @@ fn strip_test_decls_for_runner(module: &Module) -> (Module, Vec<RunnerTestCase>)
                     } else {
                         1
                     }),
+                    tags: test_decl.tags.iter().map(|t| t.node.clone()).collect(),
                 });
             }
             _ => declarations.push(decl.clone()),

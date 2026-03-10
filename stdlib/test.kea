@@ -1,14 +1,33 @@
 doc
   Test provides assertion helpers for `test` declarations.
 
-  Assertions fail via `Fail String`, which the test runner
-  captures and reports per-case.
+  `assert` fails immediately via `Fail String`. `check` accumulates
+  failures and continues — the test runner counts them via a thread-local
+  counter that is reset after each test case.
 effect Fail E
   doc
     Abort the current computation with an error payload.
 
       Fail.fail("boom")
   fn fail(error: E) -> Never
+
+doc
+  Accumulate non-fatal check results within a test case.
+
+  Unlike `Fail`, `check` continues execution after a failure so that all
+  assertions in a test body are evaluated.  The test runner reads the
+  accumulated failure count after the case returns.
+effect Test
+  doc
+    Record whether a boolean check passed.
+
+      Test.check(1 == 1)
+  fn check(passed: Bool) -> Unit
+  doc
+    Record whether a boolean check passed, with a custom message printed on failure.
+
+      Test.check_with_message(1 == 2, "one should equal two")
+  fn check_with_message(passed: Bool, message: String) -> Unit
 
 doc
   Assert a condition, failing with a default message when false.

@@ -81,11 +81,16 @@ test-soak:
 test-doc:
     KEA_ALLOW_WORKSPACE_TESTS=1 ./scripts/cargo-agent.sh test --workspace --doc
 
+# Run the stdlib test cases using the kea test runner.
+test-kea:
+    cargo run -p kea --quiet -- test crates/kea/tests/stdlib_cases/test_tests.kea
+
 # Full check including rustdoc doctests.
 check-full:
     just lint
     just test
     just test-doc
+    just test-kea
 
 # Format all Rust code.
 fmt:

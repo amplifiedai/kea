@@ -3911,6 +3911,10 @@ const DIRECT_CAPABILITIES: &[DirectCapabilitySpec] = &[
         effect: "Net",
         operations: &["connect", "send", "recv"],
     },
+    DirectCapabilitySpec {
+        effect: "Test",
+        operations: &["check", "check_with_message"],
+    },
 ];
 
 fn direct_capability_operation(name: &str) -> Option<(&'static str, &'static str)> {

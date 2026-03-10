@@ -3,3 +3,10 @@ use Test
 test "Test.assert_with_message"
   Test.assert_with_message(true, "should not fail")
   Test.assert(true)
+
+test "Test.check passes"
+  Test.check(1 + 1 == 2)
+  Test.check(true)
+
+test "Test.check_with_message passes"
+  Test.check_with_message(true, "should not fail")

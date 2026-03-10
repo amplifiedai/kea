@@ -4,8 +4,9 @@ pub mod package;
 
 pub use compiler::{
     CheckResult, CompilationContext, CompileResult, ModuleBinding, ModuleProcessResult, RunResult,
-    TestCaseResult, TestRunResult, check_file, compile_file, compile_module, compile_project,
-    emit_diagnostics, emit_object, execute_jit, process_module_in_env, run_file, run_test_file,
+    TestCaseResult, TestRunOptions, TestRunResult, check_file, compile_file, compile_module,
+    compile_project, emit_diagnostics, emit_object, execute_jit, process_module_in_env, run_file,
+    run_test_file,
 };
 pub use mcp::{KeaMcpServer, serve_mcp_stdio};
 pub use package::{

@@ -358,6 +358,10 @@ const DIRECT_CAPABILITIES: &[DirectCapabilitySpec] = &[
         effect: "Net",
         operations: &["connect", "send", "recv"],
     },
+    DirectCapabilitySpec {
+        effect: "Test",
+        operations: &["check", "check_with_message"],
+    },
 ];
 
 fn is_known_direct_capability_operation(effect: &str, operation: &str) -> bool {
@@ -508,6 +512,14 @@ fn runtime_import_signature(module: &impl Module, name: &str) -> cranelift_codeg
             sig.returns.push(AbiParam::new(ptr));
         }
         "__kea_set_fail_payload" => {
+            sig.params.push(AbiParam::new(ptr));
+        }
+        // Test check accumulation
+        "__kea_test_check" => {
+            sig.params.push(AbiParam::new(types::I8));
+        }
+        "__kea_test_check_with_message" => {
+            sig.params.push(AbiParam::new(types::I8));
             sig.params.push(AbiParam::new(ptr));
         }
         _ => panic!("unknown runtime import: {name}"),
@@ -929,6 +941,33 @@ unsafe extern "C" fn kea_float_pow_stub(base: f64, exp: f64) -> f64 {
     base.powf(exp)
 }
 
+// Global atomic failure counter for Test.check accumulation.
+// Using a global (rather than TLS) so the JIT worker thread's increments are visible
+// to the test runner thread that reads and resets the counter after each test case.
+// Test cases are executed sequentially, so there is no contention.
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+static TEST_CHECK_FAILURES: AtomicU64 = AtomicU64::new(0);
+
+unsafe extern "C" fn kea_test_check_stub(passed: i8) {
+    if passed == 0 {
+        TEST_CHECK_FAILURES.fetch_add(1, AtomicOrdering::Relaxed);
+    }
+}
+
+unsafe extern "C" fn kea_test_check_with_message_stub(passed: i8, msg: *const c_char) {
+    if passed == 0 {
+        let message = unsafe { CStr::from_ptr(msg) }.to_str().unwrap_or("check failed");
+        eprintln!("  check failed: {message}");
+        TEST_CHECK_FAILURES.fetch_add(1, AtomicOrdering::Relaxed);
+    }
+}
+
+/// Returns the number of `Test.check` failures accumulated since the last reset,
+/// then resets the counter to zero. Called by the test runner after each JIT execution.
+pub fn get_and_reset_test_failure_count() -> u64 {
+    TEST_CHECK_FAILURES.swap(0, AtomicOrdering::Relaxed)
+}
+
 unsafe extern "C" fn kea_text_replace_stub(
     s: *const c_char,
     old: *const c_char,
@@ -1034,6 +1073,11 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol(
         "__kea_take_fail_payload",
         kea_take_fail_payload_stub as *const u8,
+    );
+    builder.symbol("__kea_test_check", kea_test_check_stub as *const u8);
+    builder.symbol(
+        "__kea_test_check_with_message",
+        kea_test_check_with_message_stub as *const u8,
     );
 }
 
@@ -5601,6 +5645,56 @@ fn lower_instruction<M: Module>(
                             Ok(false)
                         }
                         _ => unreachable!("Net branch is guarded by operation match"),
+                    }
+                } else if effect == "Test"
+                    && matches!(operation.as_str(), "check" | "check_with_message")
+                {
+                    match operation.as_str() {
+                        "check" => {
+                            if args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "Test.check expects exactly one Bool argument"
+                                        .to_string(),
+                                });
+                            }
+                            let passed_value = get_value(values, function_name, &args[0])?;
+                            let passed_i8 =
+                                coerce_value_to_clif_type(builder, passed_value, types::I8);
+                            let check_func_id = imports.get(module, "__kea_test_check")?;
+                            let check_ref =
+                                module.declare_func_in_func(check_func_id, builder.func);
+                            let _ = builder.ins().call(check_ref, &[passed_i8]);
+                            if let Some(dest) = result {
+                                values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                            }
+                            Ok(false)
+                        }
+                        "check_with_message" => {
+                            if args.len() != 2 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "Test.check_with_message expects exactly two arguments"
+                                        .to_string(),
+                                });
+                            }
+                            let passed_value = get_value(values, function_name, &args[0])?;
+                            let msg_value = get_value(values, function_name, &args[1])?;
+                            let passed_i8 =
+                                coerce_value_to_clif_type(builder, passed_value, types::I8);
+                            let ptr_ty = module.target_config().pointer_type();
+                            let msg_ptr = coerce_value_to_clif_type(builder, msg_value, ptr_ty);
+                            let check_func_id =
+                                imports.get(module, "__kea_test_check_with_message")?;
+                            let check_ref =
+                                module.declare_func_in_func(check_func_id, builder.func);
+                            let _ = builder.ins().call(check_ref, &[passed_i8, msg_ptr]);
+                            if let Some(dest) = result {
+                                values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                            }
+                            Ok(false)
+                        }
+                        _ => unreachable!("Test branch is guarded by operation match"),
                     }
                 } else {
                     Err(CodegenError::UnsupportedMir {

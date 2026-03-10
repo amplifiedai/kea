@@ -33,6 +33,33 @@ fn parse_test_command() {
         command,
         Command::Test {
             input: Some(PathBuf::from("suite.kea")),
+            filter: None,
+            tag: None,
+            exclude_tag: None,
+        }
+    );
+}
+
+#[test]
+fn parse_test_command_with_filter_flags() {
+    let args = vec![
+        "kea".to_string(),
+        "test".to_string(),
+        "--filter".to_string(),
+        "my_test".to_string(),
+        "--tag".to_string(),
+        "fast".to_string(),
+        "--exclude-tag".to_string(),
+        "slow".to_string(),
+    ];
+    let command = parse_cli(&args).expect("cli parse should succeed");
+    assert_eq!(
+        command,
+        Command::Test {
+            input: None,
+            filter: Some("my_test".to_string()),
+            tag: Some("fast".to_string()),
+            exclude_tag: Some("slow".to_string()),
         }
     );
 }
@@ -195,7 +222,7 @@ fn run_test_file_resolves_dev_dependencies_for_package_tests() {
     )
     .expect("test module write should succeed");
 
-    let run = run_test_file(&test_path).expect("test run should succeed");
+    let run = run_test_file(&test_path, &Default::default()).expect("test run should succeed");
     assert_eq!(run.cases.len(), 1);
     assert!(run.cases[0].passed, "expected test to pass with dev deps");
 
@@ -305,7 +332,7 @@ fn run_test_file_reports_pass_and_fail_without_stopping() {
         "kea",
     );
 
-    let run = run_test_file(&source_path).expect("test run should succeed");
+    let run = run_test_file(&source_path, &Default::default()).expect("test run should succeed");
     assert_eq!(run.cases.len(), 2);
     assert!(
         run.cases
@@ -333,7 +360,7 @@ fn run_test_file_supports_stdlib_test_assert_module() {
         )
         .expect("suite write should succeed");
 
-    let run = run_test_file(&source_path).expect("test run should succeed");
+    let run = run_test_file(&source_path, &Default::default()).expect("test run should succeed");
     assert_eq!(run.cases.len(), 2);
     assert!(
         run.cases
@@ -350,6 +377,72 @@ fn run_test_file_supports_stdlib_test_assert_module() {
 }
 
 #[test]
+fn run_test_file_test_check_pass_accumulation() {
+    let project_dir = temp_workspace_project_dir("kea-cli-test-runner-check-pass");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("suite.kea");
+    std::fs::write(
+        &source_path,
+        "use Test\n\ntest \"check all pass\"\n  Test.check(1 + 1 == 2)\n  Test.check(true)\n  Test.check_with_message(true, \"should not fail\")\n",
+    )
+    .expect("suite write should succeed");
+
+    let run = run_test_file(&source_path, &Default::default()).expect("test run should succeed");
+    assert_eq!(run.cases.len(), 1);
+    assert!(run.cases[0].passed, "all checks passed — case should pass");
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn run_test_file_test_check_failure_accumulation() {
+    let project_dir = temp_workspace_project_dir("kea-cli-test-runner-check-fail");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("suite.kea");
+    std::fs::write(
+        &source_path,
+        "use Test\n\ntest \"check fails accumulate\"\n  Test.check(false)\n  Test.check(true)\n  Test.check(false)\n",
+    )
+    .expect("suite write should succeed");
+
+    let run = run_test_file(&source_path, &Default::default()).expect("test run should succeed");
+    assert_eq!(run.cases.len(), 1);
+    assert!(!run.cases[0].passed, "two checks failed — case should fail");
+    assert!(
+        run.cases[0].error.as_deref().unwrap_or("").contains("2 check"),
+        "error should report the count of check failures"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn run_test_file_filter_by_name() {
+    let project_dir = temp_workspace_project_dir("kea-cli-test-runner-filter");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("suite.kea");
+    std::fs::write(
+        &source_path,
+        "use Test\n\ntest \"alpha\"\n  Test.assert(true)\n\ntest \"beta\"\n  Test.assert(false)\n",
+    )
+    .expect("suite write should succeed");
+
+    let opts = TestRunOptions {
+        filter: Some("alpha".to_string()),
+        ..Default::default()
+    };
+    let run = run_test_file(&source_path, &opts).expect("test run should succeed");
+    assert_eq!(run.cases.len(), 1, "only the filtered case should run");
+    assert_eq!(run.cases[0].name, "alpha");
+    assert!(run.cases[0].passed);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
 fn run_test_file_executes_property_iterations() {
     let source_path = write_temp_source(
         "effect Fail E\n  fn fail(error: E) -> Never\n\npub fn assert(value: Bool) -[Fail String]> Unit\n  if value\n    ()\n  else\n    Fail.fail(\"assertion failed\")\n\ntest property (iterations: 3) \"repeat pass\"\n  assert true\n",
@@ -357,7 +450,7 @@ fn run_test_file_executes_property_iterations() {
         "kea",
     );
 
-    let run = run_test_file(&source_path).expect("test run should succeed");
+    let run = run_test_file(&source_path, &Default::default()).expect("test run should succeed");
     assert_eq!(run.cases.len(), 1);
     assert_eq!(run.cases[0].name, "repeat pass");
     assert_eq!(run.cases[0].iterations, 3);
@@ -407,7 +500,7 @@ fn run_stdlib_case_corpus_with_kea_test_runner() {
 
     let mut failures = Vec::new();
     for case_file in &case_files {
-        match run_test_file(case_file) {
+        match run_test_file(case_file, &Default::default()) {
             Ok(run) => {
                 if run.cases.is_empty() {
                     failures.push(format!(
@@ -443,7 +536,7 @@ fn run_stdlib_case_corpus_with_kea_test_runner() {
 fn run_stdlib_vector_tests() {
     let vector_kea = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../stdlib/vector.kea");
-    let run = run_test_file(&vector_kea).expect("stdlib/vector.kea should compile and run");
+    let run = run_test_file(&vector_kea, &Default::default()).expect("stdlib/vector.kea should compile and run");
     let failures: Vec<_> = run
         .cases
         .iter()
@@ -470,7 +563,7 @@ fn run_stdlib_vector_tests() {
 #[test]
 fn run_algorithm_gallery_binary_search() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/binary_search.kea");
-    let run = run_test_file(&path).expect("binary_search.kea should run");
+    let run = run_test_file(&path, &Default::default()).expect("binary_search.kea should run");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "binary_search failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests in binary_search.kea");
@@ -479,7 +572,7 @@ fn run_algorithm_gallery_binary_search() {
 #[test]
 fn run_algorithm_gallery_fnv1a() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/fnv1a.kea");
-    let run = run_test_file(&path).expect("fnv1a.kea should run");
+    let run = run_test_file(&path, &Default::default()).expect("fnv1a.kea should run");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "fnv1a failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests in fnv1a.kea");
@@ -488,7 +581,7 @@ fn run_algorithm_gallery_fnv1a() {
 #[test]
 fn run_algorithm_gallery_merge_sort_basic() {
     let path = std::path::PathBuf::from("/tmp/sort_combo.kea");
-    let run = run_test_file(&path).expect("merge_sort_test.kea should compile");
+    let run = run_test_file(&path, &Default::default()).expect("merge_sort_test.kea should compile");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "merge failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests ran");
@@ -515,7 +608,7 @@ let right = halves.1\n  \
 Test.assert(List.length(left) == 2)\n  \
 Test.assert(List.length(right) == 2)\n";
     let path = write_temp_source(source, "kea-merge-split", "kea");
-    let run = run_test_file(&path).expect("split should compile");
+    let run = run_test_file(&path, &Default::default()).expect("split should compile");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "split failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests ran");
@@ -541,7 +634,7 @@ test \"merge simple\"\n  \
 let result = merge_acc([1, 3], [2, 4], [])\n  \
 Test.assert(List.length(result) == 4)\n";
     let path = write_temp_source(source, "kea-merge-simple", "kea");
-    let run = run_test_file(&path).expect("merge simple should compile");
+    let run = run_test_file(&path, &Default::default()).expect("merge simple should compile");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "merge failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests ran");
@@ -551,7 +644,7 @@ Test.assert(List.length(result) == 4)\n";
 #[test]
 fn run_algorithm_gallery_merge_sort() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/merge_sort.kea");
-    let run = run_test_file(&path).expect("merge_sort.kea should run");
+    let run = run_test_file(&path, &Default::default()).expect("merge_sort.kea should run");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "merge_sort failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests in merge_sort.kea");
@@ -560,7 +653,7 @@ fn run_algorithm_gallery_merge_sort() {
 #[test]
 fn run_algorithm_gallery_welford() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/welford.kea");
-    let run = run_test_file(&path).expect("welford.kea should run");
+    let run = run_test_file(&path, &Default::default()).expect("welford.kea should run");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "welford failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests in welford.kea");
@@ -570,7 +663,7 @@ fn run_algorithm_gallery_welford() {
 #[cfg(not(target_os = "windows"))]
 fn run_algorithm_gallery_insertion_sort() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/insertion_sort.kea");
-    let run = run_test_file(&path).expect("insertion_sort.kea should run");
+    let run = run_test_file(&path, &Default::default()).expect("insertion_sort.kea should run");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "insertion_sort failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests in insertion_sort.kea");
@@ -580,7 +673,7 @@ fn run_algorithm_gallery_insertion_sort() {
 #[cfg(not(target_os = "windows"))]
 fn run_algorithm_gallery_quicksort() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/quicksort.kea");
-    let run = run_test_file(&path).expect("quicksort.kea should run");
+    let run = run_test_file(&path, &Default::default()).expect("quicksort.kea should run");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "quicksort failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests in quicksort.kea");
@@ -590,7 +683,7 @@ fn run_algorithm_gallery_quicksort() {
 #[cfg(not(target_os = "windows"))]
 fn run_algorithm_gallery_dot_product() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/dot_product.kea");
-    let run = run_test_file(&path).expect("dot_product.kea should run");
+    let run = run_test_file(&path, &Default::default()).expect("dot_product.kea should run");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "dot_product failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests in dot_product.kea");
@@ -600,7 +693,7 @@ fn run_algorithm_gallery_dot_product() {
 #[cfg(not(target_os = "windows"))]
 fn run_algorithm_gallery_ring_buffer() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/ring_buffer.kea");
-    let run = run_test_file(&path).expect("ring_buffer.kea should run");
+    let run = run_test_file(&path, &Default::default()).expect("ring_buffer.kea should run");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "ring_buffer failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests in ring_buffer.kea");
@@ -610,7 +703,7 @@ fn run_algorithm_gallery_ring_buffer() {
 #[cfg(not(target_os = "windows"))]
 fn run_algorithm_gallery_priority_queue() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/priority_queue.kea");
-    let run = run_test_file(&path).expect("priority_queue.kea should run");
+    let run = run_test_file(&path, &Default::default()).expect("priority_queue.kea should run");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "priority_queue failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests in priority_queue.kea");
@@ -620,7 +713,7 @@ fn run_algorithm_gallery_priority_queue() {
 #[cfg(not(target_os = "windows"))]
 fn run_algorithm_gallery_matrix_multiply() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/matrix_multiply.kea");
-    let run = run_test_file(&path).expect("matrix_multiply.kea should run");
+    let run = run_test_file(&path, &Default::default()).expect("matrix_multiply.kea should run");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(failures.is_empty(), "matrix_multiply failures: {:?}", failures);
     assert!(!run.cases.is_empty(), "no tests in matrix_multiply.kea");
@@ -661,7 +754,7 @@ fn run_algorithm_gallery_with_kea_test_runner() {
 
     let mut failures = Vec::new();
     for case_file in &case_files {
-        match run_test_file(case_file) {
+        match run_test_file(case_file, &Default::default()) {
             Ok(run) => {
                 if run.cases.is_empty() {
                     failures.push(format!(
@@ -12907,7 +13000,7 @@ fn struct_inline_method_ums_dispatch() {
         "  Test.assert(o.y == 0)\n",
     );
     let path = write_temp_source(source, "kea-struct-inline-method", "kea");
-    let run = run_test_file(&path).expect("struct inline method test should pass");
+    let run = run_test_file(&path, &Default::default()).expect("struct inline method test should pass");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(
         failures.is_empty(),
@@ -12937,7 +13030,7 @@ fn enum_inline_associated_method() {
         "  Test.assert(List.length(dirs) == 4)\n",
     );
     let path = write_temp_source(source, "kea-enum-inline-static", "kea");
-    let run = run_test_file(&path).expect("enum inline associated method test should pass");
+    let run = run_test_file(&path, &Default::default()).expect("enum inline associated method test should pass");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(
         failures.is_empty(),
@@ -12972,7 +13065,7 @@ fn enum_inline_receiver_method() {
         "  Test.assert(Direction.opposite(East) == West)\n",
     );
     let path = write_temp_source(source, "kea-enum-inline-receiver", "kea");
-    let run = run_test_file(&path).expect("enum inline receiver method test should pass");
+    let run = run_test_file(&path, &Default::default()).expect("enum inline receiver method test should pass");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(
         failures.is_empty(),
@@ -13005,7 +13098,7 @@ fn struct_inline_method_coexists_with_file_scope_fn() {
         "  Test.assert(w.magnitude_sq() == 100)\n",
     );
     let path = write_temp_source(source, "kea-struct-inline-plus-file-scope", "kea");
-    let run = run_test_file(&path).expect("struct inline + file-scope test should pass");
+    let run = run_test_file(&path, &Default::default()).expect("struct inline + file-scope test should pass");
     let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
     assert!(
         failures.is_empty(),
