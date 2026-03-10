@@ -1864,6 +1864,24 @@ fn size_of_annotation(ty: &TypeAnnotation) -> i64 {
     }
 }
 
+/// Return the alignment in bytes for a type annotation.
+/// Primitive scalars have natural alignment; all heap-allocated aggregates
+/// (tuples, named records, sums, generic types) are pointer-aligned (8 bytes).
+fn align_of_annotation(ty: &TypeAnnotation) -> i64 {
+    match ty {
+        TypeAnnotation::Named(name) => match name.as_str() {
+            "Bool" | "Unit" | "Int8" | "UInt8" => 1,
+            "Int16" | "UInt16" => 2,
+            "Float16" => 2,
+            "Int32" | "UInt32" | "Float32" | "Char" => 4,
+            _ => 8,
+        },
+        // Tuples are heap-allocated; alignment is the pointer size (8), not the total size.
+        TypeAnnotation::Tuple(_) => 8,
+        _ => 8,
+    }
+}
+
 fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
     // NOTE: expr_types are available via ctx.expr_types for future use by
     // monomorphization.  We do NOT use them for default_ty yet because MIR
@@ -2188,7 +2206,7 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
             }
         }
         ExprKind::SizeOf(ty) => HirExprKind::Lit(Lit::Int(size_of_annotation(ty))),
-        ExprKind::AlignOf(ty) => HirExprKind::Lit(Lit::Int(size_of_annotation(ty))),
+        ExprKind::AlignOf(ty) => HirExprKind::Lit(Lit::Int(align_of_annotation(ty))),
 
         ExprKind::Cond { arms } => {
             // Desugar `cond { c1 -> e1; c2 -> e2; _ -> eN }` into nested `if` expressions.
