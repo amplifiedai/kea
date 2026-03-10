@@ -1,0 +1,5 @@
+---
+source: crates/kea-infer/tests/diagnostic_snapshots.rs
+expression: format_diagnostics(&diags)
+---
+error[E0001]: return type mismatch: expected `Int`, got `String`

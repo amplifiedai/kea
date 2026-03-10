@@ -1,0 +1,6 @@
+---
+source: crates/kea-infer/tests/diagnostic_snapshots.rs
+expression: format_diagnostics(&diags)
+---
+error[E0011]: the record has unexpected field `temp`
+  help: expected fields: `name`

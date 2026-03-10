@@ -1,0 +1,23 @@
+---
+source: crates/kea-infer/tests/diagnostic_snapshots.rs
+expression: out
+---
+E0001: type_mismatch — Expression type does not match expected type.
+E0002: missing_field — A required record or row field is missing.
+E0003: duplicate_field — A record or row field is declared more than once.
+E0004: lacks_violation — A row-polymorphism lacks constraint was violated.
+E0005: undefined_name — A referenced variable, function, or name is undefined.
+E0006: syntax — Source text does not parse as valid Kea syntax.
+E0007: non_exhaustive — Pattern matching is missing one or more cases.
+E0008: purity_violation — An impure operation was used in a pure-only context.
+E0009: arity_mismatch — A function was called with the wrong number of arguments.
+E0010: trait_bound — A required trait bound is not satisfied for the given type.
+E0011: extra_field — A record or row contains a field not allowed in this context.
+E0012: type_error — General type checking error.
+E0801: missing_annotation — A required declaration-boundary type annotation is missing.
+W1001: missing_module_doc — A public module has no module-level doc block.
+E0013: record_row_mismatch — Record fields do not match: the value has missing or extra fields.
+E0014: effect_row_mismatch — Function effect row does not match: body performs effects not in the signature.
+E0015: unhandled_effect — An effect is required by the function body but not declared in the signature.
+E0016: unused_handler — A handler clause covers an effect the expression does not perform.
+E0017: catch_type_mismatch — `catch` result type does not match the Fail error type.

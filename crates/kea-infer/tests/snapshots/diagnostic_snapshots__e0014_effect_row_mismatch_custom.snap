@@ -1,0 +1,9 @@
+---
+source: crates/kea-infer/tests/diagnostic_snapshots.rs
+expression: format_diagnostics(&diags)
+---
+error[E0014]: function effects do not match
+  declared: (pure — no effects)
+  body also requires:
+    MyCustomEffect — performs the 'MyCustomEffect' effect
+  help: add MyCustomEffect to the effect signature or handle it in the body

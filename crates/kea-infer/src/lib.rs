@@ -99,6 +99,10 @@ pub enum Reason {
     ResumeValue,
     /// Handler clause body must match the handle expression's result type.
     HandleClauseBody,
+    /// Effect row from a function's effect annotation (e.g. `-[IO]>`).
+    EffectRowAnnotation,
+    /// Effect row inside a `handle` expression scope.
+    EffectHandlerScope,
 }
 
 // ---------------------------------------------------------------------------
@@ -1545,21 +1549,42 @@ impl Unifier {
         match (expected.rest, actual.rest) {
             // Both closed: extra fields on either side are errors.
             (None, None) => {
-                for (label, _) in &only_expected {
-                    self.errors.push(missing_field_diag(
-                        label,
-                        &actual.fields,
+                if is_effect_row(&provenance.reason) {
+                    // Effect rows: always aggregate into one E0014 message.
+                    if !only_expected.is_empty() || !only_actual.is_empty() {
+                        self.errors.push(row_diff_diag(
+                            &only_expected,
+                            &only_actual,
+                            &provenance.reason,
+                            provenance.span,
+                        ));
+                    }
+                } else if !only_expected.is_empty() && !only_actual.is_empty() {
+                    // Record rows with both missing and extra: aggregate into E0013.
+                    self.errors.push(row_diff_diag(
+                        &only_expected,
+                        &only_actual,
                         &provenance.reason,
                         provenance.span,
                     ));
-                }
-                for (label, _) in &only_actual {
-                    self.errors.push(extra_field_diag(
-                        label,
-                        &expected.fields,
-                        &provenance.reason,
-                        provenance.span,
-                    ));
+                } else {
+                    // Record rows with only one side: per-field diagnostics.
+                    for (label, _) in &only_expected {
+                        self.errors.push(missing_field_diag(
+                            label,
+                            &actual.fields,
+                            &provenance.reason,
+                            provenance.span,
+                        ));
+                    }
+                    for (label, _) in &only_actual {
+                        self.errors.push(extra_field_diag(
+                            label,
+                            &expected.fields,
+                            &provenance.reason,
+                            provenance.span,
+                        ));
+                    }
                 }
             }
 
@@ -1625,21 +1650,39 @@ impl Unifier {
             // Both open: Rémy decomposition.
             (Some(r1), Some(r2)) if r1 == r2 => {
                 // Same row variable: extra fields on either side are errors.
-                for (label, _) in &only_expected {
-                    self.errors.push(missing_field_diag(
-                        label,
-                        &actual.fields,
+                if is_effect_row(&provenance.reason) {
+                    if !only_expected.is_empty() || !only_actual.is_empty() {
+                        self.errors.push(row_diff_diag(
+                            &only_expected,
+                            &only_actual,
+                            &provenance.reason,
+                            provenance.span,
+                        ));
+                    }
+                } else if !only_expected.is_empty() && !only_actual.is_empty() {
+                    self.errors.push(row_diff_diag(
+                        &only_expected,
+                        &only_actual,
                         &provenance.reason,
                         provenance.span,
                     ));
-                }
-                for (label, _) in &only_actual {
-                    self.errors.push(extra_field_diag(
-                        label,
-                        &expected.fields,
-                        &provenance.reason,
-                        provenance.span,
-                    ));
+                } else {
+                    for (label, _) in &only_expected {
+                        self.errors.push(missing_field_diag(
+                            label,
+                            &actual.fields,
+                            &provenance.reason,
+                            provenance.span,
+                        ));
+                    }
+                    for (label, _) in &only_actual {
+                        self.errors.push(extra_field_diag(
+                            label,
+                            &expected.fields,
+                            &provenance.reason,
+                            provenance.span,
+                        ));
+                    }
                 }
             }
 
@@ -2464,11 +2507,35 @@ fn constraint_trace_entry(constraint: &Constraint) -> (String, Option<Span>) {
 
 /// Determine the domain term for row error messages based on provenance.
 ///
-/// Returns (entity, "the entity") — for example ("field", "the record").
+/// Returns `(entity_kind, "the entity")` — for example `("field", "the record")` for
+/// record rows or `("effect", "the function")` for effect rows.
 fn row_domain(reason: &Reason) -> (&'static str, &'static str) {
     match reason {
+        Reason::EffectRowAnnotation | Reason::EffectHandlerScope => ("effect", "the function"),
         Reason::FunctionArg { .. } | Reason::ReturnType => ("field", "the function"),
         _ => ("field", "the record"),
+    }
+}
+
+/// Whether the row belongs to an effect context (as opposed to a record context).
+fn is_effect_row(reason: &Reason) -> bool {
+    matches!(
+        reason,
+        Reason::EffectRowAnnotation | Reason::EffectHandlerScope
+    )
+}
+
+/// Plain-language description for a known effect label.
+fn effect_description(label: &Label) -> String {
+    match label.as_str() {
+        "IO" => "accesses the file system or console".to_string(),
+        "Net" => "accesses the network".to_string(),
+        "Rand" => "uses random number generation".to_string(),
+        "Clock" => "reads the system clock".to_string(),
+        "Fail" => "may fail with a value".to_string(),
+        "Log" => "emits log messages".to_string(),
+        "State" => "reads or writes mutable state".to_string(),
+        other => format!("performs the '{other}' effect"),
     }
 }
 
@@ -2479,6 +2546,81 @@ fn format_field_list(fields: &[(Label, Type)]) -> String {
         .map(|(l, _)| format!("`{l}`"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Build an aggregated row-diff diagnostic covering both missing and extra entries.
+///
+/// When both `only_expected` (missing from actual) and `only_actual` (extra in actual)
+/// are non-empty, this produces a single structured message instead of N separate ones.
+/// For effect rows the message uses effect terminology and capability descriptions.
+fn row_diff_diag(
+    only_expected: &[(Label, Type)],
+    only_actual: &[(Label, Type)],
+    reason: &Reason,
+    span: Span,
+) -> Diagnostic {
+    if is_effect_row(reason) {
+        // Effect row diff — use E0014 and effect terminology.
+        // Embed the diff in the message body; put the suggestion in help.
+        let mut body_lines = Vec::new();
+        if only_expected.is_empty() {
+            body_lines.push("  declared: (pure — no effects)".to_string());
+        } else {
+            body_lines.push("  declared effects:".to_string());
+            for (label, _) in only_expected {
+                body_lines.push(format!("    {label:<8} — {}", effect_description(label)));
+            }
+        }
+        if !only_actual.is_empty() {
+            body_lines.push("  body also requires:".to_string());
+            for (label, _) in only_actual {
+                body_lines.push(format!("    {label:<8} — {}", effect_description(label)));
+            }
+        }
+        let body = body_lines.join("\n");
+        let msg = format!("function effects do not match\n{body}");
+        let extra_labels: Vec<_> = only_actual.iter().map(|(l, _)| l.to_string()).collect();
+        let help = format!(
+            "add {} to the effect signature or handle {} in the body",
+            extra_labels.join(", "),
+            if extra_labels.len() == 1 { "it" } else { "them" }
+        );
+        Diagnostic::error(Category::EffectRowMismatch, msg)
+            .at(span_to_location(span))
+            .with_help(help)
+    } else {
+        // Record row diff — use E0013 and field terminology.
+        // Embed the diff in the message; put the fix suggestion in help.
+        let mut diff_lines: Vec<String> = only_expected
+            .iter()
+            .map(|(label, ty)| format!("  missing: {label}: {ty}"))
+            .collect();
+        diff_lines.extend(
+            only_actual
+                .iter()
+                .map(|(label, ty)| format!("  extra:   {label}: {ty}")),
+        );
+        let body = diff_lines.join("\n");
+        let msg = format!("record fields do not match\n{body}");
+
+        let mut help_parts = Vec::new();
+        if !only_expected.is_empty() {
+            let add_list: Vec<_> = only_expected
+                .iter()
+                .map(|(l, ty)| format!("`{l}: {ty}`"))
+                .collect();
+            help_parts.push(format!("add {}", add_list.join(", ")));
+        }
+        if !only_actual.is_empty() {
+            let remove_list: Vec<_> = only_actual.iter().map(|(l, _)| format!("`{l}`")).collect();
+            help_parts.push(format!("remove {}", remove_list.join(", ")));
+        }
+        let help = help_parts.join(" and ");
+
+        Diagnostic::error(Category::RecordRowMismatch, msg)
+            .at(span_to_location(span))
+            .with_help(help)
+    }
 }
 
 /// Build a missing field diagnostic with context from provenance.

@@ -1,0 +1,6 @@
+---
+source: crates/kea-infer/tests/diagnostic_snapshots.rs
+expression: format_diagnostics(&diags)
+---
+error[E0002]: the record is missing field `age`
+  help: expected fields: `name`

@@ -55,10 +55,20 @@ pub enum Category {
     MissingAnnotation,
     /// Public module is missing a module-level doc block.
     MissingModuleDoc,
+    /// Aggregated record row diff: missing and/or extra fields in one message.
+    RecordRowMismatch,
+    /// Aggregated effect row diff: unhandled and/or unnecessary effects in one message.
+    EffectRowMismatch,
+    /// An effect is required by the body but not declared in the function signature.
+    UnhandledEffect,
+    /// A handler clause covers an effect not performed by the handled expression.
+    UnusedHandler,
+    /// `catch` result type does not match the Fail error type.
+    CatchTypeMismatch,
 }
 
 impl Category {
-    pub const ALL: [Category; 14] = [
+    pub const ALL: [Category; 19] = [
         Category::TypeMismatch,
         Category::MissingField,
         Category::DuplicateField,
@@ -73,6 +83,11 @@ impl Category {
         Category::TypeError,
         Category::MissingAnnotation,
         Category::MissingModuleDoc,
+        Category::RecordRowMismatch,
+        Category::EffectRowMismatch,
+        Category::UnhandledEffect,
+        Category::UnusedHandler,
+        Category::CatchTypeMismatch,
     ];
 
     pub fn all() -> &'static [Category] {
@@ -95,6 +110,11 @@ impl Category {
             Category::TypeError => "type_error",
             Category::MissingAnnotation => "missing_annotation",
             Category::MissingModuleDoc => "missing_module_doc",
+            Category::RecordRowMismatch => "record_row_mismatch",
+            Category::EffectRowMismatch => "effect_row_mismatch",
+            Category::UnhandledEffect => "unhandled_effect",
+            Category::UnusedHandler => "unused_handler",
+            Category::CatchTypeMismatch => "catch_type_mismatch",
         }
     }
 
@@ -114,6 +134,11 @@ impl Category {
             Category::TypeError => "E0012",
             Category::MissingAnnotation => "E0801",
             Category::MissingModuleDoc => "W1001",
+            Category::RecordRowMismatch => "E0013",
+            Category::EffectRowMismatch => "E0014",
+            Category::UnhandledEffect => "E0015",
+            Category::UnusedHandler => "E0016",
+            Category::CatchTypeMismatch => "E0017",
         }
     }
 
@@ -136,6 +161,21 @@ impl Category {
             }
             Category::MissingModuleDoc => {
                 "A public module has no module-level doc block."
+            }
+            Category::RecordRowMismatch => {
+                "Record fields do not match: the value has missing or extra fields."
+            }
+            Category::EffectRowMismatch => {
+                "Function effect row does not match: body performs effects not in the signature."
+            }
+            Category::UnhandledEffect => {
+                "An effect is required by the function body but not declared in the signature."
+            }
+            Category::UnusedHandler => {
+                "A handler clause covers an effect the expression does not perform."
+            }
+            Category::CatchTypeMismatch => {
+                "`catch` result type does not match the Fail error type."
             }
         }
     }
@@ -169,6 +209,21 @@ impl Category {
             }
             Category::MissingModuleDoc => {
                 "Add a `doc` block followed by a blank line at the top of the file, before any use statements."
+            }
+            Category::RecordRowMismatch => {
+                "Add the missing fields and remove the extra fields to match the expected record type."
+            }
+            Category::EffectRowMismatch => {
+                "Either add the required effects to the function signature or handle them in the body."
+            }
+            Category::UnhandledEffect => {
+                "Add the effect to the function signature or wrap the body in a handler."
+            }
+            Category::UnusedHandler => {
+                "Remove the handler clause for the effect that is not performed."
+            }
+            Category::CatchTypeMismatch => {
+                "Adjust the catch binding type to match the actual Fail error type."
             }
         }
     }
