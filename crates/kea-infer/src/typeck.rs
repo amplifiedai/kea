@@ -11187,6 +11187,11 @@ fn infer_expr_bidir(
             let lambda_ambient = unifier.fresh_row_var();
             env.push_ambient_effect_row(lambda_ambient);
 
+            // Save the outer effect-origin map so nested lambdas don't pollute
+            // the enclosing scope's provenance data.
+            let saved_effect_origins =
+                std::mem::take(&mut unifier.effect_origins);
+
             // When a return annotation is present, use check mode directly
             // instead of infer-then-check.  This avoids processing the body
             // twice (which causes duplicate diagnostics for handle expressions,
@@ -11220,6 +11225,10 @@ fn infer_expr_bidir(
             env.pop_ambient_effect_row();
             env.pop_scope();
             unifier.exit_lambda();
+
+            // Collect this lambda's effect origins; restore the enclosing scope's.
+            let lambda_effect_origins =
+                std::mem::replace(&mut unifier.effect_origins, saved_effect_origins);
 
             // Resolve the ambient row var through the substitution to see what
             // effects the body actually performed.  If the row var is
@@ -11273,20 +11282,41 @@ fn infer_expr_bidir(
                     if declared_effects == EffectRow::pure()
                         && !lambda_effects.row.fields.is_empty()
                     {
-                        // Declared pure but body has effects — purity violation.
-                        unifier.push_error(
-                            Diagnostic::error(
-                                Category::TypeMismatch,
+                        // Declared pure but body has effects — E0014 purity violation.
+                        // List each required effect with capability description and
+                        // optionally a secondary call-site label where it was introduced.
+                        let effect_lines: Vec<String> = lambda_effects
+                            .row
+                            .fields
+                            .iter()
+                            .map(|(label, _)| {
                                 format!(
-                                    "lambda declared pure (`->`) but body performs effects `{}`",
-                                    lambda_effects,
-                                ),
-                            )
+                                    "  {label:<8} — {}",
+                                    crate::effect_description(label)
+                                )
+                            })
+                            .collect();
+                        let body = format!(
+                            "function declared pure (`->`) but its body requires:\n{}",
+                            effect_lines.join("\n")
+                        );
+                        let mut diag = Diagnostic::error(Category::EffectRowMismatch, body)
                             .at(span_to_loc(eff_ann.span))
                             .with_help(
-                                "add an effect annotation: replace `->` with `-[effects]>` to declare the required effects".to_string(),
-                            ),
-                        );
+                                "replace `->` with `-[effects]>` to declare the required effects, or handle them in the body".to_string(),
+                            );
+                        // Add secondary call-site labels for effects with known provenance.
+                        for (label, _) in &lambda_effects.row.fields {
+                            if let Some(spans) = lambda_effect_origins.get(label)
+                                && let Some(&first_span) = spans.first()
+                            {
+                                diag = diag.with_label(
+                                    span_to_loc(first_span),
+                                    format!("`{label}` first required here"),
+                                );
+                            }
+                        }
+                        unifier.push_error(diag);
                         lambda_effects
                     } else {
                         declared_effects
@@ -11514,6 +11544,15 @@ fn infer_expr_bidir(
                             reason: Reason::HandleEffectPayload,
                         },
                     );
+                }
+                // Record call-site provenance for each concrete named effect.
+                // Used for E0014/E0015 secondary "X first required here" labels.
+                for (label, _) in &ft.effects.row.fields {
+                    unifier
+                        .effect_origins
+                        .entry(label.clone())
+                        .or_default()
+                        .push(expr.span);
                 }
                 unifier.note_evidence_site(expr.span, &resolved_callable);
             } else {

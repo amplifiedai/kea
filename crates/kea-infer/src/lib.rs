@@ -600,6 +600,14 @@ pub struct Unifier {
     /// unification. Set by the inference context before solving begins.
     /// `None` in bare test unifiers that don't need structural projection.
     record_registry: Option<crate::typeck::RecordRegistry>,
+    /// Effect provenance: maps each named effect label to the call-site spans
+    /// that introduced it during the current lambda body's inference.
+    ///
+    /// Populated in the Call arm when a callee's effect row contains concrete
+    /// named effects. Saved and restored at lambda boundaries so inner lambdas
+    /// don't pollute outer scopes. Used to add "X first required here" secondary
+    /// labels to E0014/E0015 diagnostics.
+    pub effect_origins: std::collections::BTreeMap<kea_types::Label, Vec<Span>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -725,6 +733,7 @@ impl Unifier {
             captured_constraints: Vec::new(),
             expr_types: std::collections::BTreeMap::new(),
             record_registry: None,
+            effect_origins: std::collections::BTreeMap::new(),
         }
     }
 
