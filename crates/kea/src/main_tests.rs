@@ -72,13 +72,13 @@ fn discover_package_test_files_finds_tests_and_src_test_suffixes() {
     std::fs::create_dir_all(&nested_src).expect("nested source dir should be created");
     std::fs::create_dir_all(&tests_dir).expect("tests dir should be created");
 
-    std::fs::write(src_dir.join("main.kea"), "fn main() -> Int\n  0\n")
+    std::fs::write(src_dir.join("main.kea"), "pub fn main() -> Int\n  0\n")
         .expect("main file write should succeed");
     std::fs::write(src_dir.join("alpha_test.kea"), "test \"alpha\"\n  ()\n")
         .expect("alpha test file write should succeed");
     std::fs::write(nested_src.join("beta_test.kea"), "test \"beta\"\n  ()\n")
         .expect("beta test file write should succeed");
-    std::fs::write(src_dir.join("helper.kea"), "fn helper() -> Unit\n  ()\n")
+    std::fs::write(src_dir.join("helper.kea"), "pub fn helper() -> Unit\n  ()\n")
         .expect("helper file write should succeed");
     std::fs::write(tests_dir.join("integration.kea"), "test \"integration\"\n  ()\n")
         .expect("integration test file write should succeed");
@@ -226,7 +226,7 @@ fn run_file_excludes_dev_dependencies_outside_test_mode() {
     let app_path = src_dir.join("main.kea");
     std::fs::write(
         &app_path,
-        "use Quickcheck\n\nfn main() -> Int\n  Quickcheck.answer()\n",
+        "use Quickcheck\n\npub fn main() -> Int\n  Quickcheck.answer()\n",
     )
     .expect("app module write should succeed");
 
@@ -300,7 +300,7 @@ fn default_build_output_path_strips_extension() {
 #[test]
 fn run_test_file_reports_pass_and_fail_without_stopping() {
     let source_path = write_temp_source(
-        "effect Fail E\n  fn fail(error: E) -> Never\n\nfn assert(value: Bool) -[Fail String]> Unit\n  if value\n    ()\n  else\n    Fail.fail(\"assertion failed\")\n\ntest \"pass\"\n  assert true\n\ntest \"fail\"\n  assert false\n",
+        "effect Fail E\n  fn fail(error: E) -> Never\n\npub fn assert(value: Bool) -[Fail String]> Unit\n  if value\n    ()\n  else\n    Fail.fail(\"assertion failed\")\n\ntest \"pass\"\n  assert true\n\ntest \"fail\"\n  assert false\n",
         "kea-cli-test-runner",
         "kea",
     );
@@ -352,7 +352,7 @@ fn run_test_file_supports_stdlib_test_assert_module() {
 #[test]
 fn run_test_file_executes_property_iterations() {
     let source_path = write_temp_source(
-        "effect Fail E\n  fn fail(error: E) -> Never\n\nfn assert(value: Bool) -[Fail String]> Unit\n  if value\n    ()\n  else\n    Fail.fail(\"assertion failed\")\n\ntest property (iterations: 3) \"repeat pass\"\n  assert true\n",
+        "effect Fail E\n  fn fail(error: E) -> Never\n\npub fn assert(value: Bool) -[Fail String]> Unit\n  if value\n    ()\n  else\n    Fail.fail(\"assertion failed\")\n\ntest property (iterations: 3) \"repeat pass\"\n  assert true\n",
         "kea-cli-test-runner-property-iterations",
         "kea",
     );
@@ -698,7 +698,7 @@ fn run_algorithm_gallery_with_kea_test_runner() {
 #[test]
 fn compile_tuple_field_access_as_function_args_typechecks() {
     let source = "\
-fn pair() -> (Int, Int)\n  (40, 2)\n\nfn add(a: Int, b: Int) -> Int\n  a + b\n\nfn main() -> Int\n  let p = pair()\n  add(p.0, p.1)\n";
+fn pair() -> (Int, Int)\n  (40, 2)\n\npub fn add(a: Int, b: Int) -> Int\n  a + b\n\npub fn main() -> Int\n  let p = pair()\n  add(p.0, p.1)\n";
     let source_path = write_temp_source(source, "kea-tuple-field-args", "kea");
     let run = run_file(&source_path).expect("tuple field args should compile and run");
     assert_eq!(run.exit_code, 42, "p.0 + p.1 should equal 42");
@@ -707,7 +707,7 @@ fn pair() -> (Int, Int)\n  (40, 2)\n\nfn add(a: Int, b: Int) -> Int\n  a + b\n\n
 
 #[test]
 fn compile_and_execute_main_exit_code() {
-    let source_path = write_temp_source("fn main() -> Int\n  9\n", "kea-cli-exec", "kea");
+    let source_path = write_temp_source("pub fn main() -> Int\n  9\n", "kea-cli-exec", "kea");
 
     let run = run_file(&source_path).expect("run should succeed");
     assert_eq!(run.exit_code, 9);
@@ -722,10 +722,10 @@ fn compile_and_execute_use_imported_module_function_exit_code() {
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
 
     let math_path = src_dir.join("math.kea");
-    std::fs::write(&math_path, "fn inc(x: Int) -> Int\n  x + 1\n")
+    std::fs::write(&math_path, "pub fn inc(x: Int) -> Int\n  x + 1\n")
         .expect("math module write should succeed");
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "use Math\nfn main() -> Int\n  Math.inc(41)\n")
+    std::fs::write(&app_path, "use Math\npub fn main() -> Int\n  Math.inc(41)\n")
         .expect("app module write should succeed");
 
     let run = run_file(&app_path).expect("run should succeed");
@@ -740,10 +740,10 @@ fn compile_and_execute_use_named_import_bare_call_exit_code() {
     let src_dir = project_dir.join("src");
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
 
-    std::fs::write(src_dir.join("math.kea"), "fn inc(x: Int) -> Int\n  x + 1\n")
+    std::fs::write(src_dir.join("math.kea"), "pub fn inc(x: Int) -> Int\n  x + 1\n")
         .expect("math module write should succeed");
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "use Math.{inc}\nfn main() -> Int\n  inc(41)\n")
+    std::fs::write(&app_path, "use Math.{inc}\npub fn main() -> Int\n  inc(41)\n")
         .expect("app module write should succeed");
 
     let run = run_file(&app_path).expect("run should succeed");
@@ -755,7 +755,7 @@ fn compile_and_execute_use_named_import_bare_call_exit_code() {
 #[test]
 fn compile_and_execute_struct_const_field_exit_code() {
     let source_path = write_temp_source(
-        "struct Math\n  const pi: Int = 41\n\nfn main() -> Int\n  Math.pi + 1\n",
+        "struct Math\n  const pi: Int = 41\n\npub fn main() -> Int\n  Math.pi + 1\n",
         "kea-cli-const-field",
         "kea",
     );
@@ -769,7 +769,7 @@ fn compile_and_execute_struct_const_field_exit_code() {
 #[test]
 fn compile_and_execute_struct_const_field_dependency_exit_code() {
     let source_path = write_temp_source(
-        "struct Math\n  const pi: Int = 21\n  const tau: Int = pi * 2\n\nfn main() -> Int\n  Math.tau\n",
+        "struct Math\n  const pi: Int = 21\n  const tau: Int = pi * 2\n\npub fn main() -> Int\n  Math.tau\n",
         "kea-cli-const-field-deps",
         "kea",
     );
@@ -783,7 +783,7 @@ fn compile_and_execute_struct_const_field_dependency_exit_code() {
 #[test]
 fn compile_and_execute_struct_const_field_rejects_function_calls() {
     let source_path = write_temp_source(
-        "fn inc(x: Int) -> Int\n  x + 1\n\nstruct Math\n  const bad: Int = inc(1)\n\nfn main() -> Int\n  Math.bad\n",
+        "pub fn inc(x: Int) -> Int\n  x + 1\n\nstruct Math\n  const bad: Int = inc(1)\n\npub fn main() -> Int\n  Math.bad\n",
         "kea-cli-const-field-call-reject",
         "kea",
     );
@@ -800,7 +800,7 @@ fn compile_and_execute_struct_const_field_rejects_function_calls() {
 #[test]
 fn compile_and_execute_struct_const_field_rejects_circular_reference() {
     let source_path = write_temp_source(
-        "struct Loop\n  const a: Int = b + 1\n  const b: Int = a + 1\n\nfn main() -> Int\n  Loop.a\n",
+        "struct Loop\n  const a: Int = b + 1\n  const b: Int = a + 1\n\npub fn main() -> Int\n  Loop.a\n",
         "kea-cli-const-field-cycle-reject",
         "kea",
     );
@@ -817,7 +817,7 @@ fn compile_and_execute_struct_const_field_rejects_circular_reference() {
 #[test]
 fn compile_and_execute_case_on_struct_const_pattern_exit_code() {
     let source_path = write_temp_source(
-        "struct Math\n  const answer: Int = 42\n\nfn classify(x: Int) -> Int\n  case x\n    Math.answer -> 1\n    _ -> 0\n\nfn main() -> Int\n  classify(42)\n",
+        "struct Math\n  const answer: Int = 42\n\npub fn classify(x: Int) -> Int\n  case x\n    Math.answer -> 1\n    _ -> 0\n\npub fn main() -> Int\n  classify(42)\n",
         "kea-cli-const-field-pattern",
         "kea",
     );
@@ -831,7 +831,7 @@ fn compile_and_execute_case_on_struct_const_pattern_exit_code() {
 #[test]
 fn compile_and_execute_case_on_struct_const_pattern_requires_fallback() {
     let source_path = write_temp_source(
-        "struct Math\n  const answer: Int = 42\n\nfn classify(x: Int) -> Int\n  case x\n    Math.answer -> 1\n\nfn main() -> Int\n  classify(0)\n",
+        "struct Math\n  const answer: Int = 42\n\npub fn classify(x: Int) -> Int\n  case x\n    Math.answer -> 1\n\npub fn main() -> Int\n  classify(0)\n",
         "kea-cli-const-field-pattern-non-exhaustive",
         "kea",
     );
@@ -855,11 +855,11 @@ fn compile_and_execute_prelude_module_without_explicit_use_exit_code() {
 
     std::fs::write(
         stdlib_dir.join("prelude.kea"),
-        "fn inc(x: Int) -> Int\n  x + 1\n",
+        "pub fn inc(x: Int) -> Int\n  x + 1\n",
     )
     .expect("prelude module write should succeed");
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "fn main() -> Int\n  Prelude.inc(41)\n")
+    std::fs::write(&app_path, "pub fn main() -> Int\n  Prelude.inc(41)\n")
         .expect("app module write should succeed");
 
     let run = run_file(&app_path).expect("run should succeed");
@@ -875,7 +875,7 @@ fn compile_and_execute_real_stdlib_prelude_module_without_explicit_use_exit_code
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
 
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "fn main() -> Int\n  Prelude.ping()\n")
+    std::fs::write(&app_path, "pub fn main() -> Int\n  Prelude.ping()\n")
         .expect("app module write should succeed");
 
     let run = run_file(&app_path).expect("run should succeed");
@@ -893,7 +893,7 @@ fn compile_and_execute_real_stdlib_io_module_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use IO\n\nfn main() -[IO]> Unit\n  IO.stdout(\"hello from stdlib io\")\n  IO.stderr(\"err from stdlib io\")\n",
+            "use IO\n\npub fn main() -[IO]> Unit\n  IO.stdout(\"hello from stdlib io\")\n  IO.stderr(\"err from stdlib io\")\n",
         )
         .expect("app module write should succeed");
 
@@ -913,7 +913,7 @@ fn compile_and_execute_real_stdlib_io_helpers_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use IO\n\nfn main() -[IO]> Int\n  IO.print(\"a\")\n  IO.println(\"b\")\n  IO.eprint(\"c\")\n  IO.eprintln(\"d\")\n  1\n",
+            "use IO\n\npub fn main() -[IO]> Int\n  IO.print(\"a\")\n  IO.println(\"b\")\n  IO.eprint(\"c\")\n  IO.eprintln(\"d\")\n  1\n",
         )
         .expect("app module write should succeed");
 
@@ -938,7 +938,7 @@ fn compile_and_execute_real_stdlib_io_read_write_module_exit_code() {
     std::fs::write(
             &app_path,
             format!(
-                "use IO\n\nfn main() -[IO]> Int\n  IO.write_file(\"{io_file_literal}\", \"hello\")\n  let msg = IO.read_file(\"{io_file_literal}\")\n  let missing = IO.read_file(\"{io_missing_literal}\")\n  if msg != missing\n    1\n  else\n    0\n"
+                "use IO\n\npub fn main() -[IO]> Int\n  IO.write_file(\"{io_file_literal}\", \"hello\")\n  let msg = IO.read_file(\"{io_file_literal}\")\n  let missing = IO.read_file(\"{io_missing_literal}\")\n  if msg != missing\n    1\n  else\n    0\n"
             ),
         )
         .expect("app module write should succeed");
@@ -960,7 +960,7 @@ fn compile_and_execute_real_stdlib_clock_module_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use Clock\n\nfn main() -[Clock]> Int\n  if Clock.monotonic() > 0\n    1\n  else\n    0\n",
+        "use Clock\n\npub fn main() -[Clock]> Int\n  if Clock.monotonic() > 0\n    1\n  else\n    0\n",
     )
     .expect("app module write should succeed");
 
@@ -980,7 +980,7 @@ fn compile_and_execute_real_stdlib_clock_helpers_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Clock\n\nfn main() -[Clock]> Int\n  let start = Clock.monotonic()\n  if Clock.elapsed_since(start) >= 0\n    1\n  else\n    0\n",
+            "use Clock\n\npub fn main() -[Clock]> Int\n  let start = Clock.monotonic()\n  if Clock.elapsed_since(start) >= 0\n    1\n  else\n    0\n",
         )
         .expect("app module write should succeed");
 
@@ -1000,7 +1000,7 @@ fn compile_and_execute_real_stdlib_rand_module_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Rand\n\nfn main() -[Rand]> Int\n  Rand.seed(123)\n  if Rand.int() >= 0\n    1\n  else\n    0\n",
+            "use Rand\n\npub fn main() -[Rand]> Int\n  Rand.seed(123)\n  if Rand.int() >= 0\n    1\n  else\n    0\n",
         )
         .expect("app module write should succeed");
 
@@ -1020,7 +1020,7 @@ fn compile_and_execute_real_stdlib_rand_helpers_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Rand\n\nfn main() -[Rand]> Int\n  Rand.seed(123)\n  let n = Rand.int_between(10, 20)\n  if n >= 10 and n <= 20\n    1\n  else\n    0\n",
+            "use Rand\n\npub fn main() -[Rand]> Int\n  Rand.seed(123)\n  let n = Rand.int_between(10, 20)\n  if n >= 10 and n <= 20\n    1\n  else\n    0\n",
         )
         .expect("app module write should succeed");
 
@@ -1052,7 +1052,7 @@ fn compile_and_execute_real_stdlib_net_module_exit_code() {
     std::fs::write(
             &app_path,
             format!(
-                "use Net\n\nfn main() -[Net]> Int\n  let c = Net.connect(\"{addr}\")\n  Net.send(c, \"ping\")\n  let n = Net.recv(c, 4)\n  if c >= 0 and n == 4\n    1\n  else\n    0\n"
+                "use Net\n\npub fn main() -[Net]> Int\n  let c = Net.connect(\"{addr}\")\n  Net.send(c, \"ping\")\n  let n = Net.recv(c, 4)\n  if c >= 0 and n == 4\n    1\n  else\n    0\n"
             ),
         )
         .expect("app module write should succeed");
@@ -1086,7 +1086,7 @@ fn compile_and_execute_real_stdlib_net_helpers_exit_code() {
     std::fs::write(
             &app_path,
             format!(
-                "use Net\n\nfn main() -[Net]> Int\n  let c = Net.connect(\"{addr}\")\n  let n = Net.send_and_recv(c, \"ping\", 4)\n  if c >= 0 and n == 4\n    1\n  else\n    0\n"
+                "use Net\n\npub fn main() -[Net]> Int\n  let c = Net.connect(\"{addr}\")\n  let n = Net.send_and_recv(c, \"ping\", 4)\n  if c >= 0 and n == 4\n    1\n  else\n    0\n"
             ),
         )
         .expect("app module write should succeed");
@@ -1102,7 +1102,7 @@ fn compile_and_execute_real_stdlib_net_helpers_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_clock_now_direct_effect_exit_code() {
     let source_path = write_temp_source(
-        "effect Clock\n  fn now() -> Int\n\nfn main() -[Clock]> Int\n  if Clock.now() > 0\n    1\n  else\n    0\n",
+        "effect Clock\n  fn now() -> Int\n\npub fn main() -[Clock]> Int\n  if Clock.now() > 0\n    1\n  else\n    0\n",
         "kea-cli-clock-now-direct",
         "kea",
     );
@@ -1117,7 +1117,7 @@ fn compile_and_execute_clock_now_direct_effect_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_clock_monotonic_direct_effect_exit_code() {
     let source_path = write_temp_source(
-        "effect Clock\n  fn monotonic() -> Int\n\nfn main() -[Clock]> Int\n  if Clock.monotonic() > 0\n    1\n  else\n    0\n",
+        "effect Clock\n  fn monotonic() -> Int\n\npub fn main() -[Clock]> Int\n  if Clock.monotonic() > 0\n    1\n  else\n    0\n",
         "kea-cli-clock-monotonic-direct",
         "kea",
     );
@@ -1132,7 +1132,7 @@ fn compile_and_execute_clock_monotonic_direct_effect_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_rand_int_direct_effect_exit_code() {
     let source_path = write_temp_source(
-        "effect Rand\n  fn int() -> Int\n  fn seed(seed: Int) -> Unit\n\nfn main() -[Rand]> Int\n  Rand.seed(123)\n  if Rand.int() >= 0\n    1\n  else\n    0\n",
+        "effect Rand\n  fn int() -> Int\n  fn seed(seed: Int) -> Unit\n\npub fn main() -[Rand]> Int\n  Rand.seed(123)\n  if Rand.int() >= 0\n    1\n  else\n    0\n",
         "kea-cli-rand-int-direct",
         "kea",
     );
@@ -1158,7 +1158,7 @@ fn compile_and_execute_io_read_write_file_direct_effect_exit_code() {
     let io_missing_literal = io_missing_path.to_string_lossy().replace('\\', "\\\\");
     let source_path = write_temp_source(
         &format!(
-            "effect IO\n  fn write_file(path: String, data: String) -> Unit\n  fn read_file(path: String) -> String\n\nfn main() -[IO]> Int\n  IO.write_file(\"{io_file_literal}\", \"hello\")\n  let msg = IO.read_file(\"{io_file_literal}\")\n  let missing = IO.read_file(\"{io_missing_literal}\")\n  if msg != missing\n    1\n  else\n    0\n"
+            "effect IO\n  fn write_file(path: String, data: String) -> Unit\n  fn read_file(path: String) -> String\n\npub fn main() -[IO]> Int\n  IO.write_file(\"{io_file_literal}\", \"hello\")\n  let msg = IO.read_file(\"{io_file_literal}\")\n  let missing = IO.read_file(\"{io_missing_literal}\")\n  if msg != missing\n    1\n  else\n    0\n"
         ),
         "kea-cli-io-read-write-direct",
         "kea",
@@ -1187,7 +1187,7 @@ fn compile_and_execute_net_direct_effect_exit_code() {
     });
     let source_path = write_temp_source(
         &format!(
-            "effect Net\n  fn connect(addr: String) -> Int\n  fn send(conn: Int, data: String) -> Unit\n  fn recv(conn: Int, size: Int) -> Int\n\nfn main() -[Net]> Int\n  let c = Net.connect(\"{addr}\")\n  Net.send(c, \"ping\")\n  let n = Net.recv(c, 4)\n  if c >= 0 and n == 4\n    1\n  else\n    0\n"
+            "effect Net\n  fn connect(addr: String) -> Int\n  fn send(conn: Int, data: String) -> Unit\n  fn recv(conn: Int, size: Int) -> Int\n\npub fn main() -[Net]> Int\n  let c = Net.connect(\"{addr}\")\n  Net.send(c, \"ping\")\n  let n = Net.recv(c, 4)\n  if c >= 0 and n == 4\n    1\n  else\n    0\n"
         ),
         "kea-cli-net-direct",
         "kea",
@@ -1214,7 +1214,7 @@ fn compile_and_execute_prelude_trait_unqualified_method_without_use_exit_code() 
     )
     .expect("prelude module write should succeed");
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "fn main() -> Int\n  41.tinc()\n")
+    std::fs::write(&app_path, "pub fn main() -> Int\n  41.tinc()\n")
         .expect("app module write should succeed");
 
     let run = run_file(&app_path).expect("run should succeed");
@@ -1232,7 +1232,7 @@ fn compile_and_execute_real_stdlib_option_unwrap_or_intrinsic_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Option\nuse Text\n\nfn main() -> Int\n  Option.unwrap_or(Some(39), 0) + Text.length(\"abc\")\n",
+            "use Option\nuse Text\n\npub fn main() -> Int\n  Option.unwrap_or(Some(39), 0) + Text.length(\"abc\")\n",
         )
         .expect("app module write should succeed");
 
@@ -1245,7 +1245,7 @@ fn compile_and_execute_real_stdlib_option_unwrap_or_intrinsic_exit_code() {
 #[test]
 fn compile_and_execute_option_payload_case_on_function_param_exit_code() {
     let source_path = write_temp_source(
-        "fn unwrap_or(opt: Option Int, fallback: Int) -> Int\n  case opt\n    Some(value) -> value\n    None -> fallback\n\nfn main() -> Int\n  unwrap_or(Some(7), 0)\n",
+        "pub fn unwrap_or(opt: Option Int, fallback: Int) -> Int\n  case opt\n    Some(value) -> value\n    None -> fallback\n\npub fn main() -> Int\n  unwrap_or(Some(7), 0)\n",
         "kea-cli-option-param-payload-case",
         "kea",
     );
@@ -1265,7 +1265,7 @@ fn compile_and_execute_real_stdlib_option_predicates_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Option\n\nfn main() -> Int\n  if Option.is_none(None) and Option.is_some(Some(42))\n    42\n  else\n    0\n",
+            "use Option\n\npub fn main() -> Int\n  if Option.is_none(None) and Option.is_some(Some(42))\n    42\n  else\n    0\n",
         )
         .expect("app module write should succeed");
 
@@ -1284,7 +1284,7 @@ fn compile_and_execute_real_stdlib_result_helpers_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Result\n\nfn main() -> Int\n  if Result.unwrap_or(Ok(42), 0) == 42 and Result.is_ok(Ok(1)) and Result.is_err(Err(2))\n    42\n  else\n    0\n",
+            "use Result\n\npub fn main() -> Int\n  if Result.unwrap_or(Ok(42), 0) == 42 and Result.is_ok(Ok(1)) and Result.is_err(Err(2))\n    42\n  else\n    0\n",
         )
         .expect("app module write should succeed");
 
@@ -1303,7 +1303,7 @@ fn compile_and_execute_real_stdlib_text_helpers_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Text\n\nfn main() -> Int\n  if Text.is_empty(\"\") and Text.non_empty(\"kea\")\n    42\n  else\n    0\n",
+            "use Text\n\npub fn main() -> Int\n  if Text.is_empty(\"\") and Text.non_empty(\"kea\")\n    42\n  else\n    0\n",
         )
         .expect("app module write should succeed");
 
@@ -1322,7 +1322,7 @@ fn compile_and_execute_real_stdlib_list_module_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use List\n\nfn inc(x: Int) -> Int\n  x + 1\n\nfn even(x: Int) -> Bool\n  x % 2 == 0\n\nfn add(acc: Int, x: Int) -> Int\n  acc + x\n\nfn main() -> Int\n  let xs = Cons(1, Cons(2, Cons(3, Cons(4, Nil))))\n  let ys = List.map(xs, inc)\n  let zs = List.filter(ys, even)\n  if List.is_empty(Nil) and List.length(zs) == 2\n    List.fold(zs, 0, add)\n  else\n    0\n",
+            "use List\n\npub fn inc(x: Int) -> Int\n  x + 1\n\npub fn even(x: Int) -> Bool\n  x % 2 == 0\n\npub fn add(acc: Int, x: Int) -> Int\n  acc + x\n\npub fn main() -> Int\n  let xs = Cons(1, Cons(2, Cons(3, Cons(4, Nil))))\n  let ys = List.map(xs, inc)\n  let zs = List.filter(ys, even)\n  if List.is_empty(Nil) and List.length(zs) == 2\n    List.fold(zs, 0, add)\n  else\n    0\n",
         )
             .expect("app module write should succeed");
 
@@ -1341,7 +1341,7 @@ fn compile_and_execute_list_literal_with_stdlib_list_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use List\n\nfn main() -> Int\n  let xs = [10, 20, 30]\n  List.length(xs)\n",
+            "use List\n\npub fn main() -> Int\n  let xs = [10, 20, 30]\n  List.length(xs)\n",
         )
             .expect("app module write should succeed");
 
@@ -1360,7 +1360,7 @@ fn compile_and_execute_list_literal_with_pattern_match_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use List\n\nfn head_or_zero(xs: List Int) -> Int\n  case xs\n    Cons(h, _) -> h\n    Nil -> 0\n\nfn main() -> Int\n  let xs = [10, 20, 30]\n  head_or_zero(xs)\n",
+            "use List\n\npub fn head_or_zero(xs: List Int) -> Int\n  case xs\n    Cons(h, _) -> h\n    Nil -> 0\n\npub fn main() -> Int\n  let xs = [10, 20, 30]\n  head_or_zero(xs)\n",
         )
             .expect("app module write should succeed");
 
@@ -1379,7 +1379,7 @@ fn compile_and_execute_empty_list_literal_with_stdlib_list_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use List\n\nfn main() -> Int\n  let xs: List Int = []\n  List.length(xs)\n",
+            "use List\n\npub fn main() -> Int\n  let xs: List Int = []\n  List.length(xs)\n",
         )
             .expect("app module write should succeed");
 
@@ -1392,7 +1392,7 @@ fn compile_and_execute_empty_list_literal_with_stdlib_list_exit_code() {
 #[test]
 fn compile_and_execute_char_literal_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let c = 'A'\n  65\n",
+        "pub fn main() -> Int\n  let c = 'A'\n  65\n",
         "kea-cli-char-lit",
         "kea",
     );
@@ -1404,7 +1404,7 @@ fn compile_and_execute_char_literal_exit_code() {
 #[test]
 fn compile_and_execute_char_escape_newline_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let c = '\\n'\n  10\n",
+        "pub fn main() -> Int\n  let c = '\\n'\n  10\n",
         "kea-cli-char-escape",
         "kea",
     );
@@ -1423,7 +1423,7 @@ fn compile_and_execute_io_exit_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use IO\n\nfn main() -[IO]> Int\n  IO.exit(42)\n  0\n",
+        "use IO\n\npub fn main() -[IO]> Int\n  IO.exit(42)\n  0\n",
     )
     .expect("app module write should succeed");
 
@@ -1443,7 +1443,7 @@ fn compile_and_execute_io_file_exists_exit_code() {
     // file_exists on /tmp should return True (always exists on unix)
     std::fs::write(
         &app_path,
-        "use IO\n\nfn bool_to_int(b: Bool) -> Int\n  if b\n    1\n  else\n    0\n\nfn main() -[IO]> Int\n  let exists = IO.file_exists(\"/tmp\")\n  bool_to_int(exists) + 41\n",
+        "use IO\n\npub fn bool_to_int(b: Bool) -> Int\n  if b\n    1\n  else\n    0\n\npub fn main() -[IO]> Int\n  let exists = IO.file_exists(\"/tmp\")\n  bool_to_int(exists) + 41\n",
     )
     .expect("app module write should succeed");
 
@@ -1463,7 +1463,7 @@ fn compile_and_execute_io_env_var_exit_code() {
     // env_var on a non-existent var returns empty string; check length == 0
     std::fs::write(
         &app_path,
-        "use IO\nuse Text\n\nfn main() -[IO]> Int\n  let val = IO.env_var(\"__KEA_TEST_NONEXISTENT_VAR__\")\n  if Text.length(val) == 0\n    42\n  else\n    0\n",
+        "use IO\nuse Text\n\npub fn main() -[IO]> Int\n  let val = IO.env_var(\"__KEA_TEST_NONEXISTENT_VAR__\")\n  if Text.length(val) == 0\n    42\n  else\n    0\n",
     )
     .expect("app module write should succeed");
 
@@ -1483,7 +1483,7 @@ fn compile_and_execute_io_mkdir_exit_code() {
     // mkdir creates a dir, then file_exists confirms it
     std::fs::write(
         &app_path,
-        "use IO\n\nfn bool_to_int(b: Bool) -> Int\n  if b\n    1\n  else\n    0\n\nfn main() -[IO]> Int\n  IO.mkdir(\"test_output_dir\")\n  let exists = IO.file_exists(\"test_output_dir\")\n  bool_to_int(exists) + 41\n",
+        "use IO\n\npub fn bool_to_int(b: Bool) -> Int\n  if b\n    1\n  else\n    0\n\npub fn main() -[IO]> Int\n  IO.mkdir(\"test_output_dir\")\n  let exists = IO.file_exists(\"test_output_dir\")\n  bool_to_int(exists) + 41\n",
     )
     .expect("app module write should succeed");
 
@@ -1498,7 +1498,7 @@ fn compile_and_execute_io_mkdir_exit_code() {
 #[test]
 fn compile_and_execute_string_eq_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  if \"hello\" == \"hello\"\n    42\n  else\n    0\n",
+        "pub fn main() -> Int\n  if \"hello\" == \"hello\"\n    42\n  else\n    0\n",
         "kea-cli-string-eq",
         "kea",
     );
@@ -1510,7 +1510,7 @@ fn compile_and_execute_string_eq_exit_code() {
 #[test]
 fn compile_and_execute_string_neq_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  if \"hello\" != \"world\"\n    42\n  else\n    0\n",
+        "pub fn main() -> Int\n  if \"hello\" != \"world\"\n    42\n  else\n    0\n",
         "kea-cli-string-neq",
         "kea",
     );
@@ -1529,7 +1529,7 @@ fn compile_and_execute_string_hash_exit_code() {
     // Use the hash_string intrinsic directly to verify DJB2 works
     std::fs::write(
         &app_path,
-        "use Hash\n\nfn main() -> Int\n  let h1 = Hash.hash_string(\"hello\")\n  let h2 = Hash.hash_string(\"hello\")\n  if h1 == h2\n    42\n  else\n    0\n",
+        "use Hash\n\npub fn main() -> Int\n  let h1 = Hash.hash_string(\"hello\")\n  let h2 = Hash.hash_string(\"hello\")\n  if h1 == h2\n    42\n  else\n    0\n",
     )
     .expect("app module write should succeed");
 
@@ -1548,7 +1548,7 @@ fn compile_and_execute_map_with_int_keys_hash_eq_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use Hash\nuse Eq\n\nfn main() -> Int\n  let m = %{1 => 10, 2 => 20}\n  42\n",
+        "use Hash\nuse Eq\n\npub fn main() -> Int\n  let m = %{1 => 10, 2 => 20}\n  42\n",
     )
     .expect("app module write should succeed");
 
@@ -1567,7 +1567,7 @@ fn compile_and_execute_map_with_string_keys_hash_eq_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use Hash\nuse Eq\n\nfn main() -> Int\n  let m = %{\"a\" => 10, \"b\" => 20}\n  42\n",
+        "use Hash\nuse Eq\n\npub fn main() -> Int\n  let m = %{\"a\" => 10, \"b\" => 20}\n  42\n",
     )
     .expect("app module write should succeed");
 
@@ -1586,7 +1586,7 @@ fn compile_and_execute_hash_trait_int_impl_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Hash\n\nfn main() -> Int\n  Hash.hash(42)\n",
+            "use Hash\n\npub fn main() -> Int\n  Hash.hash(42)\n",
         )
             .expect("app module write should succeed");
 
@@ -1603,13 +1603,13 @@ fn compile_and_execute_generic_list_enum_exit_code() {
     let stdlib_dir = project_dir.join("stdlib");
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
-    std::fs::write(stdlib_dir.join("prelude.kea"), "fn ping() -> Int\n  7\n")
+    std::fs::write(stdlib_dir.join("prelude.kea"), "pub fn ping() -> Int\n  7\n")
         .expect("prelude module write should succeed");
 
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "enum List a\n  Nil\n  Cons(a, List a)\n\nfn length(xs: List Int) -> Int\n  case xs\n    Nil -> 0\n    Cons(_, rest) -> 1 + length(rest)\n\nfn main() -> Int\n  length(Cons(1, Cons(2, Cons(3, Nil))))\n",
+            "enum List a\n  Nil\n  Cons(a, List a)\n\npub fn length(xs: List Int) -> Int\n  case xs\n    Nil -> 0\n    Cons(_, rest) -> 1 + length(rest)\n\npub fn main() -> Int\n  length(Cons(1, Cons(2, Cons(3, Nil))))\n",
         )
         .expect("app module write should succeed");
 
@@ -1628,7 +1628,7 @@ fn compile_and_execute_real_stdlib_int_module_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use Int\n\nfn main() -> Int\n  Int.clamp(-5, 0, 10) + Int.abs(-42)\n",
+        "use Int\n\npub fn main() -> Int\n  Int.clamp(-5, 0, 10) + Int.abs(-42)\n",
     )
     .expect("app module write should succeed");
 
@@ -1647,7 +1647,7 @@ fn compile_and_execute_real_stdlib_order_module_qualified_constructor_exit_code(
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Order\n\nfn main() -> Int\n  let value = Order.Less\n  case value\n    Order.Less -> 1\n    _ -> 0\n",
+            "use Order\n\npub fn main() -> Int\n  let value = Order.Less\n  case value\n    Order.Less -> 1\n    _ -> 0\n",
         )
         .expect("app module write should succeed");
 
@@ -1666,7 +1666,7 @@ fn compile_and_execute_real_stdlib_order_helpers_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Order\n\nfn main() -> Int\n  if Order.is_less(Order.compare_int(1, 2)) and Order.is_equal(Order.compare_int(3, 3)) and Order.is_greater(Order.compare_int(9, 4))\n    42\n  else\n    0\n",
+            "use Order\n\npub fn main() -> Int\n  if Order.is_less(Order.compare_int(1, 2)) and Order.is_equal(Order.compare_int(3, 3)) and Order.is_greater(Order.compare_int(9, 4))\n    42\n  else\n    0\n",
         )
         .expect("app module write should succeed");
 
@@ -1685,7 +1685,7 @@ fn compile_and_execute_real_stdlib_float_module_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use Float\n\nfn main() -> Int\n  let value = Float.fabs(-42.5)\n  if value > 42.0 and value < 43.0\n    42\n  else\n    0\n",
+        "use Float\n\npub fn main() -> Int\n  let value = Float.fabs(-42.5)\n  if value > 42.0 and value < 43.0\n    42\n  else\n    0\n",
     )
     .expect("app module write should succeed");
 
@@ -1704,7 +1704,7 @@ fn compile_and_execute_real_stdlib_trait_modules_import_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use Eq\nuse Ord\nuse Show\n\nfn main() -> Int\n  0\n",
+        "use Eq\nuse Ord\nuse Show\n\npub fn main() -> Int\n  0\n",
     )
     .expect("app module write should succeed");
 
@@ -1723,7 +1723,7 @@ fn compile_and_execute_real_stdlib_state_effect_module_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use State\n\nfn run() -[State Int]> Int\n  State.put(5)\n  State.get()\n\nfn main() -> Int\n  handle run()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
+            "use State\n\npub fn run() -[State Int]> Int\n  State.put(5)\n  State.get()\n\npub fn main() -> Int\n  handle run()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
         )
         .expect("app module write should succeed");
 
@@ -1742,7 +1742,7 @@ fn compile_and_execute_real_stdlib_state_with_state_helper_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use State\n\nfn bump() -[State Int]> Int\n  let s = State.get()\n  State.put(s + 1)\n  State.get()\n\nfn main() -> Int\n  let pair = State.with_state(41, bump)\n  pair.0 + pair.1\n",
+            "use State\n\npub fn bump() -[State Int]> Int\n  let s = State.get()\n  State.put(s + 1)\n  State.get()\n\npub fn main() -> Int\n  let pair = State.with_state(41, bump)\n  pair.0 + pair.1\n",
         )
         .expect("app module write should succeed");
 
@@ -1761,7 +1761,7 @@ fn compile_and_execute_real_stdlib_log_effect_module_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Log\n\nfn emit() -[Log]> Int\n  Log.debug(\"d\")\n  Log.info(\"i\")\n  Log.warn(\"w\")\n  Log.error(\"e\")\n  7\n\nfn main() -> Int\n  handle emit()\n    Log.debug(msg) -> resume ()\n    Log.info(msg) -> resume ()\n    Log.warn(msg) -> resume ()\n    Log.error(msg) -> resume ()\n",
+            "use Log\n\npub fn emit() -[Log]> Int\n  Log.debug(\"d\")\n  Log.info(\"i\")\n  Log.warn(\"w\")\n  Log.error(\"e\")\n  7\n\npub fn main() -> Int\n  handle emit()\n    Log.debug(msg) -> resume ()\n    Log.info(msg) -> resume ()\n    Log.warn(msg) -> resume ()\n    Log.error(msg) -> resume ()\n",
         )
         .expect("app module write should succeed");
 
@@ -1780,7 +1780,7 @@ fn compile_and_execute_real_stdlib_log_with_collected_logs_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Log\nuse List\n\nfn run() -[Log]> Int\n  Log.debug(\"d\")\n  Log.error(\"e\")\n  7\n\nfn main() -> Int\n  let pair = Log.with_collected_logs(run)\n  let value = pair.0\n  let logs = pair.1\n  if value == 7 and List.length(logs) == 2\n    42\n  else\n    0\n",
+            "use Log\nuse List\n\npub fn run() -[Log]> Int\n  Log.debug(\"d\")\n  Log.error(\"e\")\n  7\n\npub fn main() -> Int\n  let pair = Log.with_collected_logs(run)\n  let value = pair.0\n  let logs = pair.1\n  if value == 7 and List.length(logs) == 2\n    42\n  else\n    0\n",
         )
         .expect("app module write should succeed");
 
@@ -1799,7 +1799,7 @@ fn compile_and_execute_real_stdlib_reader_effect_module_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use Reader\n\nfn main() -> Int\n  handle Reader.ask()\n    Reader.ask() -> resume 41\n",
+        "use Reader\n\npub fn main() -> Int\n  handle Reader.ask()\n    Reader.ask() -> resume 41\n",
     )
     .expect("app module write should succeed");
 
@@ -1818,7 +1818,7 @@ fn compile_and_execute_real_stdlib_reader_helpers_exit_code() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use Reader\n\nfn main() -> Int\n  Reader.with_reader(41, || Reader.asks(|x| x + 1))\n",
+        "use Reader\n\npub fn main() -> Int\n  Reader.with_reader(41, || Reader.asks(|x| x + 1))\n",
     )
     .expect("app module write should succeed");
 
@@ -1838,7 +1838,7 @@ fn compile_and_execute_trait_method_return_type_from_imported_module_exit_code()
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use Order\n\ntrait Sortable a\n  fn compare(a: a, b: a) -> Ordering\n\nfn main() -> Int\n  0\n",
+        "use Order\n\ntrait Sortable a\n  fn compare(a: a, b: a) -> Ordering\n\npub fn main() -> Int\n  0\n",
     )
     .expect("app module write should succeed");
 
@@ -1857,7 +1857,7 @@ fn compile_prelude_reexports_module_qualified_helpers_without_collisions() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "fn inc(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  let _ = Option.map(Some(1), inc)\n  let _ = Result.from_option(Some(2), 0)\n  let _ = Result.unwrap_or(Err(9), 4)\n  let _ = List.map(List.Cons(3, List.Nil), inc)\n  let _ = Show.show(5)\n  0\n",
+            "pub fn inc(x: Int) -> Int\n  x + 1\n\npub fn main() -> Int\n  let _ = Option.map(Some(1), inc)\n  let _ = Result.from_option(Some(2), 0)\n  let _ = Result.unwrap_or(Err(9), 4)\n  let _ = List.map(List.Cons(3, List.Nil), inc)\n  let _ = Show.show(5)\n  0\n",
         )
         .expect("app module write should succeed");
 
@@ -1884,7 +1884,7 @@ fn compile_project_accepts_unqualified_prelude_reexported_type_names() {
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "fn identity(o: Ordering) -> Ordering\n  o\n\nfn main() -> Int\n  0\n",
+        "pub fn identity(o: Ordering) -> Ordering\n  o\n\npub fn main() -> Int\n  0\n",
     )
     .expect("app module write should succeed");
 
@@ -1899,10 +1899,10 @@ fn compile_project_rejects_bare_call_without_named_import() {
     let src_dir = project_dir.join("src");
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
 
-    std::fs::write(src_dir.join("math.kea"), "fn inc(x: Int) -> Int\n  x + 1\n")
+    std::fs::write(src_dir.join("math.kea"), "pub fn inc(x: Int) -> Int\n  x + 1\n")
         .expect("math module write should succeed");
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "use Math\nfn main() -> Int\n  inc(41)\n")
+    std::fs::write(&app_path, "use Math\npub fn main() -> Int\n  inc(41)\n")
         .expect("app module write should succeed");
 
     let err = run_file(&app_path).expect_err("bare import should require named use");
@@ -1926,7 +1926,7 @@ fn compile_project_tracks_module_item_visibility_metadata() {
     )
     .expect("math module write should succeed");
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "use Math\nfn main() -> Int\n  Math.inc(41)\n")
+    std::fs::write(&app_path, "use Math\npub fn main() -> Int\n  Math.inc(41)\n")
         .expect("app module write should succeed");
 
     let compiled = kea::compile_project(&app_path).expect("project compile should succeed");
@@ -1989,7 +1989,7 @@ fn compile_project_rejects_private_import_from_dependency_package() {
     let app_path = src_dir.join("main.kea");
     std::fs::write(
         &app_path,
-        "use Json.{hidden}\n\nfn main() -> Int\n  hidden(1)\n",
+        "use Json.{hidden}\n\npub fn main() -> Int\n  hidden(1)\n",
     )
     .expect("app module write should succeed");
 
@@ -2027,7 +2027,7 @@ fn compile_project_rejects_private_module_qualified_access_from_dependency_packa
     )
     .expect("dep module write should succeed");
     let app_path = src_dir.join("main.kea");
-    std::fs::write(&app_path, "use Json\n\nfn main() -> Int\n  Json.hidden(1)\n")
+    std::fs::write(&app_path, "use Json\n\npub fn main() -> Int\n  Json.hidden(1)\n")
         .expect("app module write should succeed");
 
     let err = run_file(&app_path).expect_err("private module-qualified dependency access should fail");
@@ -2060,10 +2060,10 @@ fn compile_project_rejects_dependency_namespace_collision_with_local_module() {
     .expect("dep manifest write should succeed");
     std::fs::write(dep_src.join("json.kea"), "pub fn ping() -> Int\n  1\n")
         .expect("dep module write should succeed");
-    std::fs::write(src_dir.join("json.kea"), "fn local() -> Int\n  0\n")
+    std::fs::write(src_dir.join("json.kea"), "pub fn local() -> Int\n  0\n")
         .expect("local conflicting module write should succeed");
     let app_path = src_dir.join("main.kea");
-    std::fs::write(&app_path, "fn main() -> Int\n  0\n").expect("app module write should succeed");
+    std::fs::write(&app_path, "pub fn main() -> Int\n  0\n").expect("app module write should succeed");
 
     let err = run_file(&app_path).expect_err("namespace collisions should fail");
     assert!(
@@ -2082,11 +2082,11 @@ fn compile_project_marks_same_name_module_type_merge() {
 
     std::fs::write(
         src_dir.join("list.kea"),
-        "enum List\n  Empty\n  Item(Int)\n\nfn size(_ self: List) -> Int\n  1\n",
+        "enum List\n  Empty\n  Item(Int)\n\npub fn size(_ self: List) -> Int\n  1\n",
     )
     .expect("list module write should succeed");
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "use List\nfn main() -> Int\n  0\n")
+    std::fs::write(&app_path, "use List\npub fn main() -> Int\n  0\n")
         .expect("app module write should succeed");
 
     let compiled = kea::compile_project(&app_path).expect("project compile should succeed");
@@ -2116,13 +2116,13 @@ fn compile_and_execute_use_module_unqualified_ums_for_same_name_module_struct_me
 
     std::fs::write(
             src_dir.join("list.kea"),
-            "enum List\n  Empty\n  Item(Int)\n\nfn size(xs: List) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n",
+            "enum List\n  Empty\n  Item(Int)\n\npub fn size(xs: List) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n",
         )
         .expect("list module write should succeed");
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use List\nfn main() -> Int\n  let xs = Item(1)\n  xs.size()\n",
+        "use List\npub fn main() -> Int\n  let xs = Item(1)\n  xs.size()\n",
     )
     .expect("app module write should succeed");
 
@@ -2139,16 +2139,16 @@ fn compile_project_reports_circular_module_imports() {
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
 
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "use A\nfn main() -> Int\n  A.value()\n")
+    std::fs::write(&app_path, "use A\npub fn main() -> Int\n  A.value()\n")
         .expect("app module write should succeed");
     std::fs::write(
         src_dir.join("a.kea"),
-        "use B\nfn value() -> Int\n  B.other()\n",
+        "use B\npub fn value() -> Int\n  B.other()\n",
     )
     .expect("module A write should succeed");
     std::fs::write(
         src_dir.join("b.kea"),
-        "use A\nfn other() -> Int\n  A.value()\n",
+        "use A\npub fn other() -> Int\n  A.value()\n",
     )
     .expect("module B write should succeed");
 
@@ -2268,21 +2268,21 @@ fn resolution_matrix_inherent_methods() {
                 let stdlib_dir = project_dir.join("stdlib");
                 std::fs::create_dir_all(&src_dir).expect("source dir should be created");
                 std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
-                std::fs::write(stdlib_dir.join("prelude.kea"), "fn ping() -> Int\n  7\n")
+                std::fs::write(stdlib_dir.join("prelude.kea"), "pub fn ping() -> Int\n  7\n")
                     .expect("prelude write should succeed");
 
                 let mut imports = Vec::new();
                 let mut app_defs = Vec::new();
                 let module_qualifier = match relation {
                     MatrixModuleRelation::SameModule => {
-                        app_defs.push("fn inc(x: Int) -> Int\n  x + 1".to_string());
+                        app_defs.push("pub fn inc(x: Int) -> Int\n  x + 1".to_string());
                         "App".to_string()
                     }
                     MatrixModuleRelation::CrossModule => match import_state {
                         MatrixImportState::Prelude => {
                             std::fs::write(
                                 stdlib_dir.join("prelude.kea"),
-                                "fn inc(x: Int) -> Int\n  x + 1\n",
+                                "pub fn inc(x: Int) -> Int\n  x + 1\n",
                             )
                             .expect("prelude write should succeed");
                             "Prelude".to_string()
@@ -2290,7 +2290,7 @@ fn resolution_matrix_inherent_methods() {
                         MatrixImportState::NotImported => {
                             std::fs::write(
                                 src_dir.join("core.kea"),
-                                "fn inc(x: Int) -> Int\n  x + 1\n",
+                                "pub fn inc(x: Int) -> Int\n  x + 1\n",
                             )
                             .expect("core write should succeed");
                             "Core".to_string()
@@ -2298,7 +2298,7 @@ fn resolution_matrix_inherent_methods() {
                         MatrixImportState::UseModule => {
                             std::fs::write(
                                 src_dir.join("core.kea"),
-                                "fn inc(x: Int) -> Int\n  x + 1\n",
+                                "pub fn inc(x: Int) -> Int\n  x + 1\n",
                             )
                             .expect("core write should succeed");
                             imports.push("use Core".to_string());
@@ -2307,7 +2307,7 @@ fn resolution_matrix_inherent_methods() {
                         MatrixImportState::UseModuleNamed => {
                             std::fs::write(
                                 src_dir.join("core.kea"),
-                                "fn inc(x: Int) -> Int\n  x + 1\n",
+                                "pub fn inc(x: Int) -> Int\n  x + 1\n",
                             )
                             .expect("core write should succeed");
                             imports.push("use Core.{inc}".to_string());
@@ -2331,7 +2331,7 @@ fn resolution_matrix_inherent_methods() {
                     app_source.push_str(&app_defs.join("\n\n"));
                     app_source.push_str("\n\n");
                 }
-                app_source.push_str("fn main() -> Int\n  ");
+                app_source.push_str("pub fn main() -> Int\n  ");
                 app_source.push_str(&call_expr);
                 app_source.push('\n');
                 let app_path = src_dir.join("app.kea");
@@ -2453,7 +2453,7 @@ fn resolution_matrix_trait_methods() {
                     app_source.push_str(&app_defs.join("\n\n"));
                     app_source.push_str("\n\n");
                 }
-                app_source.push_str("fn main() -> Int\n  ");
+                app_source.push_str("pub fn main() -> Int\n  ");
                 app_source.push_str(&call_expr);
                 app_source.push('\n');
                 let app_path = src_dir.join("app.kea");
@@ -2520,8 +2520,8 @@ fn resolution_matrix_same_name_module_struct_methods() {
 
                 let mut imports = Vec::new();
                 let mut app_defs = Vec::new();
-                let list_module_source = "enum List\n  Empty\n  Item(Int)\n\nfn size(xs: List) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n";
-                let app_module_source = "enum App\n  Empty\n  Item(Int)\n\nfn size(xs: App) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n";
+                let list_module_source = "enum List\n  Empty\n  Item(Int)\n\npub fn size(xs: List) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n";
+                let app_module_source = "enum App\n  Empty\n  Item(Int)\n\npub fn size(xs: App) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n";
                 let module_qualifier = match relation {
                     MatrixModuleRelation::SameModule => "App".to_string(),
                     MatrixModuleRelation::CrossModule => "List".to_string(),
@@ -2573,7 +2573,7 @@ fn resolution_matrix_same_name_module_struct_methods() {
                     app_source.push_str(&app_defs.join("\n\n"));
                     app_source.push_str("\n\n");
                 }
-                app_source.push_str("fn main() -> Int\n  ");
+                app_source.push_str("pub fn main() -> Int\n  ");
                 app_source.push_str(&call_block.replace('\n', "\n  "));
                 app_source.push('\n');
                 let app_path = src_dir.join("app.kea");
@@ -2612,7 +2612,7 @@ fn resolution_matrix_same_name_module_struct_methods() {
 #[test]
 fn compile_and_execute_io_stdout_unit_main_exit_code() {
     let source_path = write_temp_source(
-        "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"hello world\")\n",
+        "effect IO\n  fn stdout(msg: String) -> Unit\n\npub fn main() -[IO]> Unit\n  IO.stdout(\"hello world\")\n",
         "kea-cli-io-stdout",
         "kea",
     );
@@ -2626,7 +2626,7 @@ fn compile_and_execute_io_stdout_unit_main_exit_code() {
 #[test]
 fn compile_and_execute_io_stdout_string_concat_exit_code() {
     let source_path = write_temp_source(
-        "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"hello \" ++ \"world\")\n",
+        "effect IO\n  fn stdout(msg: String) -> Unit\n\npub fn main() -[IO]> Unit\n  IO.stdout(\"hello \" ++ \"world\")\n",
         "kea-cli-io-stdout-concat",
         "kea",
     );
@@ -2640,7 +2640,7 @@ fn compile_and_execute_io_stdout_string_concat_exit_code() {
 #[test]
 fn compile_and_execute_io_stdout_empty_string_exit_code() {
     let source_path = write_temp_source(
-        "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"\")\n",
+        "effect IO\n  fn stdout(msg: String) -> Unit\n\npub fn main() -[IO]> Unit\n  IO.stdout(\"\")\n",
         "kea-cli-io-stdout-empty",
         "kea",
     );
@@ -2655,7 +2655,7 @@ fn compile_and_execute_io_stdout_empty_string_exit_code() {
 fn compile_and_execute_io_stdout_very_long_string_exit_code() {
     let payload = "a".repeat(10 * 1024);
     let source = format!(
-        "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"{payload}\")\n"
+        "effect IO\n  fn stdout(msg: String) -> Unit\n\npub fn main() -[IO]> Unit\n  IO.stdout(\"{payload}\")\n"
     );
     let source_path = write_temp_source(&source, "kea-cli-io-stdout-very-long", "kea");
 
@@ -2668,7 +2668,7 @@ fn compile_and_execute_io_stdout_very_long_string_exit_code() {
 #[test]
 fn compile_and_execute_string_interpolation_exit_code() {
     let source_path = write_temp_source(
-        "use Text\n\nfn main() -> Int\n  let x = 42\n  if Text.length(\"x is {x}\") == 7\n    1\n  else\n    0\n",
+        "use Text\n\npub fn main() -> Int\n  let x = 42\n  if Text.length(\"x is {x}\") == 7\n    1\n  else\n    0\n",
         "kea-cli-string-interp-int",
         "kea",
     );
@@ -2682,7 +2682,7 @@ fn compile_and_execute_string_interpolation_exit_code() {
 #[test]
 fn compile_and_execute_string_interpolation_with_escaped_braces_exit_code() {
     let source_path = write_temp_source(
-        "use Text\n\nfn main() -> Int\n  let n = 7\n  if Text.length(\"n={n}, literal: {{ok}}\") == 18\n    1\n  else\n    0\n",
+        "use Text\n\npub fn main() -> Int\n  let n = 7\n  if Text.length(\"n={n}, literal: {{ok}}\") == 18\n    1\n  else\n    0\n",
         "kea-cli-string-interp-escaped-braces",
         "kea",
     );
@@ -2696,7 +2696,7 @@ fn compile_and_execute_string_interpolation_with_escaped_braces_exit_code() {
 #[test]
 fn compile_and_execute_program_with_crlf_line_endings_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\r\n  7\r\n",
+        "pub fn main() -> Int\r\n  7\r\n",
         "kea-cli-crlf-line-endings",
         "kea",
     );
@@ -2710,7 +2710,7 @@ fn compile_and_execute_program_with_crlf_line_endings_exit_code() {
 #[test]
 fn compile_rejects_tabs_in_indentation() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n\t7\n",
+        "pub fn main() -> Int\n\t7\n",
         "kea-cli-tabs-in-indentation",
         "kea",
     );
@@ -2727,7 +2727,7 @@ fn compile_rejects_tabs_in_indentation() {
 #[test]
 fn compile_rejects_keyword_as_binding_name() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let if = 1\n  if\n",
+        "pub fn main() -> Int\n  let if = 1\n  if\n",
         "kea-cli-keyword-binding-name",
         "kea",
     );
@@ -2744,7 +2744,7 @@ fn compile_rejects_keyword_as_binding_name() {
 #[test]
 fn compile_rejects_pipe_operator_syntax() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  x |> f\n",
+        "pub fn main() -> Int\n  x |> f\n",
         "kea-cli-reject-pipe-operator",
         "kea",
     );
@@ -2761,7 +2761,7 @@ fn compile_rejects_pipe_operator_syntax() {
 #[test]
 fn compile_rejects_coloncolon_namespace_syntax() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  List::length([])\n",
+        "pub fn main() -> Int\n  List::length([])\n",
         "kea-cli-reject-coloncolon",
         "kea",
     );
@@ -2778,7 +2778,7 @@ fn compile_rejects_coloncolon_namespace_syntax() {
 #[test]
 fn compile_rejects_double_ampersand_operator_syntax() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  if true && false\n    1\n  else\n    0\n",
+        "pub fn main() -> Int\n  if true && false\n    1\n  else\n    0\n",
         "kea-cli-reject-double-ampersand",
         "kea",
     );
@@ -2795,7 +2795,7 @@ fn compile_rejects_double_ampersand_operator_syntax() {
 #[test]
 fn compile_rejects_bang_prefix_boolean_operator_syntax() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  if !true\n    1\n  else\n    0\n",
+        "pub fn main() -> Int\n  if !true\n    1\n  else\n    0\n",
         "kea-cli-reject-bang-not",
         "kea",
     );
@@ -2812,7 +2812,7 @@ fn compile_rejects_bang_prefix_boolean_operator_syntax() {
 #[test]
 fn compile_rejects_nil_literal_syntax() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let x = nil\n  0\n",
+        "pub fn main() -> Int\n  let x = nil\n  0\n",
         "kea-cli-reject-nil-literal",
         "kea",
     );
@@ -2829,7 +2829,7 @@ fn compile_rejects_nil_literal_syntax() {
 #[test]
 fn compile_rejects_bare_lambda_syntax() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let f = x -> x + 1\n  f(1)\n",
+        "pub fn main() -> Int\n  let f = x -> x + 1\n  f(1)\n",
         "kea-cli-reject-bare-lambda",
         "kea",
     );
@@ -2846,7 +2846,7 @@ fn compile_rejects_bare_lambda_syntax() {
 #[test]
 fn compile_rejects_parenthesized_lambda_syntax() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let f = (x) -> x + 1\n  f(1)\n",
+        "pub fn main() -> Int\n  let f = (x) -> x + 1\n  f(1)\n",
         "kea-cli-reject-parenthesized-lambda",
         "kea",
     );
@@ -2863,7 +2863,7 @@ fn compile_rejects_parenthesized_lambda_syntax() {
 #[test]
 fn compile_rejects_legacy_derive_attribute_syntax() {
     let source_path = write_temp_source(
-        "#[derive(Eq)]\nstruct Point\n  x: Int\n\nfn main() -> Int\n  0\n",
+        "#[derive(Eq)]\nstruct Point\n  x: Int\n\npub fn main() -> Int\n  0\n",
         "kea-cli-reject-legacy-derive",
         "kea",
     );
@@ -2880,7 +2880,7 @@ fn compile_rejects_legacy_derive_attribute_syntax() {
 #[test]
 fn compile_accepts_derive_eq_on_sum_for_typechecking() {
     let source_path = write_temp_source(
-        "@derive(Eq)\nenum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  let _same = PairBox.Pair(1, 2) == PairBox.Pair(1, 2)\n  0\n",
+        "@derive(Eq)\nenum PairBox\n  Pair(Int, Int)\n\npub fn main() -> Int\n  let _same = PairBox.Pair(1, 2) == PairBox.Pair(1, 2)\n  0\n",
         "kea-cli-derive-eq-sum-structural-equality",
         "kea",
     );
@@ -2894,7 +2894,7 @@ fn compile_accepts_derive_eq_on_sum_for_typechecking() {
 #[test]
 fn compile_and_execute_derive_eq_semantics_on_sum_exit_code() {
     let source_path = write_temp_source(
-        "use Eq\n\n@derive(Eq)\nenum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  let a = PairBox.Pair(1, 2)\n  let b = PairBox.Pair(1, 2)\n  let c = PairBox.Pair(2, 1)\n  if a == b and a != c\n    42\n  else\n    0\n",
+        "use Eq\n\n@derive(Eq)\nenum PairBox\n  Pair(Int, Int)\n\npub fn main() -> Int\n  let a = PairBox.Pair(1, 2)\n  let b = PairBox.Pair(1, 2)\n  let c = PairBox.Pair(2, 1)\n  if a == b and a != c\n    42\n  else\n    0\n",
         "kea-cli-derive-eq-semantics-sum",
         "kea",
     );
@@ -2908,7 +2908,7 @@ fn compile_and_execute_derive_eq_semantics_on_sum_exit_code() {
 #[test]
 fn compile_rejects_equality_without_eq_impl() {
     let source_path = write_temp_source(
-        "enum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  if PairBox.Pair(1, 2) == PairBox.Pair(1, 2)\n    0\n  else\n    1\n",
+        "enum PairBox\n  Pair(Int, Int)\n\npub fn main() -> Int\n  if PairBox.Pair(1, 2) == PairBox.Pair(1, 2)\n    0\n  else\n    1\n",
         "kea-cli-equality-without-eq-impl",
         "kea",
     );
@@ -2925,7 +2925,7 @@ fn compile_rejects_equality_without_eq_impl() {
 #[test]
 fn compile_accepts_derive_show_on_sum_declaration() {
     let source_path = write_temp_source(
-        "@derive(Show)\nenum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  0\n",
+        "@derive(Show)\nenum PairBox\n  Pair(Int, Int)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-derive-show-sum",
         "kea",
     );
@@ -2939,7 +2939,7 @@ fn compile_accepts_derive_show_on_sum_declaration() {
 #[test]
 fn compile_and_execute_derive_ord_on_sum_exit_code() {
     let source_path = write_temp_source(
-        "use Ord\n\n@derive(Ord)\nenum Flag\n  Off\n  On\n\nfn main() -> Int\n  1\n",
+        "use Ord\n\n@derive(Ord)\nenum Flag\n  Off\n  On\n\npub fn main() -> Int\n  1\n",
         "kea-cli-derive-ord-sum",
         "kea",
     );
@@ -2953,7 +2953,7 @@ fn compile_and_execute_derive_ord_on_sum_exit_code() {
 #[test]
 fn compile_and_execute_derive_hash_on_sum_exit_code() {
     let source_path = write_temp_source(
-        "use Hash\n\n@derive(Hash)\nenum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  1\n",
+        "use Hash\n\n@derive(Hash)\nenum PairBox\n  Pair(Int, Int)\n\npub fn main() -> Int\n  1\n",
         "kea-cli-derive-hash-sum",
         "kea",
     );
@@ -2967,7 +2967,7 @@ fn compile_and_execute_derive_hash_on_sum_exit_code() {
 #[test]
 fn compile_accepts_derive_eq_show_ord_hash_together() {
     let source_path = write_temp_source(
-        "use Hash\nuse Ord\n\n@derive(Eq, Show, Ord, Hash)\nenum Flag\n  A\n  B\n\nfn main() -> Int\n  1\n",
+        "use Hash\nuse Ord\n\n@derive(Eq, Show, Ord, Hash)\nenum Flag\n  A\n  B\n\npub fn main() -> Int\n  1\n",
         "kea-cli-derive-all-traits",
         "kea",
     );
@@ -2981,7 +2981,7 @@ fn compile_accepts_derive_eq_show_ord_hash_together() {
 #[test]
 fn compile_and_execute_derive_ord_semantics_on_sum_exit_code() {
     let source_path = write_temp_source(
-        "use Ord\nuse Order\n\n@derive(Ord)\nenum Flag\n  Off\n  On\n\nfn main() -> Int\n  let off = Flag.Off\n  let on = Flag.On\n  let lo = off.compare(on)\n  let hi = on.compare(off)\n  let eq = on.compare(on)\n  if lo.Order.is_less() and hi.Order.is_greater() and eq.Order.is_equal()\n    42\n  else\n    0\n",
+        "use Ord\nuse Order\n\n@derive(Ord)\nenum Flag\n  Off\n  On\n\npub fn main() -> Int\n  let off = Flag.Off\n  let on = Flag.On\n  let lo = off.compare(on)\n  let hi = on.compare(off)\n  let eq = on.compare(on)\n  if lo.Order.is_less() and hi.Order.is_greater() and eq.Order.is_equal()\n    42\n  else\n    0\n",
         "kea-cli-derive-ord-semantics-sum",
         "kea",
     );
@@ -2995,7 +2995,7 @@ fn compile_and_execute_derive_ord_semantics_on_sum_exit_code() {
 #[test]
 fn compile_and_execute_derive_hash_semantics_on_sum_exit_code() {
     let source_path = write_temp_source(
-        "use Hash\n\n@derive(Hash)\nenum PairBox\n  Pair(Int, Int)\n\nfn main() -> Int\n  let a = PairBox.Pair(1, 2)\n  let b = PairBox.Pair(1, 2)\n  let c = PairBox.Pair(2, 1)\n  if a.hash() == b.hash() and a.hash() != c.hash()\n    42\n  else\n    0\n",
+        "use Hash\n\n@derive(Hash)\nenum PairBox\n  Pair(Int, Int)\n\npub fn main() -> Int\n  let a = PairBox.Pair(1, 2)\n  let b = PairBox.Pair(1, 2)\n  let c = PairBox.Pair(2, 1)\n  if a.hash() == b.hash() and a.hash() != c.hash()\n    42\n  else\n    0\n",
         "kea-cli-derive-hash-semantics-sum",
         "kea",
     );
@@ -3009,7 +3009,7 @@ fn compile_and_execute_derive_hash_semantics_on_sum_exit_code() {
 #[test]
 fn compile_and_execute_derive_show_semantics_on_sum_exit_code() {
     let source_path = write_temp_source(
-        "use Show\nuse Text\n\n@derive(Show)\nenum Flag\n  Off\n  On\n\nfn main() -> Int\n  let off = Flag.Off\n  let on = Flag.On\n  let a = off.show()\n  let b = on.show()\n  if a != b and Text.length(a) > 0 and Text.length(b) > 0\n    42\n  else\n    0\n",
+        "use Show\nuse Text\n\n@derive(Show)\nenum Flag\n  Off\n  On\n\npub fn main() -> Int\n  let off = Flag.Off\n  let on = Flag.On\n  let a = off.show()\n  let b = on.show()\n  if a != b and Text.length(a) > 0 and Text.length(b) > 0\n    42\n  else\n    0\n",
         "kea-cli-derive-show-semantics-sum",
         "kea",
     );
@@ -3023,7 +3023,7 @@ fn compile_and_execute_derive_show_semantics_on_sum_exit_code() {
 #[test]
 fn compile_rejects_frame_literal_syntax() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let _x = frame { x: [1, 2, 3] }\n  0\n",
+        "pub fn main() -> Int\n  let _x = frame { x: [1, 2, 3] }\n  0\n",
         "kea-cli-reject-frame-literal",
         "kea",
     );
@@ -3040,7 +3040,7 @@ fn compile_rejects_frame_literal_syntax() {
 #[test]
 fn compile_rejects_sql_block_syntax() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let _x = sql { SELECT 1 AS x }\n  0\n",
+        "pub fn main() -> Int\n  let _x = sql { SELECT 1 AS x }\n  0\n",
         "kea-cli-reject-sql-block",
         "kea",
     );
@@ -3057,7 +3057,7 @@ fn compile_rejects_sql_block_syntax() {
 #[test]
 fn compile_rejects_html_block_syntax() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let _x = html { <h1>${:name}</h1> }\n  0\n",
+        "pub fn main() -> Int\n  let _x = html { <h1>${:name}</h1> }\n  0\n",
         "kea-cli-reject-html-block",
         "kea",
     );
@@ -3074,7 +3074,7 @@ fn compile_rejects_html_block_syntax() {
 #[test]
 fn compile_rejects_markdown_block_syntax() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let _x = markdown { # ${:title}\\n\\nCount: ${1} }\n  0\n",
+        "pub fn main() -> Int\n  let _x = markdown { # ${:title}\\n\\nCount: ${1} }\n  0\n",
         "kea-cli-reject-markdown-block",
         "kea",
     );
@@ -3091,7 +3091,7 @@ fn compile_rejects_markdown_block_syntax() {
 #[test]
 fn compile_rejects_string_interpolation_when_show_is_missing() {
     let source_path = write_temp_source(
-        "struct Foo\n  x: Int\n\nfn main() -> Int\n  let f = Foo { x: 1 }\n  if \"{f}\" == \"\"\n    1\n  else\n    0\n",
+        "struct Foo\n  x: Int\n\npub fn main() -> Int\n  let f = Foo { x: 1 }\n  if \"{f}\" == \"\"\n    1\n  else\n    0\n",
         "kea-cli-string-interp-missing-show",
         "kea",
     );
@@ -3112,7 +3112,7 @@ fn compile_rejects_string_interpolation_when_show_is_missing() {
 #[test]
 fn compile_rejects_string_interpolation_when_expression_is_empty() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let x = \"{}\"\n  if x == \"\"\n    1\n  else\n    0\n",
+        "pub fn main() -> Int\n  let x = \"{}\"\n  if x == \"\"\n    1\n  else\n    0\n",
         "kea-cli-string-interp-empty-expr",
         "kea",
     );
@@ -3129,7 +3129,7 @@ fn compile_rejects_string_interpolation_when_expression_is_empty() {
 #[test]
 fn compile_rejects_unterminated_string_interpolation() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let x = 1\n  if \"value={x\" == \"\"\n    1\n  else\n    0\n",
+        "pub fn main() -> Int\n  let x = 1\n  if \"value={x\" == \"\"\n    1\n  else\n    0\n",
         "kea-cli-string-interp-unterminated",
         "kea",
     );
@@ -3146,7 +3146,7 @@ fn compile_rejects_unterminated_string_interpolation() {
 #[test]
 fn compile_rejects_unterminated_string_literal() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let x = \"oops\n  0\n",
+        "pub fn main() -> Int\n  let x = \"oops\n  0\n",
         "kea-cli-string-literal-unterminated",
         "kea",
     );
@@ -3207,7 +3207,7 @@ fn compile_rejects_comment_only_file_without_main() {
 #[test]
 fn compile_rejects_unexpected_eof_mid_expression() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  1 +\n",
+        "pub fn main() -> Int\n  1 +\n",
         "kea-cli-unexpected-eof-mid-expr",
         "kea",
     );
@@ -3224,7 +3224,7 @@ fn compile_rejects_unexpected_eof_mid_expression() {
 #[test]
 fn compile_rejects_unexpected_eof_mid_return_type_annotation() {
     let source_path = write_temp_source(
-        "fn id(x: Int) ->\n  x\n\nfn main() -> Int\n  id(1)\n",
+        "pub fn id(x: Int) ->\n  x\n\npub fn main() -> Int\n  id(1)\n",
         "kea-cli-unexpected-eof-mid-return-type",
         "kea",
     );
@@ -3241,7 +3241,7 @@ fn compile_rejects_unexpected_eof_mid_return_type_annotation() {
 #[test]
 fn compile_rejects_unexpected_eof_mid_handler_clause_body() {
     let source_path = write_temp_source(
-        "effect Ping\n  fn ask() -> Int\n\nfn run() -[Ping]> Int\n  Ping.ask()\n\nfn main() -> Int\n  handle run()\n    Ping.ask() ->\n",
+        "effect Ping\n  fn ask() -> Int\n\npub fn run() -[Ping]> Int\n  Ping.ask()\n\npub fn main() -> Int\n  handle run()\n    Ping.ask() ->\n",
         "kea-cli-unexpected-eof-mid-handler-clause",
         "kea",
     );
@@ -3258,7 +3258,7 @@ fn compile_rejects_unexpected_eof_mid_handler_clause_body() {
 #[test]
 fn compile_rejects_unexpected_eof_mid_case_arm_body() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 1\n    1 ->\n",
+        "pub fn main() -> Int\n  case 1\n    1 ->\n",
         "kea-cli-unexpected-eof-mid-case-arm",
         "kea",
     );
@@ -3275,7 +3275,7 @@ fn compile_rejects_unexpected_eof_mid_case_arm_body() {
 #[test]
 fn compile_reports_multiple_syntax_errors_in_single_function_body() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let x =\n  let y =\n  x + y\n",
+        "pub fn main() -> Int\n  let x =\n  let y =\n  x + y\n",
         "kea-cli-multiple-syntax-errors",
         "kea",
     );
@@ -3293,7 +3293,7 @@ fn compile_reports_multiple_syntax_errors_in_single_function_body() {
 #[test]
 fn compile_rejects_garbage_after_valid_top_level_declaration() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  1\n\n#\n",
+        "pub fn main() -> Int\n  1\n\n#\n",
         "kea-cli-garbage-after-valid-decl",
         "kea",
     );
@@ -3310,7 +3310,7 @@ fn compile_rejects_garbage_after_valid_top_level_declaration() {
 #[test]
 fn compile_rejects_mismatched_parenthesis_in_expression() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let x = (1 + 2\n  x\n",
+        "pub fn main() -> Int\n  let x = (1 + 2\n  x\n",
         "kea-cli-mismatched-parenthesis",
         "kea",
     );
@@ -3327,7 +3327,7 @@ fn compile_rejects_mismatched_parenthesis_in_expression() {
 #[test]
 fn compile_rejects_resume_outside_handler_clause() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  resume 1\n",
+        "pub fn main() -> Int\n  resume 1\n",
         "kea-cli-resume-outside-handler",
         "kea",
     );
@@ -3344,7 +3344,7 @@ fn compile_rejects_resume_outside_handler_clause() {
 #[test]
 fn compile_rejects_handler_clause_that_resumes_multiple_times() {
     let source_path = write_temp_source(
-        "effect Ping\n  fn ask() -> Int\n\nfn run() -[Ping]> Int\n  Ping.ask()\n\nfn main() -> Int\n  handle run()\n    Ping.ask() ->\n      if true\n        resume 1\n      else\n        resume 2\n",
+        "effect Ping\n  fn ask() -> Int\n\npub fn run() -[Ping]> Int\n  Ping.ask()\n\npub fn main() -> Int\n  handle run()\n    Ping.ask() ->\n      if true\n        resume 1\n      else\n        resume 2\n",
         "kea-cli-resume-multiple-times",
         "kea",
     );
@@ -3361,7 +3361,7 @@ fn compile_rejects_handler_clause_that_resumes_multiple_times() {
 #[test]
 fn compile_rejects_resume_captured_by_lambda() {
     let source_path = write_temp_source(
-        "effect Ping\n  fn ask() -> Int\n\nfn run() -[Ping]> Int\n  Ping.ask()\n\nfn main() -> Int\n  handle run()\n    Ping.ask() ->\n      let k = |x| resume x\n      k(1)\n",
+        "effect Ping\n  fn ask() -> Int\n\npub fn run() -[Ping]> Int\n  Ping.ask()\n\npub fn main() -> Int\n  handle run()\n    Ping.ask() ->\n      let k = |x| resume x\n      k(1)\n",
         "kea-cli-resume-captured-lambda",
         "kea",
     );
@@ -3378,7 +3378,7 @@ fn compile_rejects_resume_captured_by_lambda() {
 #[test]
 fn compile_rejects_resume_inside_loop_in_handler_clause() {
     let source_path = write_temp_source(
-        "effect Ping\n  fn ask() -> Int\n\nfn run() -[Ping]> Int\n  Ping.ask()\n\nfn main() -> Int\n  handle run()\n    Ping.ask() ->\n      for x in [1]\n        resume x\n",
+        "effect Ping\n  fn ask() -> Int\n\npub fn run() -[Ping]> Int\n  Ping.ask()\n\npub fn main() -> Int\n  handle run()\n    Ping.ask() ->\n      for x in [1]\n        resume x\n",
         "kea-cli-resume-inside-loop",
         "kea",
     );
@@ -3395,7 +3395,7 @@ fn compile_rejects_resume_inside_loop_in_handler_clause() {
 #[test]
 fn compile_rejects_resume_value_type_mismatch_in_handler_clause() {
     let source_path = write_temp_source(
-        "effect Counter\n  fn next() -> Int\n\nfn run() -[Counter]> Int\n  Counter.next()\n\nfn main() -> Int\n  handle run()\n    Counter.next() -> resume \"bad\"\n",
+        "effect Counter\n  fn next() -> Int\n\npub fn run() -[Counter]> Int\n  Counter.next()\n\npub fn main() -> Int\n  handle run()\n    Counter.next() -> resume \"bad\"\n",
         "kea-cli-resume-type-mismatch",
         "kea",
     );
@@ -3415,7 +3415,7 @@ fn compile_rejects_resume_value_type_mismatch_in_handler_clause() {
 #[test]
 fn compile_rejects_polymorphic_effect_resume_type_mismatch() {
     let source_path = write_temp_source(
-        "effect Reader R\n  fn ask() -> R\n\nfn app() -[Reader Int]> Int\n  Reader.ask() + 1\n\nfn main() -> Int\n  handle app()\n    Reader.ask() -> resume \"bad\"\n",
+        "effect Reader R\n  fn ask() -> R\n\npub fn app() -[Reader Int]> Int\n  Reader.ask() + 1\n\npub fn main() -> Int\n  handle app()\n    Reader.ask() -> resume \"bad\"\n",
         "kea-cli-poly-effect-resume-mismatch",
         "kea",
     );
@@ -3435,7 +3435,7 @@ fn compile_rejects_polymorphic_effect_resume_type_mismatch() {
 #[test]
 fn compile_rejects_state_handler_resume_type_mismatch() {
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(val: S) -> Unit\n\nfn app() -[State Int]> Int\n  State.put(10)\n  State.get()\n\nfn main() -> Int\n  handle app()\n    State.get() -> resume \"bad\"\n    State.put(val) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(val: S) -> Unit\n\npub fn app() -[State Int]> Int\n  State.put(10)\n  State.get()\n\npub fn main() -> Int\n  handle app()\n    State.get() -> resume \"bad\"\n    State.put(val) -> resume ()\n",
         "kea-cli-state-resume-mismatch",
         "kea",
     );
@@ -3452,7 +3452,7 @@ fn compile_rejects_state_handler_resume_type_mismatch() {
 #[test]
 fn compile_rejects_effect_operation_call_with_too_many_arguments() {
     let source_path = write_temp_source(
-        "effect Counter\n  fn next() -> Int\n\nfn main() -[Counter]> Int\n  Counter.next(1)\n",
+        "effect Counter\n  fn next() -> Int\n\npub fn main() -[Counter]> Int\n  Counter.next(1)\n",
         "kea-cli-effect-op-extra-arg",
         "kea",
     );
@@ -3469,7 +3469,7 @@ fn compile_rejects_effect_operation_call_with_too_many_arguments() {
 #[test]
 fn compile_rejects_effect_operation_call_with_missing_required_argument() {
     let source_path = write_temp_source(
-        "effect Counter\n  fn add(x: Int) -> Unit\n\nfn main() -[Counter]> Int\n  Counter.add()\n  0\n",
+        "effect Counter\n  fn add(x: Int) -> Unit\n\npub fn main() -[Counter]> Int\n  Counter.add()\n  0\n",
         "kea-cli-effect-op-missing-arg",
         "kea",
     );
@@ -3486,7 +3486,7 @@ fn compile_rejects_effect_operation_call_with_missing_required_argument() {
 #[test]
 fn compile_rejects_effect_operation_call_with_wrong_argument_type() {
     let source_path = write_temp_source(
-        "effect Counter\n  fn add(x: Int) -> Unit\n\nfn main() -[Counter]> Int\n  Counter.add(\"oops\")\n  0\n",
+        "effect Counter\n  fn add(x: Int) -> Unit\n\npub fn main() -[Counter]> Int\n  Counter.add(\"oops\")\n  0\n",
         "kea-cli-effect-op-type-mismatch",
         "kea",
     );
@@ -3504,7 +3504,7 @@ fn compile_rejects_effect_operation_call_with_wrong_argument_type() {
 #[test]
 fn compile_rejects_duplicate_fail_effect_entries_with_incompatible_payloads() {
     let source_path = write_temp_source(
-        "effect Fail E\n  fn fail(err: E) -> Never\n\nfn bad() -[Fail Int, Fail String]> Int\n  0\n\nfn main() -> Int\n  0\n",
+        "effect Fail E\n  fn fail(err: E) -> Never\n\npub fn bad() -[Fail Int, Fail String]> Int\n  0\n\npub fn main() -> Int\n  0\n",
         "kea-cli-effect-row-duplicate-fail-incompatible",
         "kea",
     );
@@ -3522,7 +3522,7 @@ fn compile_rejects_duplicate_fail_effect_entries_with_incompatible_payloads() {
 #[test]
 fn compile_accepts_parenthesized_effect_payload_type_annotation() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\neffect Echo A\n  fn echo(value: A) -> Unit\n\nfn emit(x: Unique Int) -[Echo (Unique Int)]> Unit\n  Echo.echo(x)\n\nfn main() -> Int\n  0\n",
+        "enum Unique a\n  Unique(a)\n\neffect Echo A\n  fn echo(value: A) -> Unit\n\npub fn emit(x: Unique Int) -[Echo (Unique Int)]> Unit\n  Echo.echo(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-parenthesized-effect-payload-type",
         "kea",
     );
@@ -3536,7 +3536,7 @@ fn compile_accepts_parenthesized_effect_payload_type_annotation() {
 #[test]
 fn compile_rejects_handle_without_operation_clauses() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  handle 1\n    then value -> value\n",
+        "pub fn main() -> Int\n  handle 1\n    then value -> value\n",
         "kea-cli-handle-empty-clauses",
         "kea",
     );
@@ -3553,7 +3553,7 @@ fn compile_rejects_handle_without_operation_clauses() {
 #[test]
 fn compile_and_execute_mismatched_handler_target_is_noop_exit_code() {
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\nfn body() -[Log]> Int\n  Log.log(7)\n  42\n\nfn wrap() -[Log]> Int\n  handle body()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n\nfn main() -> Int\n  handle wrap()\n    Log.log(msg) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\npub fn body() -[Log]> Int\n  Log.log(7)\n  42\n\npub fn wrap() -[Log]> Int\n  handle body()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n\npub fn main() -> Int\n  handle wrap()\n    Log.log(msg) -> resume ()\n",
         "kea-cli-mismatched-handler-noop",
         "kea",
     );
@@ -3567,7 +3567,7 @@ fn compile_and_execute_mismatched_handler_target_is_noop_exit_code() {
 #[test]
 fn compile_and_execute_with_binding_and_stacking_exit_code() {
     let source_path = write_temp_source(
-        "fn with_value(value: Int, @with f: fn(Int) -> Int) -> Int\n  f(value)\n\nfn with_unit(@with f: fn() -> Int) -> Int\n  f()\n\nfn main() -> Int\n  with n <- with_value(40)\n  with with_unit\n  n + 2\n",
+        "pub fn with_value(value: Int, @with f: fn(Int) -> Int) -> Int\n  f(value)\n\npub fn with_unit(@with f: fn() -> Int) -> Int\n  f()\n\npub fn main() -> Int\n  with n <- with_value(40)\n  with with_unit\n  n + 2\n",
         "kea-cli-with-binding-stacking",
         "kea",
     );
@@ -3581,7 +3581,7 @@ fn compile_and_execute_with_binding_and_stacking_exit_code() {
 #[test]
 fn compile_and_execute_with_after_let_exit_code() {
     let source_path = write_temp_source(
-        "fn with_value(value: Int, @with f: fn(Int) -> Int) -> Int\n  f(value)\n\nfn main() -> Int\n  let seed = 41\n  with n <- with_value(seed)\n  n + 1\n",
+        "pub fn with_value(value: Int, @with f: fn(Int) -> Int) -> Int\n  f(value)\n\npub fn main() -> Int\n  let seed = 41\n  with n <- with_value(seed)\n  n + 1\n",
         "kea-cli-with-after-let",
         "kea",
     );
@@ -3595,7 +3595,7 @@ fn compile_and_execute_with_after_let_exit_code() {
 #[test]
 fn compile_rejects_with_when_target_is_not_marked_annotation() {
     let source_path = write_temp_source(
-        "fn plain(f: fn() -> Int) -> Int\n  f()\n\nfn main() -> Int\n  with plain\n  0\n",
+        "pub fn plain(f: fn() -> Int) -> Int\n  f()\n\npub fn main() -> Int\n  with plain\n  0\n",
         "kea-cli-with-missing-annotation",
         "kea",
     );
@@ -3612,7 +3612,7 @@ fn compile_rejects_with_when_target_is_not_marked_annotation() {
 #[test]
 fn compile_rejects_with_on_non_call_expression() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  with 42\n  0\n",
+        "pub fn main() -> Int\n  with 42\n  0\n",
         "kea-cli-with-non-call",
         "kea",
     );
@@ -3630,7 +3630,7 @@ fn compile_rejects_with_on_non_call_expression() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_io_stderr_unit_main_exit_code() {
     let source_path = write_temp_source(
-        "effect IO\n  fn stderr(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stderr(\"hello err\")\n",
+        "effect IO\n  fn stderr(msg: String) -> Unit\n\npub fn main() -[IO]> Unit\n  IO.stderr(\"hello err\")\n",
         "kea-cli-io-stderr",
         "kea",
     );
@@ -3645,7 +3645,7 @@ fn compile_and_execute_io_stderr_unit_main_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_intrinsic_strlen_exit_code() {
     let source_path = write_temp_source(
-        "@intrinsic(\"strlen\")\nfn string_len(s: String) -> Int\n  0\n\nfn main() -> Int\n  string_len(\"hello\")\n",
+        "@intrinsic(\"strlen\")\npub fn string_len(s: String) -> Int\n  0\n\npub fn main() -> Int\n  string_len(\"hello\")\n",
         "kea-cli-intrinsic-strlen",
         "kea",
     );
@@ -3660,7 +3660,7 @@ fn compile_and_execute_intrinsic_strlen_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_zero_alloc_function_exit_code() {
     let source_path = write_temp_source(
-        "@fip\nfn id(x: Int) -> Int\n  x\n\nfn main() -> Int\n  id(7)\n",
+        "@fip\npub fn id(x: Int) -> Int\n  x\n\npub fn main() -> Int\n  id(7)\n",
         "kea-cli-fip-zero-alloc",
         "kea",
     );
@@ -3675,7 +3675,7 @@ fn compile_and_execute_fip_zero_alloc_function_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_return_handoff_exit_code() {
     let source_path = write_temp_source(
-        "@fip\nfn forward(x: Unique Int) -> Unique Int\n  x\n\nfn main() -> Int\n  0\n",
+        "@fip\npub fn forward(x: Unique Int) -> Unique Int\n  x\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-return",
         "kea",
     );
@@ -3690,7 +3690,7 @@ fn compile_and_execute_fip_unique_return_handoff_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_alias_forward_handoff_exit_code() {
     let source_path = write_temp_source(
-        "@fip\nfn alias_forward(x: Unique Int) -> Unique Int\n  let y = x\n  y\n\nfn main() -> Int\n  0\n",
+        "@fip\npub fn alias_forward(x: Unique Int) -> Unique Int\n  let y = x\n  y\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-alias-forward",
         "kea",
     );
@@ -3705,7 +3705,7 @@ fn compile_and_execute_fip_unique_alias_forward_handoff_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_inline_lambda_forward_exit_code() {
     let source_path = write_temp_source(
-        "@fip\nfn inline_lambda_forward(x: Unique Int) -> Unique Int\n  (|y| y)(x)\n\nfn main() -> Int\n  0\n",
+        "@fip\npub fn inline_lambda_forward(x: Unique Int) -> Unique Int\n  (|y| y)(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-inline-lambda-forward",
         "kea",
     );
@@ -3720,7 +3720,7 @@ fn compile_and_execute_fip_unique_inline_lambda_forward_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_known_forwarder_call_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_forward_once(x: Unique Int) -> Unique Int\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_forward_once(x: Unique Int) -> Unique Int\n  forward_once(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-known-forwarder-call",
         "kea",
     );
@@ -3736,7 +3736,7 @@ fn compile_and_execute_fip_unique_known_forwarder_call_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_known_forwarder_with_passthrough_arg_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_with_seed(seed: Int, x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_forward_with_seed(x: Unique Int) -> Unique Int\n  forward_with_seed(42, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_with_seed(seed: Int, x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_forward_with_seed(x: Unique Int) -> Unique Int\n  forward_with_seed(42, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-known-forwarder-with-passthrough-arg",
         "kea",
     );
@@ -3759,12 +3759,12 @@ fn compile_and_execute_fip_unique_module_alias_forwarder_with_passthrough_arg_ex
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_with_seed(seed: Int, x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_with_seed(seed: Int, x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
             &source_path,
-            "use Alpha as A\n\n@fip\nfn call_forward_with_seed(x: Unique Int) -> Unique Int\n  A.forward_with_seed(42, x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha as A\n\n@fip\npub fn call_forward_with_seed(x: Unique Int) -> Unique Int\n  A.forward_with_seed(42, x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -3780,7 +3780,7 @@ fn compile_and_execute_fip_unique_module_alias_forwarder_with_passthrough_arg_ex
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_value_call_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder(forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-call",
         "kea",
     );
@@ -3797,7 +3797,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_value_call_exit_code() 
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_with_passthrough_alias_let_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_with_seed(seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed_alias = seed\n  let y = x\n  f(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_with_seed(42, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_with_seed(seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed_alias = seed\n  let y = x\n  f(y)\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_with_seed(42, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-passthrough-alias-let",
         "kea",
     );
@@ -3822,12 +3822,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_with_passthr
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_with_seed(seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed_alias = seed\n  let y = x\n  f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_with_seed(seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed_alias = seed\n  let y = x\n  f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
             &source_path,
-            "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_with_seed(42, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_with_seed(42, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -3850,12 +3850,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_with_passthr
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_with_seed(seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed_alias = seed\n  let y = x\n  f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_with_seed(seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed_alias = seed\n  let y = x\n  f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_forwarder_with_seed, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_with_seed(42, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_forwarder_with_seed, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_with_seed(42, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -3871,7 +3871,7 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_with_passthr
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_if_branches_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    f(x)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_if(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    f(x)\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_if(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-if-branches",
         "kea",
     );
@@ -3894,12 +3894,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_if_branches_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    f(x)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    f(x)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
             &source_path,
-            "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_if(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_if(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -3915,7 +3915,7 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_if_branches_
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_block_alias_then_if_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_block_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  if flag\n    f(y)\n  else\n    f(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_block_if(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_block_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  if flag\n    f(y)\n  else\n    f(y)\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_block_if(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-block-alias-then-if",
         "kea",
     );
@@ -3940,12 +3940,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_block_alias_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_block_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  if flag\n    f(y)\n  else\n    f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_block_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  if flag\n    f(y)\n  else\n    f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
             &source_path,
-            "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_block_if(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_block_if(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -3961,7 +3961,7 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_block_alias_
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_if_passthrough_branch_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_or_passthrough(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    x\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_or_passthrough(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_or_passthrough(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    x\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_or_passthrough(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-if-passthrough-branch",
         "kea",
     );
@@ -3986,12 +3986,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_if_passthrou
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_or_passthrough(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_or_passthrough(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
             &source_path,
-            "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_or_passthrough(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_or_passthrough(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -4007,7 +4007,7 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_if_passthrou
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_if_nested_passthrough_alias_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_or_nested_passthrough(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    let out = if inner\n      x\n    else\n      x\n    out\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_or_nested_passthrough(true, false, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_or_nested_passthrough(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    let out = if inner\n      x\n    else\n      x\n    out\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_or_nested_passthrough(true, false, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-if-nested-passthrough-alias",
         "kea",
     );
@@ -4032,12 +4032,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_if_nested_pa
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_or_nested_passthrough(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    let out = if inner\n      x\n    else\n      x\n    out\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_or_nested_passthrough(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    let out = if inner\n      x\n    else\n      x\n    out\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
             &source_path,
-            "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_or_nested_passthrough(true, false, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_or_nested_passthrough(true, false, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -4059,12 +4059,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_if_branches_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    f(x)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    f(x)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_forwarder_if, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_if(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_forwarder_if, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_if(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4087,12 +4087,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_block_alias_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_block_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  if flag\n    f(y)\n  else\n    f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_block_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  if flag\n    f(y)\n  else\n    f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_forwarder_block_if, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_block_if(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_forwarder_block_if, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_block_if(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4115,12 +4115,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_if_passthrou
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_or_passthrough(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_or_passthrough(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_forwarder_or_passthrough, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_or_passthrough(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_forwarder_or_passthrough, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_or_passthrough(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4144,12 +4144,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_if_nested_pa
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_or_nested_passthrough(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    let out = if inner\n      x\n    else\n      x\n    out\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_or_nested_passthrough(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    let out = if inner\n      x\n    else\n      x\n    out\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_forwarder_or_nested_passthrough, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_or_nested_passthrough(true, false, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_forwarder_or_nested_passthrough, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_or_nested_passthrough(true, false, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4171,12 +4171,12 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_named_import_call_exit_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
             src_dir.join("wrappers.kea"),
-            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
+            "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
         )
         .expect("wrappers module write should succeed");
     std::fs::write(
             &source_path,
-            "use Wrappers.{apply_forwarder, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder(forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "use Wrappers.{apply_forwarder, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder(forward_once, x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -4197,12 +4197,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_call_exit_co
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_forwarder, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_forwarder, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder(forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4218,7 +4218,7 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_call_exit_co
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_alias_chain_call_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  f(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  f(y)\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias(forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-alias-chain",
         "kea",
     );
@@ -4235,7 +4235,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_alias_chain_call_exit_c
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_function_alias_chain_call_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = f\n  let y = x\n  g(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = f\n  let y = x\n  g(y)\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_alias(forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-fn-alias-chain",
         "kea",
     );
@@ -4252,7 +4252,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_function_alias_chain_ca
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_tuple_alias_chain() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_tuple_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let (g, y) = (f, x)\n  g(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_tuple_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_tuple_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let (g, y) = (f, x)\n  g(y)\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_tuple_alias(forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-tuple-alias-chain",
         "kea",
     );
@@ -4276,7 +4276,7 @@ fn compile_rejects_fip_unique_higher_order_forwarder_tuple_alias_chain() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_chain_call_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let z = y\n  let out0 = f(z)\n  let out1 = out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias_result(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let z = y\n  let out0 = f(z)\n  let out1 = out0\n  out1\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result(forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-result-alias-chain",
         "kea",
     );
@@ -4293,7 +4293,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_chain_call
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_result_if_alias_chain_call_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_result_if_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_if_alias(forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_result_if_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_if_alias(forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-result-if-alias-chain",
         "kea",
     );
@@ -4311,7 +4311,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_result_if_alias_chain_c
 fn compile_and_execute_fip_unique_higher_order_forwarder_combo_alias_prelude_and_result_if_exit_code(
 ) {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo(flag_f: Bool, flag_x: Bool, seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed2 = if seed > 0\n    seed\n  else\n    seed\n  let g = if flag_f\n    f\n  else\n    f\n  let y = if flag_x\n    x\n  else\n    x\n  let out0 = g(y)\n  let out1 = if flag_f\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo(true, false, 42, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo(flag_f: Bool, flag_x: Bool, seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed2 = if seed > 0\n    seed\n  else\n    seed\n  let g = if flag_f\n    f\n  else\n    f\n  let y = if flag_x\n    x\n  else\n    x\n  let out0 = g(y)\n  let out1 = if flag_f\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo(true, false, 42, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-combo-alias",
         "kea",
     );
@@ -4329,7 +4329,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_combo_alias_prelude_and
 fn compile_and_execute_fip_unique_higher_order_forwarder_combo_alias_with_benign_let_and_result_if_exit_code(
 ) {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = 42\n  let g = if flag\n    f\n  else\n    f\n  let y = if flag\n    x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_plus(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = 42\n  let g = if flag\n    f\n  else\n    f\n  let y = if flag\n    x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_plus(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-combo-plus-alias",
         "kea",
     );
@@ -4346,7 +4346,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_combo_alias_with_benign
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_combo_case_alias_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_case(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_case(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  out1\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-combo-case-alias",
         "kea",
     );
@@ -4364,7 +4364,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_combo_case_alias_exit_c
 fn compile_and_execute_fip_unique_higher_order_forwarder_combo_case_with_benign_let_and_result_case_exit_code(
 ) {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_case_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  let out2 = out1\n  out2\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case_plus(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_case_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  let out2 = out1\n  out2\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case_plus(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-combo-case-plus-alias",
         "kea",
     );
@@ -4382,7 +4382,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_combo_case_with_benign_
 fn compile_and_execute_fip_unique_higher_order_forwarder_combo_mixed_if_case_with_benign_lets_exit_code(
 ) {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    7\n  else\n    8\n  let g = case flag\n    true ->\n      if inner\n        f\n      else\n        f\n    false ->\n      f\n  let y = if flag\n    case inner\n      true ->\n        x\n      false ->\n        x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if inner\n    case flag\n      true ->\n        out0\n      false ->\n        out0\n  else\n    out0\n  let out2 = out1\n  out2\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_mixed(true, false, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    7\n  else\n    8\n  let g = case flag\n    true ->\n      if inner\n        f\n      else\n        f\n    false ->\n      f\n  let y = if flag\n    case inner\n      true ->\n        x\n      false ->\n        x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if inner\n    case flag\n      true ->\n        out0\n      false ->\n        out0\n  else\n    out0\n  let out2 = out1\n  out2\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_mixed(true, false, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-combo-mixed-if-case-benign",
         "kea",
     );
@@ -4406,12 +4406,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_combo_mixed_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    7\n  else\n    8\n  let g = case flag\n    true ->\n      if inner\n        f\n      else\n        f\n    false ->\n      f\n  let y = if flag\n    case inner\n      true ->\n        x\n      false ->\n        x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if inner\n    case flag\n      true ->\n        out0\n      false ->\n        out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    7\n  else\n    8\n  let g = case flag\n    true ->\n      if inner\n        f\n      else\n        f\n    false ->\n      f\n  let y = if flag\n    case inner\n      true ->\n        x\n      false ->\n        x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if inner\n    case flag\n      true ->\n        out0\n      false ->\n        out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_mixed(true, false, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_mixed(true, false, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4434,12 +4434,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_combo_mixed_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    7\n  else\n    8\n  let g = case flag\n    true ->\n      if inner\n        f\n      else\n        f\n    false ->\n      f\n  let y = if flag\n    case inner\n      true ->\n        x\n      false ->\n        x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if inner\n    case flag\n      true ->\n        out0\n      false ->\n        out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    7\n  else\n    8\n  let g = case flag\n    true ->\n      if inner\n        f\n      else\n        f\n    false ->\n      f\n  let y = if flag\n    case inner\n      true ->\n        x\n      false ->\n        x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if inner\n    case flag\n      true ->\n        out0\n      false ->\n        out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_combo_mixed, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_mixed(true, false, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_combo_mixed, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_mixed(true, false, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4456,7 +4456,7 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_combo_mixed_
 fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_with_benign_noncall_let_exit_code(
 ) {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_result_with_benign_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = if flag\n    1\n  else\n    2\n  let out1 = out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_with_benign_let(forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_result_with_benign_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = if flag\n    1\n  else\n    2\n  let out1 = out0\n  out1\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_with_benign_let(forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-result-benign-let",
         "kea",
     );
@@ -4474,7 +4474,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_with_benig
 fn compile_and_execute_fip_unique_higher_order_forwarder_with_benign_noncall_prelude_let_exit_code(
 ) {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_with_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let y = x\n  let out = f(y)\n  out\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_with_prelude_setup(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_with_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let y = x\n  let out = f(y)\n  out\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_with_prelude_setup(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-benign-prelude-let",
         "kea",
     );
@@ -4491,7 +4491,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_with_benign_noncall_pre
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_with_if_selected_unique_alias_exit_code() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_unique(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = if flag\n    x\n  else\n    x\n  f(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_pick_unique(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_pick_unique(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = if flag\n    x\n  else\n    x\n  f(y)\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_pick_unique(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-if-selected-unique-alias",
         "kea",
     );
@@ -4509,7 +4509,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_with_if_selected_unique
 fn compile_and_execute_fip_unique_higher_order_forwarder_with_if_selected_forwarder_alias_exit_code(
 ) {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_forwarder(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = if flag\n    f\n  else\n    f\n  g(x)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_pick_forwarder(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_pick_forwarder(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = if flag\n    f\n  else\n    f\n  g(x)\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_pick_forwarder(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-if-selected-forwarder-alias",
         "kea",
     );
@@ -4526,7 +4526,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_with_if_selected_forwar
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_param_escape() {
     let source_path = write_temp_source(
-        "fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_forwarder(f, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\npub fn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_forwarder(f, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-param-escape",
         "kea",
     );
@@ -4550,7 +4550,7 @@ fn compile_rejects_fip_unique_higher_order_forwarder_param_escape() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_wrong_unique_arg_escape() {
         let source_path = write_temp_source(
-            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_wrong(f: fn(Unique Int) -> Unique Int, x: Unique Int, y: Unique Int) -> Unique Int\n  f(y)\n\n@fip\nfn call_via_apply(x: Unique Int, y: Unique Int) -> Unique Int\n  apply_wrong(forward_once, x, y)\n\nfn main() -> Int\n  0\n",
+            "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_wrong(f: fn(Unique Int) -> Unique Int, x: Unique Int, y: Unique Int) -> Unique Int\n  f(y)\n\n@fip\npub fn call_via_apply(x: Unique Int, y: Unique Int) -> Unique Int\n  apply_wrong(forward_once, x, y)\n\npub fn main() -> Int\n  0\n",
             "kea-cli-fip-unique-higher-order-forwarder-wrong-arg-escape",
         "kea",
     );
@@ -4581,12 +4581,12 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_wrong_unique_arg
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_wrong(f: fn(Unique Int) -> Unique Int, x: Unique Int, y: Unique Int) -> Unique Int\n  f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_wrong(f: fn(Unique Int) -> Unique Int, x: Unique Int, y: Unique Int) -> Unique Int\n  f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int, y: Unique Int) -> Unique Int\n  A.apply_wrong(A.forward_once, x, y)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int, y: Unique Int) -> Unique Int\n  A.apply_wrong(A.forward_once, x, y)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4616,12 +4616,12 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_wrong_unique_arg
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_wrong(f: fn(Unique Int) -> Unique Int, x: Unique Int, y: Unique Int) -> Unique Int\n  f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_wrong(f: fn(Unique Int) -> Unique Int, x: Unique Int, y: Unique Int) -> Unique Int\n  f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_wrong, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int, y: Unique Int) -> Unique Int\n  apply_wrong(forward_once, x, y)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_wrong, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int, y: Unique Int) -> Unique Int\n  apply_wrong(forward_once, x, y)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4644,7 +4644,7 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_wrong_unique_arg
     #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_unique_higher_order_wrapper_when_safe_forwarder_is_not_body_slot() {
         let source_path = write_temp_source(
-            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_first(f: fn(Unique Int) -> Unique Int, g: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_pick_first(f, forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_pick_first(f: fn(Unique Int) -> Unique Int, g: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\npub fn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_pick_first(f, forward_once, x)\n\npub fn main() -> Int\n  0\n",
             "kea-cli-fip-unique-higher-order-forwarder-nonbody-slot",
             "kea",
         );
@@ -4668,7 +4668,7 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_wrong_unique_arg
     #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_unique_higher_order_function_alias_wrapper_when_safe_forwarder_is_not_body_slot() {
         let source_path = write_temp_source(
-            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_alias(f: fn(Unique Int) -> Unique Int, g: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let h = f\n  h(x)\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_pick_alias(f, forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_pick_alias(f: fn(Unique Int) -> Unique Int, g: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let h = f\n  h(x)\n\n@fip\npub fn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_pick_alias(f, forward_once, x)\n\npub fn main() -> Int\n  0\n",
             "kea-cli-fip-unique-higher-order-forwarder-fn-alias-wrong-slot",
             "kea",
         );
@@ -4698,12 +4698,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_call_exit_co
         let source_path = src_dir.join("main.kea");
         std::fs::write(
             src_dir.join("alpha.kea"),
-            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
+            "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
         )
         .expect("alpha module write should succeed");
         std::fs::write(
             &source_path,
-            "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder(A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -4726,12 +4726,12 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_tuple_alias_chai
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_tuple_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let (g, y) = (f, x)\n  g(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_tuple_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let (g, y) = (f, x)\n  g(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_tuple_alias(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_tuple_alias(A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4760,12 +4760,12 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_tuple_alias_chai
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_tuple_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let (g, y) = (f, x)\n  g(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_tuple_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let (g, y) = (f, x)\n  g(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_tuple_alias, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_tuple_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_tuple_alias, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_tuple_alias(forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4793,12 +4793,12 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_param_escape() {
         let source_path = src_dir.join("main.kea");
         std::fs::write(
             src_dir.join("alpha.kea"),
-            "fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
+            "pub fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
         )
         .expect("alpha module write should succeed");
         std::fs::write(
             &source_path,
-            "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  A.apply_forwarder(f, x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  A.apply_forwarder(f, x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -4830,12 +4830,12 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_param_escape() {
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
+        "pub fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_forwarder}\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_forwarder(f, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_forwarder}\n\n@fip\npub fn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_forwarder(f, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4863,7 +4863,7 @@ fn compile_and_execute_fip_unique_known_qualified_forwarder_call_exit_code() {
     let source_path = src_dir.join("main.kea");
     std::fs::write(
             &source_path,
-            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_forward_once(x: Unique Int) -> Unique Int\n  Main.forward_once(x)\n\nfn main() -> Int\n  0\n",
+            "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_forward_once(x: Unique Int) -> Unique Int\n  Main.forward_once(x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -4884,12 +4884,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_alias_chain_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_alias(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_alias(A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4911,12 +4911,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_alias_chain_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_alias, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_alias, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias(forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4939,12 +4939,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_function_ali
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = f\n  let y = x\n  g(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = f\n  let y = x\n  g(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_alias(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_alias(A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4967,12 +4967,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_function_ali
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = f\n  let y = x\n  g(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_forwarder_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = f\n  let y = x\n  g(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_forwarder_alias, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_forwarder_alias, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_alias(forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -4995,12 +4995,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_result_alias
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let z = y\n  let out0 = f(z)\n  let out1 = out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias_result(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let z = y\n  let out0 = f(z)\n  let out1 = out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_alias_result(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_alias_result(A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5023,12 +5023,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_result_alias
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let z = y\n  let out0 = f(z)\n  let out1 = out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias_result(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let z = y\n  let out0 = f(z)\n  let out1 = out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_alias_result, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_alias_result, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result(forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5051,12 +5051,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_result_if_al
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_result_if_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_result_if_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_result_if_alias(A.forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_result_if_alias(A.forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5079,12 +5079,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_result_alias
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_result_with_benign_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = if flag\n    1\n  else\n    2\n  let out1 = out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_result_with_benign_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = if flag\n    1\n  else\n    2\n  let out1 = out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_result_with_benign_let(A.forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_result_with_benign_let(A.forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5107,12 +5107,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_with_benign_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_with_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let y = x\n  let out = f(y)\n  out\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_with_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let y = x\n  let out = f(y)\n  out\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_with_prelude_setup(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_with_prelude_setup(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5135,12 +5135,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_result_if_al
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_result_if_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_result_if_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_result_if_alias, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_if_alias(forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_result_if_alias, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_if_alias(forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5163,12 +5163,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_result_alias
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_result_with_benign_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = if flag\n    1\n  else\n    2\n  let out1 = out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_result_with_benign_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = if flag\n    1\n  else\n    2\n  let out1 = out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_result_with_benign_let, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_with_benign_let(forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_result_with_benign_let, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_with_benign_let(forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5191,12 +5191,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_with_benign_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_with_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let y = x\n  let out = f(y)\n  out\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_with_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let y = x\n  let out = f(y)\n  out\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_with_prelude_setup, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_with_prelude_setup(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_with_prelude_setup, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_with_prelude_setup(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5220,12 +5220,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_with_if_sele
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_unique(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = if flag\n    x\n  else\n    x\n  f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_pick_unique(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = if flag\n    x\n  else\n    x\n  f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_pick_unique(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_pick_unique(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5249,12 +5249,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_with_if_sele
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_forwarder(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = if flag\n    f\n  else\n    f\n  g(x)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_pick_forwarder(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = if flag\n    f\n  else\n    f\n  g(x)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_pick_forwarder(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_pick_forwarder(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5278,12 +5278,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_with_if_sele
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_unique(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = if flag\n    x\n  else\n    x\n  f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_pick_unique(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = if flag\n    x\n  else\n    x\n  f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_pick_unique, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_pick_unique(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_pick_unique, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_pick_unique(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5307,12 +5307,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_with_if_sele
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_forwarder(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = if flag\n    f\n  else\n    f\n  g(x)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_pick_forwarder(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = if flag\n    f\n  else\n    f\n  g(x)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_pick_forwarder, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_pick_forwarder(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_pick_forwarder, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_pick_forwarder(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5334,12 +5334,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_combo_alias_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = 42\n  let g = if flag\n    f\n  else\n    f\n  let y = if flag\n    x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = 42\n  let g = if flag\n    f\n  else\n    f\n  let y = if flag\n    x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_plus(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_plus(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5360,12 +5360,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_combo_case_a
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_case(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_case(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_case(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_case(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5388,12 +5388,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_combo_case_w
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_case_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  let out2 = out1\n  out2\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_case_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  let out2 = out1\n  out2\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_case_plus(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_case_plus(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5416,12 +5416,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_combo_alias_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = 42\n  let g = if flag\n    f\n  else\n    f\n  let y = if flag\n    x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = 42\n  let g = if flag\n    f\n  else\n    f\n  let y = if flag\n    x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_combo_plus, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_plus(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_combo_plus, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_plus(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5442,12 +5442,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_combo_case_a
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_case(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_case(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_combo_case, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_combo_case, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5470,12 +5470,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_combo_case_w
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_case_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  let out2 = out1\n  out2\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo_case_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  let out2 = out1\n  out2\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_combo_case_plus, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case_plus(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_combo_case_plus, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case_plus(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5492,7 +5492,7 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_combo_case_w
 fn compile_and_execute_fip_unique_higher_order_forwarder_mixed_result_and_passthrough_if_exit_code()
 {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let out = if flag\n    let r0 = f(x)\n    let r1 = if inner\n      r0\n    else\n      r0\n    r1\n  else\n    let p0 = if inner\n      x\n    else\n      x\n    let p1 = p0\n    p1\n  let ret = out\n  ret\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_mixed(true, false, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let out = if flag\n    let r0 = f(x)\n    let r1 = if inner\n      r0\n    else\n      r0\n    r1\n  else\n    let p0 = if inner\n      x\n    else\n      x\n    let p1 = p0\n    p1\n  let ret = out\n  ret\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_mixed(true, false, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-mixed-result-passthrough-if",
         "kea",
     );
@@ -5516,12 +5516,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_mixed_result
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let out = if flag\n    let r0 = f(x)\n    let r1 = if inner\n      r0\n    else\n      r0\n    r1\n  else\n    let p0 = if inner\n      x\n    else\n      x\n    let p1 = p0\n    p1\n  let ret = out\n  ret\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let out = if flag\n    let r0 = f(x)\n    let r1 = if inner\n      r0\n    else\n      r0\n    r1\n  else\n    let p0 = if inner\n      x\n    else\n      x\n    let p1 = p0\n    p1\n  let ret = out\n  ret\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_mixed(true, false, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_mixed(true, false, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5544,12 +5544,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_mixed_result
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let out = if flag\n    let r0 = f(x)\n    let r1 = if inner\n      r0\n    else\n      r0\n    r1\n  else\n    let p0 = if inner\n      x\n    else\n      x\n    let p1 = p0\n    p1\n  let ret = out\n  ret\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let out = if flag\n    let r0 = f(x)\n    let r1 = if inner\n      r0\n    else\n      r0\n    r1\n  else\n    let p0 = if inner\n      x\n    else\n      x\n    let p1 = p0\n    p1\n  let ret = out\n  ret\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_mixed, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_mixed(true, false, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_mixed, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_mixed(true, false, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5571,12 +5571,12 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_combo_alias_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo(flag_f: Bool, flag_x: Bool, seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed2 = if seed > 0\n    seed\n  else\n    seed\n  let g = if flag_f\n    f\n  else\n    f\n  let y = if flag_x\n    x\n  else\n    x\n  let out0 = g(y)\n  let out1 = if flag_f\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo(flag_f: Bool, flag_x: Bool, seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed2 = if seed > 0\n    seed\n  else\n    seed\n  let g = if flag_f\n    f\n  else\n    f\n  let y = if flag_x\n    x\n  else\n    x\n  let out0 = g(y)\n  let out1 = if flag_f\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo(true, false, 42, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo(true, false, 42, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5598,12 +5598,12 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_combo_alias_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo(flag_f: Bool, flag_x: Bool, seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed2 = if seed > 0\n    seed\n  else\n    seed\n  let g = if flag_f\n    f\n  else\n    f\n  let y = if flag_x\n    x\n  else\n    x\n  let out0 = g(y)\n  let out1 = if flag_f\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_combo(flag_f: Bool, flag_x: Bool, seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed2 = if seed > 0\n    seed\n  else\n    seed\n  let g = if flag_f\n    f\n  else\n    f\n  let y = if flag_x\n    x\n  else\n    x\n  let out0 = g(y)\n  let out1 = if flag_f\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_combo, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo(true, false, 42, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_combo, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo(true, false, 42, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5624,17 +5624,17 @@ fn compile_and_execute_fip_unique_qualified_forwarder_with_ambiguous_short_names
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         src_dir.join("beta.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("beta module write should succeed");
     std::fs::write(
             &source_path,
-            "use Alpha\nuse Beta\n\n@fip\nfn call_forward_once(x: Unique Int) -> Unique Int\n  Alpha.forward_once(x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha\nuse Beta\n\n@fip\npub fn call_forward_once(x: Unique Int) -> Unique Int\n  Alpha.forward_once(x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -5655,12 +5655,12 @@ fn compile_and_execute_fip_unique_named_import_forwarder_call_exit_code() {
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
             &source_path,
-            "use Alpha.{forward_once}\n\n@fip\nfn call_forward_once(x: Unique Int) -> Unique Int\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha.{forward_once}\n\n@fip\npub fn call_forward_once(x: Unique Int) -> Unique Int\n  forward_once(x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -5680,12 +5680,12 @@ fn compile_and_execute_fip_unique_module_alias_forwarder_call_exit_code() {
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
             &source_path,
-            "use Alpha as A\n\n@fip\nfn call_forward_once(x: Unique Int) -> Unique Int\n  A.forward_once(x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha as A\n\n@fip\npub fn call_forward_once(x: Unique Int) -> Unique Int\n  A.forward_once(x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -5705,12 +5705,12 @@ fn compile_and_execute_fip_unique_module_alias_forwarder_call_ignores_local_oper
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
             &source_path,
-            "use Alpha as A\n\n@fip\nfn call_forward_once(x: Unique Int, forward_once: fn(Unique Int) -> Unique Int) -> Unique Int\n  A.forward_once(x)\n\nfn main() -> Int\n  0\n",
+            "use Alpha as A\n\n@fip\npub fn call_forward_once(x: Unique Int, forward_once: fn(Unique Int) -> Unique Int) -> Unique Int\n  A.forward_once(x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -5731,12 +5731,12 @@ fn compile_rejects_fip_unique_named_import_forwarder_let_shadow_escape() {
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\n@fip\nfn call_via_named_import_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  let forward_once = g\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\n@fip\npub fn call_via_named_import_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  let forward_once = g\n  forward_once(x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5764,12 +5764,12 @@ fn compile_rejects_fip_unique_named_import_forwarder_param_shadow_escape() {
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\n@fip\nfn call_via_named_import_param_shadow(x: Unique Int, forward_once: fn(Unique Int) -> Unique Int) -> Unique Int\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\n@fip\npub fn call_via_named_import_param_shadow(x: Unique Int, forward_once: fn(Unique Int) -> Unique Int) -> Unique Int\n  forward_once(x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5798,12 +5798,12 @@ fn compile_rejects_fip_unique_named_import_forwarder_case_pattern_shadow_escape(
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\n@fip\nfn call_via_named_import_case_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  case Some(g)\n    Some(forward_once) ->\n      forward_once(x)\n    None ->\n      x\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\n@fip\npub fn call_via_named_import_case_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  case Some(g)\n    Some(forward_once) ->\n      forward_once(x)\n    None ->\n      x\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5832,12 +5832,12 @@ fn compile_rejects_fip_unique_named_import_forwarder_lambda_shadow_escape() {
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\n@fip\nfn call_via_named_import_lambda_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  (|forward_once| forward_once(x))(g)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\n@fip\npub fn call_via_named_import_lambda_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  (|forward_once| forward_once(x))(g)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5865,12 +5865,12 @@ fn compile_rejects_fip_unique_named_import_forwarder_if_shadow_escape() {
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\n@fip\nfn call_via_named_import_if_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  if true\n    let forward_once = g\n    forward_once(x)\n  else\n    x\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\n@fip\npub fn call_via_named_import_if_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  if true\n    let forward_once = g\n    forward_once(x)\n  else\n    x\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5898,13 +5898,13 @@ fn compile_rejects_fip_unique_named_import_forwarder_pattern_shadow_escape() {
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\n@fip\nfn call_via_named_import_pattern_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  let (forward_once, y) = (g, x)\n  forward_once(y)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\n@fip\npub fn call_via_named_import_pattern_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  let (forward_once, y) = (g, x)\n  forward_once(y)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5931,13 +5931,13 @@ fn compile_rejects_fip_unique_named_import_forwarder_case_let_shadow_escape() {
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\n@fip\nfn call_via_named_import_case_let_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  case true\n    true ->\n      let forward_once = g\n      forward_once(x)\n    false ->\n      x\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\n@fip\npub fn call_via_named_import_case_let_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  case true\n    true ->\n      let forward_once = g\n      forward_once(x)\n    false ->\n      x\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5965,13 +5965,13 @@ fn compile_rejects_fip_unique_named_import_forwarder_handle_clause_shadow_escape
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\neffect Wrap C\n  fn op(v: C, forward_once: fn(C) -> C) -> C\n\n@fip\nfn call_via_named_import_handle_shadow(x: Unique Int) -> Unique Int\n  handle x\n    Wrap.op(v, forward_once) -> resume forward_once(v)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\neffect Wrap C\n  fn op(v: C, forward_once: fn(C) -> C) -> C\n\n@fip\npub fn call_via_named_import_handle_shadow(x: Unique Int) -> Unique Int\n  handle x\n    Wrap.op(v, forward_once) -> resume forward_once(v)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -5999,13 +5999,13 @@ fn compile_rejects_fip_unique_named_import_forwarder_then_shadow_escape() {
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\neffect Dummy\n  fn noop() -> Unit\n\n@fip\nfn call_via_named_import_then_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  handle g\n    Dummy.noop() -> resume ()\n    then forward_once -> forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\neffect Dummy\n  fn noop() -> Unit\n\n@fip\npub fn call_via_named_import_then_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  handle g\n    Dummy.noop() -> resume ()\n    then forward_once -> forward_once(x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6033,13 +6033,13 @@ fn compile_rejects_fip_unique_named_import_forwarder_with_shadow_escape() {
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\nfn with_forwarder(f: fn(Unique Int) -> Unique Int, @with k: fn(fn(Unique Int) -> Unique Int) -> Unique Int) -> Unique Int\n  k(f)\n\n@fip\nfn call_via_named_import_with_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  with forward_once <- with_forwarder(g)\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\npub fn with_forwarder(f: fn(Unique Int) -> Unique Int, @with k: fn(fn(Unique Int) -> Unique Int) -> Unique Int) -> Unique Int\n  k(f)\n\n@fip\npub fn call_via_named_import_with_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  with forward_once <- with_forwarder(g)\n  forward_once(x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6068,13 +6068,13 @@ fn compile_rejects_fip_unique_named_import_forwarder_handle_clause_no_shadow_wit
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\neffect Wrap C\n  fn op(v: C, cb: fn(C) -> C) -> C\n\n@fip\nfn call_via_named_import_handle_no_shadow(x: Unique Int) -> Unique Int\n  handle x\n    Wrap.op(v, cb) -> resume forward_once(v)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\neffect Wrap C\n  fn op(v: C, cb: fn(C) -> C) -> C\n\n@fip\npub fn call_via_named_import_handle_no_shadow(x: Unique Int) -> Unique Int\n  handle x\n    Wrap.op(v, cb) -> resume forward_once(v)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6102,13 +6102,13 @@ fn compile_rejects_fip_unique_named_import_forwarder_then_no_shadow_without_boun
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\neffect Dummy\n  fn noop() -> Unit\n\n@fip\nfn call_via_named_import_then_no_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  handle g\n    Dummy.noop() -> resume ()\n    then f -> forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\neffect Dummy\n  fn noop() -> Unit\n\n@fip\npub fn call_via_named_import_then_no_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  handle g\n    Dummy.noop() -> resume ()\n    then f -> forward_once(x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6136,13 +6136,13 @@ fn compile_rejects_fip_unique_named_import_forwarder_with_no_shadow_without_loca
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\nfn with_forwarder(f: fn(Unique Int) -> Unique Int, @with k: fn(fn(Unique Int) -> Unique Int) -> Unique Int) -> Unique Int\n  k(f)\n\n@fip\nfn call_via_named_import_with_no_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  with fwd <- with_forwarder(g)\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{forward_once}\n\npub fn with_forwarder(f: fn(Unique Int) -> Unique Int, @with k: fn(fn(Unique Int) -> Unique Int) -> Unique Int) -> Unique Int\n  k(f)\n\n@fip\npub fn call_via_named_import_with_no_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  with fwd <- with_forwarder(g)\n  forward_once(x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6175,13 +6175,13 @@ fn compile_and_execute_fip_unique_module_alias_forwarder_case_pattern_unshadowed
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\nenum Wrap a\n  Wrap(a)\n\n@fip\nfn call_via_module_alias_case_pattern_no_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(cb) ->\n      A.forward_once(x)\n\nfn main() -> Int\n  let w = Wrap(A.forward_once)\n  call_via_module_alias_case_pattern_no_shadow(7, w)\n",
+        "use Alpha as A\n\nenum Wrap a\n  Wrap(a)\n\n@fip\npub fn call_via_module_alias_case_pattern_no_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(cb) ->\n      A.forward_once(x)\n\npub fn main() -> Int\n  let w = Wrap(A.forward_once)\n  call_via_module_alias_case_pattern_no_shadow(7, w)\n",
     )
     .expect("source write should succeed");
 
@@ -6202,13 +6202,13 @@ fn compile_and_execute_fip_unique_named_import_forwarder_case_pattern_unshadowed
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
     )
     .expect("alpha module write should succeed");
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         &source_path,
-        "use Alpha.{forward_once}\n\nenum Wrap a\n  Wrap(a)\n\n@fip\nfn call_via_named_import_case_pattern_no_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(cb) ->\n      forward_once(x)\n\nfn main() -> Int\n  let w = Wrap(forward_once)\n  call_via_named_import_case_pattern_no_shadow(7, w)\n",
+        "use Alpha.{forward_once}\n\nenum Wrap a\n  Wrap(a)\n\n@fip\npub fn call_via_named_import_case_pattern_no_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(cb) ->\n      forward_once(x)\n\npub fn main() -> Int\n  let w = Wrap(forward_once)\n  call_via_named_import_case_pattern_no_shadow(7, w)\n",
     )
     .expect("source write should succeed");
 
@@ -6228,7 +6228,7 @@ fn compile_rejects_fip_unique_shadowed_forwarder_name_call_escape() {
     let source_path = src_dir.join("main.kea");
     std::fs::write(
             &source_path,
-            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_param(x: Unique Int, forward_once: fn(Unique Int) -> Unique Int) -> Unique Int\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+            "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_param(x: Unique Int, forward_once: fn(Unique Int) -> Unique Int) -> Unique Int\n  forward_once(x)\n\npub fn main() -> Int\n  0\n",
         )
         .expect("source write should succeed");
 
@@ -6251,7 +6251,7 @@ fn compile_rejects_fip_unique_shadowed_forwarder_name_call_escape() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_let_shadowed_forwarder_name_call_escape() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_let_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  let forward_once = g\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_let_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  let forward_once = g\n  forward_once(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-let-shadowed-forwarder-name",
         "kea",
     );
@@ -6275,7 +6275,7 @@ fn compile_rejects_fip_unique_let_shadowed_forwarder_name_call_escape() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_pattern_shadowed_forwarder_name_call_escape() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_pattern_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  let (forward_once, y) = (g, x)\n  forward_once(y)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_pattern_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  let (forward_once, y) = (g, x)\n  forward_once(y)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-pattern-shadowed-forwarder-name",
         "kea",
     );
@@ -6299,7 +6299,7 @@ fn compile_rejects_fip_unique_pattern_shadowed_forwarder_name_call_escape() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_lambda_shadowed_forwarder_name_call_escape() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_lambda_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  (|forward_once| forward_once(x))(g)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_lambda_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  (|forward_once| forward_once(x))(g)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-lambda-shadowed-forwarder-name",
         "kea",
     );
@@ -6323,7 +6323,7 @@ fn compile_rejects_fip_unique_lambda_shadowed_forwarder_name_call_escape() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_case_shadowed_forwarder_name_call_escape() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_case_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  case true\n    true ->\n      let forward_once = g\n      forward_once(x)\n    false ->\n      x\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_case_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  case true\n    true ->\n      let forward_once = g\n      forward_once(x)\n    false ->\n      x\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-case-shadowed-forwarder-name",
         "kea",
     );
@@ -6347,7 +6347,7 @@ fn compile_rejects_fip_unique_case_shadowed_forwarder_name_call_escape() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_if_shadowed_forwarder_name_call_escape() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_if_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  if true\n    let forward_once = g\n    forward_once(x)\n  else\n    x\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_if_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  if true\n    let forward_once = g\n    forward_once(x)\n  else\n    x\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-if-shadowed-forwarder-name",
         "kea",
     );
@@ -6371,7 +6371,7 @@ fn compile_rejects_fip_unique_if_shadowed_forwarder_name_call_escape() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_handle_clause_shadowed_forwarder_name_call_escape() {
     let source_path = write_temp_source(
-        "effect Wrap C\n  fn op(v: C, forward_once: fn(C) -> C) -> C\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_handle_clause_shadow(x: Unique Int) -> Unique Int\n  handle x\n    Wrap.op(v, forward_once) -> resume forward_once(v)\n\nfn main() -> Int\n  0\n",
+        "effect Wrap C\n  fn op(v: C, forward_once: fn(C) -> C) -> C\n\npub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_handle_clause_shadow(x: Unique Int) -> Unique Int\n  handle x\n    Wrap.op(v, forward_once) -> resume forward_once(v)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-handle-clause-shadowed-forwarder-name",
         "kea",
     );
@@ -6399,7 +6399,7 @@ fn compile_rejects_fip_unique_handle_clause_shadowed_forwarder_name_call_escape(
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_handle_clause_unshadowed_forwarder_without_boundary_escape() {
     let source_path = write_temp_source(
-        "effect Wrap C\n  fn op(v: C, cb: fn(C) -> C) -> C\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_handle_clause_no_shadow(x: Unique Int) -> Unique Int\n  handle x\n    Wrap.op(v, cb) -> resume forward_once(v)\n\nfn main() -> Int\n  0\n",
+        "effect Wrap C\n  fn op(v: C, cb: fn(C) -> C) -> C\n\npub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_handle_clause_no_shadow(x: Unique Int) -> Unique Int\n  handle x\n    Wrap.op(v, cb) -> resume forward_once(v)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-handle-clause-unshadowed-forwarder",
         "kea",
     );
@@ -6423,7 +6423,7 @@ fn compile_rejects_fip_unique_handle_clause_unshadowed_forwarder_without_boundar
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_then_lambda_shadowed_forwarder_name_call_escape() {
     let source_path = write_temp_source(
-        "effect Dummy\n  fn noop() -> Unit\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_then_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  handle g\n    Dummy.noop() -> resume ()\n    then forward_once -> forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "effect Dummy\n  fn noop() -> Unit\n\npub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_then_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  handle g\n    Dummy.noop() -> resume ()\n    then forward_once -> forward_once(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-then-shadowed-forwarder-name",
         "kea",
     );
@@ -6451,7 +6451,7 @@ fn compile_rejects_fip_unique_then_lambda_shadowed_forwarder_name_call_escape() 
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_then_lambda_unshadowed_forwarder_without_boundary_escape() {
     let source_path = write_temp_source(
-        "effect Dummy\n  fn noop() -> Unit\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_then_no_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  handle g\n    Dummy.noop() -> resume ()\n    then f -> forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "effect Dummy\n  fn noop() -> Unit\n\npub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_then_no_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  handle g\n    Dummy.noop() -> resume ()\n    then f -> forward_once(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-then-unshadowed-forwarder",
         "kea",
     );
@@ -6475,7 +6475,7 @@ fn compile_rejects_fip_unique_then_lambda_unshadowed_forwarder_without_boundary_
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_with_binding_shadowed_forwarder_name_call_escape() {
     let source_path = write_temp_source(
-        "fn with_forwarder(f: fn(Unique Int) -> Unique Int, @with k: fn(fn(Unique Int) -> Unique Int) -> Unique Int) -> Unique Int\n  k(f)\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_with_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  with forward_once <- with_forwarder(g)\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "pub fn with_forwarder(f: fn(Unique Int) -> Unique Int, @with k: fn(fn(Unique Int) -> Unique Int) -> Unique Int) -> Unique Int\n  k(f)\n\npub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_with_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  with forward_once <- with_forwarder(g)\n  forward_once(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-with-shadowed-forwarder-name",
         "kea",
     );
@@ -6503,7 +6503,7 @@ fn compile_rejects_fip_unique_with_binding_shadowed_forwarder_name_call_escape()
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_with_binding_unshadowed_forwarder_without_local_boundary_escape() {
     let source_path = write_temp_source(
-        "fn with_forwarder(f: fn(Unique Int) -> Unique Int, @with k: fn(fn(Unique Int) -> Unique Int) -> Unique Int) -> Unique Int\n  k(f)\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_with_no_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  with fwd <- with_forwarder(g)\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "pub fn with_forwarder(f: fn(Unique Int) -> Unique Int, @with k: fn(fn(Unique Int) -> Unique Int) -> Unique Int) -> Unique Int\n  k(f)\n\npub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_with_no_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  with fwd <- with_forwarder(g)\n  forward_once(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-with-unshadowed-forwarder",
         "kea",
     );
@@ -6531,7 +6531,7 @@ fn compile_rejects_fip_unique_with_binding_unshadowed_forwarder_without_local_bo
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_case_pattern_binder_shadowed_forwarder_name_call_escape() {
     let source_path = write_temp_source(
-        "enum Wrap a\n  Wrap(a)\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_case_pattern_binder_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(forward_once) ->\n      forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "enum Wrap a\n  Wrap(a)\n\npub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_case_pattern_binder_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(forward_once) ->\n      forward_once(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-case-pattern-binder-shadowed-forwarder-name",
         "kea",
     );
@@ -6559,7 +6559,7 @@ fn compile_rejects_fip_unique_case_pattern_binder_shadowed_forwarder_name_call_e
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_case_pattern_binder_unshadowed_forwarder_exit_code() {
     let source_path = write_temp_source(
-        "enum Wrap a\n  Wrap(a)\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_case_pattern_binder_no_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(cb) ->\n      forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "enum Wrap a\n  Wrap(a)\n\npub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\npub fn call_via_case_pattern_binder_no_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(cb) ->\n      forward_once(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-case-pattern-binder-unshadowed-forwarder",
         "kea",
     );
@@ -6576,7 +6576,7 @@ fn compile_and_execute_fip_unique_case_pattern_binder_unshadowed_forwarder_exit_
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_unique_handoff_missing() {
     let source_path = write_temp_source(
-        "@fip\nfn leak(x: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  0\n",
+        "@fip\npub fn leak(x: Unique Int) -> Int\n  1\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-missing-handoff",
         "kea",
     );
@@ -6599,7 +6599,7 @@ fn compile_rejects_fip_when_unique_handoff_missing() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_alias_chain_with_extra_call() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  forward_once(y)\n  f(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_with_extra_call(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  forward_once(y)\n  f(y)\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_with_extra_call(forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-alias-chain-extra-call",
         "kea",
     );
@@ -6630,12 +6630,12 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_alias_chain_with
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  forward_once(y)\n  f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  forward_once(y)\n  f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_alias_with_extra_call(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_alias_with_extra_call(A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6665,12 +6665,12 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_alias_chain_with
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  forward_once(y)\n  f(y)\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  forward_once(y)\n  f(y)\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_alias_with_extra_call, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_with_extra_call(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_alias_with_extra_call, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_with_extra_call(forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6693,7 +6693,7 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_alias_chain_with
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_result_alias_chain_with_extra_call() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let out = f(y)\n  forward_once(out)\n  out\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result_with_extra_call(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias_result_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let out = f(y)\n  forward_once(out)\n  out\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result_with_extra_call(forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-result-alias-chain-extra-call",
         "kea",
     );
@@ -6725,12 +6725,12 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_result_alias_cha
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let out = f(y)\n  forward_once(out)\n  out\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias_result_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let out = f(y)\n  forward_once(out)\n  out\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_alias_result_with_extra_call(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_alias_result_with_extra_call(A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6761,12 +6761,12 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_result_alias_cha
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let out = f(y)\n  forward_once(out)\n  out\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_alias_result_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let out = f(y)\n  forward_once(out)\n  out\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_alias_result_with_extra_call, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result_with_extra_call(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_alias_result_with_extra_call, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result_with_extra_call(forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6789,7 +6789,7 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_result_alias_cha
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_result_if_alias_with_callful_condition() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_result_if_alias_with_callful_condition(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if bool_id(flag)\n    out0\n  else\n    out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_if_alias_with_callful_condition(forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_result_if_alias_with_callful_condition(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if bool_id(flag)\n    out0\n  else\n    out0\n  out1\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_if_alias_with_callful_condition(forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-result-if-alias-callful-condition",
         "kea",
     );
@@ -6821,12 +6821,12 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_result_if_alias_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_result_if_alias_with_callful_condition(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if bool_id(flag)\n    out0\n  else\n    out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_result_if_alias_with_callful_condition(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if bool_id(flag)\n    out0\n  else\n    out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_result_if_alias_with_callful_condition(A.forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_result_if_alias_with_callful_condition(A.forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6857,12 +6857,12 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_result_if_alias_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_result_if_alias_with_callful_condition(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if bool_id(flag)\n    out0\n  else\n    out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_result_if_alias_with_callful_condition(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if bool_id(flag)\n    out0\n  else\n    out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_result_if_alias_with_callful_condition, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_if_alias_with_callful_condition(forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_result_if_alias_with_callful_condition, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_if_alias_with_callful_condition(forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6885,7 +6885,7 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_result_if_alias_
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_combo_mixed_with_callful_condition() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_mixed_with_callful_condition(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      if bool_id(inner)\n        f\n      else\n        f\n    false ->\n      f\n  let out = g(x)\n  out\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_mixed_with_callful_condition(true, false, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_combo_mixed_with_callful_condition(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      if bool_id(inner)\n        f\n      else\n        f\n    false ->\n      f\n  let out = g(x)\n  out\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_mixed_with_callful_condition(true, false, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-combo-mixed-callful-condition",
         "kea",
     );
@@ -6917,12 +6917,12 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_combo_mixed_with
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_mixed_with_callful_condition(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      if bool_id(inner)\n        f\n      else\n        f\n    false ->\n      f\n  let out = g(x)\n  out\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_combo_mixed_with_callful_condition(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      if bool_id(inner)\n        f\n      else\n        f\n    false ->\n      f\n  let out = g(x)\n  out\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_mixed_with_callful_condition(true, false, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_mixed_with_callful_condition(true, false, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6953,12 +6953,12 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_combo_mixed_with
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_mixed_with_callful_condition(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      if bool_id(inner)\n        f\n      else\n        f\n    false ->\n      f\n  let out = g(x)\n  out\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_combo_mixed_with_callful_condition(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      if bool_id(inner)\n        f\n      else\n        f\n    false ->\n      f\n  let out = g(x)\n  out\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_combo_mixed_with_callful_condition, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_mixed_with_callful_condition(true, false, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_combo_mixed_with_callful_condition, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_mixed_with_callful_condition(true, false, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -6981,7 +6981,7 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_combo_mixed_with
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_combo_case_with_callful_condition() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_case_with_callful_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case bool_id(flag)\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case bool_id(flag)\n    true ->\n      out0\n    false ->\n      out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case_with_callful_condition(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_combo_case_with_callful_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case bool_id(flag)\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case bool_id(flag)\n    true ->\n      out0\n    false ->\n      out0\n  out1\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case_with_callful_condition(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-combo-case-callful-condition",
         "kea",
     );
@@ -7013,12 +7013,12 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_combo_case_with_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_case_with_callful_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case bool_id(flag)\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case bool_id(flag)\n    true ->\n      out0\n    false ->\n      out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_combo_case_with_callful_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case bool_id(flag)\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case bool_id(flag)\n    true ->\n      out0\n    false ->\n      out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_case_with_callful_condition(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_case_with_callful_condition(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -7049,12 +7049,12 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_combo_case_with_
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_case_with_callful_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case bool_id(flag)\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case bool_id(flag)\n    true ->\n      out0\n    false ->\n      out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_combo_case_with_callful_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case bool_id(flag)\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case bool_id(flag)\n    true ->\n      out0\n    false ->\n      out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_combo_case_with_callful_condition, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case_with_callful_condition(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_combo_case_with_callful_condition, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case_with_callful_condition(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -7077,7 +7077,7 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_combo_case_with_
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_result_alias_with_callful_nonalias_let() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_result_with_callful_nonalias_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = bool_id(flag)\n  let out1 = out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_with_callful_nonalias_let(forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_result_with_callful_nonalias_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = bool_id(flag)\n  let out1 = out0\n  out1\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_with_callful_nonalias_let(forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-result-callful-nonalias-let",
         "kea",
     );
@@ -7109,12 +7109,12 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_result_alias_wit
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_result_with_callful_nonalias_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = bool_id(flag)\n  let out1 = out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_result_with_callful_nonalias_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = bool_id(flag)\n  let out1 = out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_result_with_callful_nonalias_let(A.forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_result_with_callful_nonalias_let(A.forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -7145,12 +7145,12 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_result_alias_wit
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_result_with_callful_nonalias_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = bool_id(flag)\n  let out1 = out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_result_with_callful_nonalias_let(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let keep = bool_id(flag)\n  let out1 = out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_result_with_callful_nonalias_let, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_with_callful_nonalias_let(forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_result_with_callful_nonalias_let, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_with_callful_nonalias_let(forward_once, x, true)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -7173,7 +7173,7 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_result_alias_wit
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_with_callful_prelude_let() {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_with_callful_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out = f(y)\n  out\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_with_callful_prelude_setup(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_with_callful_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out = f(y)\n  out\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_with_callful_prelude_setup(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-callful-prelude-let",
         "kea",
     );
@@ -7204,12 +7204,12 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_with_callful_pre
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_with_callful_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out = f(y)\n  out\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_with_callful_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out = f(y)\n  out\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_with_callful_prelude_setup(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_with_callful_prelude_setup(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -7239,12 +7239,12 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_with_callful_pre
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_with_callful_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out = f(y)\n  out\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_with_callful_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out = f(y)\n  out\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_with_callful_prelude_setup, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_with_callful_prelude_setup(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_with_callful_prelude_setup, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_with_callful_prelude_setup(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -7268,7 +7268,7 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_with_callful_pre
 fn compile_rejects_fip_unique_higher_order_forwarder_combo_alias_with_callful_prelude_and_result_if_condition(
 ) {
     let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_alias_with_callful_prelude_and_result_if_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out0 = f(y)\n  let out1 = if bool_id(seed)\n    out0\n  else\n    out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_alias_with_callful_prelude_and_result_if_condition(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_combo_alias_with_callful_prelude_and_result_if_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out0 = f(y)\n  let out1 = if bool_id(seed)\n    out0\n  else\n    out0\n  out1\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_alias_with_callful_prelude_and_result_if_condition(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-combo-callful-prelude-result-if",
         "kea",
     );
@@ -7300,12 +7300,12 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_combo_alias_with
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_alias_with_callful_prelude_and_result_if_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out0 = f(y)\n  let out1 = if bool_id(seed)\n    out0\n  else\n    out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_combo_alias_with_callful_prelude_and_result_if_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out0 = f(y)\n  let out1 = if bool_id(seed)\n    out0\n  else\n    out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_alias_with_callful_prelude_and_result_if_condition(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha as A\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo_alias_with_callful_prelude_and_result_if_condition(true, A.forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -7336,12 +7336,12 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_combo_alias_with
     let source_path = src_dir.join("main.kea");
     std::fs::write(
         src_dir.join("alpha.kea"),
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_combo_alias_with_callful_prelude_and_result_if_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out0 = f(y)\n  let out1 = if bool_id(seed)\n    out0\n  else\n    out0\n  out1\n",
+        "pub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn bool_id(flag: Bool) -> Bool\n  flag\n\npub fn apply_combo_alias_with_callful_prelude_and_result_if_condition(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out0 = f(y)\n  let out1 = if bool_id(seed)\n    out0\n  else\n    out0\n  out1\n",
     )
     .expect("alpha module write should succeed");
     std::fs::write(
         &source_path,
-        "use Alpha.{apply_combo_alias_with_callful_prelude_and_result_if_condition, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_alias_with_callful_prelude_and_result_if_condition(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "use Alpha.{apply_combo_alias_with_callful_prelude_and_result_if_condition, forward_once}\n\n@fip\npub fn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_alias_with_callful_prelude_and_result_if_condition(true, forward_once, x)\n\npub fn main() -> Int\n  0\n",
     )
     .expect("source write should succeed");
 
@@ -7364,7 +7364,7 @@ fn compile_rejects_fip_unique_higher_order_named_import_wrapper_combo_alias_with
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_branch_handoff_exit_code() {
     let source_path = write_temp_source(
-        "@fip\nfn dup_branch(x: Unique Int, pick_left: Bool) -> Unique Int\n  if pick_left\n    x\n  else\n    x\n\nfn main() -> Int\n  0\n",
+        "@fip\npub fn dup_branch(x: Unique Int, pick_left: Bool) -> Unique Int\n  if pick_left\n    x\n  else\n    x\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-branch-handoff",
         "kea",
     );
@@ -7380,7 +7380,7 @@ fn compile_and_execute_fip_unique_branch_handoff_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_unique_param_escapes_via_call() {
     let source_path = write_temp_source(
-        "@fip\nfn forward_via_call(x: Unique Int, f: fn(Unique Int) -> Int) -> Int\n  f(x)\n\nfn main() -> Int\n  0\n",
+        "@fip\npub fn forward_via_call(x: Unique Int, f: fn(Unique Int) -> Int) -> Int\n  f(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-call-escape",
         "kea",
     );
@@ -7403,7 +7403,7 @@ fn compile_rejects_fip_when_unique_param_escapes_via_call() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_unique_alias_escapes_via_call() {
     let source_path = write_temp_source(
-        "@fip\nfn alias_forward_via_call(x: Unique Int, f: fn(Unique Int) -> Int) -> Int\n  let y = x\n  f(y)\n\nfn main() -> Int\n  0\n",
+        "@fip\npub fn alias_forward_via_call(x: Unique Int, f: fn(Unique Int) -> Int) -> Int\n  let y = x\n  f(y)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unique-alias-call-escape",
         "kea",
     );
@@ -7426,7 +7426,7 @@ fn compile_rejects_fip_when_unique_alias_escapes_via_call() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_call_boundary_is_unproven() {
     let source_path = write_temp_source(
-        "struct Box\n  n: Int\n\nfn alloc_inner(x: Int) -> Int\n  let b = Box { n: x }\n  b.n\n\n@fip\nfn outer(x: Int) -> Int\n  alloc_inner(x)\n\nfn main() -> Int\n  0\n",
+        "struct Box\n  n: Int\n\npub fn alloc_inner(x: Int) -> Int\n  let b = Box { n: x }\n  b.n\n\n@fip\npub fn outer(x: Int) -> Int\n  alloc_inner(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unproven-call-boundary",
         "kea",
     );
@@ -7450,7 +7450,7 @@ fn compile_rejects_fip_when_call_boundary_is_unproven() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_function_body_contains_raw_hir_expr() {
     let source_path = write_temp_source(
-        "@fip\nfn raw_when_guard_passthrough(x: Unique Int) -> Unique Int\n  x when true\n\nfn main() -> Int\n  0\n",
+        "@fip\npub fn raw_when_guard_passthrough(x: Unique Int) -> Unique Int\n  x when true\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-raw-hir-body",
         "kea",
     );
@@ -7473,7 +7473,7 @@ fn compile_rejects_fip_when_function_body_contains_raw_hir_expr() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_candidate_safe_forwarder_allocates() {
     let source_path = write_temp_source(
-        "struct Box\n  n: Int\n\nfn alloc_and_return(x: Unique Int) -> Unique Int\n  let b = Box { n: 1 }\n  x\n\n@fip\nfn outer(x: Unique Int) -> Unique Int\n  alloc_and_return(x)\n\nfn main() -> Int\n  0\n",
+        "struct Box\n  n: Int\n\npub fn alloc_and_return(x: Unique Int) -> Unique Int\n  let b = Box { n: 1 }\n  x\n\n@fip\npub fn outer(x: Unique Int) -> Unique Int\n  alloc_and_return(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-candidate-forwarder-allocates",
         "kea",
     );
@@ -7497,7 +7497,7 @@ fn compile_rejects_fip_when_candidate_safe_forwarder_allocates() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_candidate_safe_forwarder_makes_unrelated_call() {
     let source_path = write_temp_source(
-        "fn helper() -> Int\n  1\n\nfn calls_then_returns(x: Unique Int) -> Unique Int\n  let t = helper()\n  x\n\n@fip\nfn outer(x: Unique Int) -> Unique Int\n  calls_then_returns(x)\n\nfn main() -> Int\n  0\n",
+        "pub fn helper() -> Int\n  1\n\npub fn calls_then_returns(x: Unique Int) -> Unique Int\n  let t = helper()\n  x\n\n@fip\npub fn outer(x: Unique Int) -> Unique Int\n  calls_then_returns(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-candidate-forwarder-calls-helper",
         "kea",
     );
@@ -7521,7 +7521,7 @@ fn compile_rejects_fip_when_candidate_safe_forwarder_makes_unrelated_call() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_candidate_higher_order_wrapper_allocates() {
     let source_path = write_temp_source(
-        "struct Box\n  n: Int\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_with_alloc(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let b = Box { n: 1 }\n  f(x)\n\n@fip\nfn outer(x: Unique Int) -> Unique Int\n  apply_with_alloc(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "struct Box\n  n: Int\n\npub fn forward_once(x: Unique Int) -> Unique Int\n  x\n\npub fn apply_with_alloc(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let b = Box { n: 1 }\n  f(x)\n\n@fip\npub fn outer(x: Unique Int) -> Unique Int\n  apply_with_alloc(forward_once, x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-candidate-ho-wrapper-allocates",
         "kea",
     );
@@ -7545,7 +7545,7 @@ fn compile_rejects_fip_when_candidate_higher_order_wrapper_allocates() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_call_boundary_is_unproven_reports_site_occurrences() {
     let source_path = write_temp_source(
-        "struct Box\n  n: Int\n\nfn alloc_inner(x: Int) -> Int\n  let b = Box { n: x }\n  b.n\n\n@fip\nfn outer(x: Int) -> Int\n  alloc_inner(x)\n  alloc_inner(x)\n\nfn main() -> Int\n  0\n",
+        "struct Box\n  n: Int\n\npub fn alloc_inner(x: Int) -> Int\n  let b = Box { n: x }\n  b.n\n\n@fip\npub fn outer(x: Int) -> Int\n  alloc_inner(x)\n  alloc_inner(x)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-unproven-call-boundary-occurrences",
         "kea",
     );
@@ -7569,7 +7569,7 @@ fn compile_rejects_fip_when_call_boundary_is_unproven_reports_site_occurrences()
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_allocations_remain() {
     let source_path = write_temp_source(
-        "enum Chain\n  End\n  Link(Int, Chain)\n\n@fip\nfn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n - 1))\n\nfn main() -> Int\n  0\n",
+        "enum Chain\n  End\n  Link(Int, Chain)\n\n@fip\npub fn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n - 1))\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-reject-allocating",
         "kea",
     );
@@ -7591,7 +7591,7 @@ fn compile_rejects_fip_when_allocations_remain() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_closure_alloc_remains() {
     let source_path = write_temp_source(
-        "@fip\nfn closure_alloc(delta: Int) -> Int\n  let add = |x| x + delta\n  add(1)\n\nfn main() -> Int\n  0\n",
+        "@fip\npub fn closure_alloc(delta: Int) -> Int\n  let add = |x| x + delta\n  add(1)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-fip-reject-closure-alloc",
         "kea",
     );
@@ -7614,7 +7614,7 @@ fn compile_rejects_fip_when_closure_alloc_remains() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_annotation_with_arguments() {
     let source_path = write_temp_source(
-        "@fip(\"strict\")\nfn id(x: Int) -> Int\n  x\n\nfn main() -> Int\n  id(1)\n",
+        "@fip(\"strict\")\npub fn id(x: Int) -> Int\n  x\n\npub fn main() -> Int\n  id(1)\n",
         "kea-cli-fip-args-invalid",
         "kea",
     );
@@ -7632,7 +7632,7 @@ fn compile_rejects_fip_annotation_with_arguments() {
 #[cfg(not(target_os = "windows"))]
 fn compile_accepts_unsafe_annotation_on_function() {
     let source_path = write_temp_source(
-        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\n@unsafe\nfn main() -> Int\n  raw_add_one(41)\n",
+        "@unsafe\npub fn raw_add_one(x: Int) -> Int\n  x + 1\n\n@unsafe\npub fn main() -> Int\n  raw_add_one(41)\n",
         "kea-cli-unsafe-annotation-function",
         "kea",
     );
@@ -7647,7 +7647,7 @@ fn compile_accepts_unsafe_annotation_on_function() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_calling_unsafe_function_from_safe_context() {
     let source_path = write_temp_source(
-        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  raw_add_one(1)\n",
+        "@unsafe\npub fn raw_add_one(x: Int) -> Int\n  x + 1\n\npub fn main() -> Int\n  raw_add_one(1)\n",
         "kea-cli-unsafe-call-safe-context",
         "kea",
     );
@@ -7670,7 +7670,7 @@ fn compile_rejects_calling_unsafe_function_from_safe_context() {
 #[cfg(not(target_os = "windows"))]
 fn compile_accepts_calling_unsafe_function_inside_unsafe_block() {
     let source_path = write_temp_source(
-        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  unsafe\n    raw_add_one(41)\n",
+        "@unsafe\npub fn raw_add_one(x: Int) -> Int\n  x + 1\n\npub fn main() -> Int\n  unsafe\n    raw_add_one(41)\n",
         "kea-cli-unsafe-block-safe-caller",
         "kea",
     );
@@ -7685,7 +7685,7 @@ fn compile_accepts_calling_unsafe_function_inside_unsafe_block() {
 #[cfg(not(target_os = "windows"))]
 fn compile_accepts_calling_unsafe_function_inside_inline_unsafe_expression() {
     let source_path = write_temp_source(
-        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  unsafe raw_add_one(41)\n",
+        "@unsafe\npub fn raw_add_one(x: Int) -> Int\n  x + 1\n\npub fn main() -> Int\n  unsafe raw_add_one(41)\n",
         "kea-cli-unsafe-inline-safe-caller",
         "kea",
     );
@@ -7706,11 +7706,11 @@ fn compile_rejects_calling_imported_unsafe_function_from_safe_context() {
 
     std::fs::write(
         src_dir.join("raw.kea"),
-        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n",
+        "@unsafe\npub fn raw_add_one(x: Int) -> Int\n  x + 1\n",
     )
     .expect("raw module write should succeed");
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "use Raw\nfn main() -> Int\n  Raw.raw_add_one(1)\n")
+    std::fs::write(&app_path, "use Raw\npub fn main() -> Int\n  Raw.raw_add_one(1)\n")
         .expect("app module write should succeed");
 
     let err = run_file(&app_path)
@@ -7732,11 +7732,11 @@ fn compile_rejects_calling_named_imported_unsafe_function_from_safe_context() {
 
     std::fs::write(
         src_dir.join("raw.kea"),
-        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n",
+        "@unsafe\npub fn raw_add_one(x: Int) -> Int\n  x + 1\n",
     )
     .expect("raw module write should succeed");
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "use Raw.{raw_add_one}\nfn main() -> Int\n  raw_add_one(1)\n")
+    std::fs::write(&app_path, "use Raw.{raw_add_one}\npub fn main() -> Int\n  raw_add_one(1)\n")
         .expect("app module write should succeed");
 
     let err = run_file(&app_path)
@@ -7758,13 +7758,13 @@ fn compile_accepts_calling_imported_unsafe_function_inside_unsafe_block() {
 
     std::fs::write(
         src_dir.join("raw.kea"),
-        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n",
+        "@unsafe\npub fn raw_add_one(x: Int) -> Int\n  x + 1\n",
     )
     .expect("raw module write should succeed");
     let app_path = src_dir.join("app.kea");
     std::fs::write(
         &app_path,
-        "use Raw\nfn main() -> Int\n  unsafe\n    Raw.raw_add_one(41)\n",
+        "use Raw\npub fn main() -> Int\n  unsafe\n    Raw.raw_add_one(41)\n",
     )
     .expect("app module write should succeed");
 
@@ -7779,7 +7779,7 @@ fn compile_accepts_calling_imported_unsafe_function_inside_unsafe_block() {
 #[cfg(not(target_os = "windows"))]
 fn compile_accepts_builtin_ptr_is_null_in_safe_context() {
     let source_path = write_temp_source(
-        "fn check(p: Ptr Int) -> Bool\n  Ptr.is_null(p)\n\nfn main() -> Int\n  0\n",
+        "pub fn check(p: Ptr Int) -> Bool\n  Ptr.is_null(p)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-ptr-is-null-safe",
         "kea",
     );
@@ -7794,7 +7794,7 @@ fn compile_accepts_builtin_ptr_is_null_in_safe_context() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_builtin_ptr_read_from_safe_context() {
     let source_path = write_temp_source(
-        "fn read_ptr(p: Ptr Int) -> Int\n  Ptr.read(p)\n\nfn main() -> Int\n  0\n",
+        "pub fn read_ptr(p: Ptr Int) -> Int\n  Ptr.read(p)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-ptr-read-safe-reject",
         "kea",
     );
@@ -7813,7 +7813,7 @@ fn compile_rejects_builtin_ptr_read_from_safe_context() {
 #[cfg(not(target_os = "windows"))]
 fn compile_accepts_builtin_ptr_read_inside_inline_unsafe_expression() {
     let source_path = write_temp_source(
-        "fn read_ptr(p: Ptr Int) -> Int\n  unsafe Ptr.read(p)\n\nfn main() -> Int\n  0\n",
+        "pub fn read_ptr(p: Ptr Int) -> Int\n  unsafe Ptr.read(p)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-ptr-read-unsafe-inline",
         "kea",
     );
@@ -7828,7 +7828,7 @@ fn compile_accepts_builtin_ptr_read_inside_inline_unsafe_expression() {
 #[cfg(not(target_os = "windows"))]
 fn compile_accepts_builtin_ptr_null_inside_inline_unsafe_expression() {
     let source_path = write_temp_source(
-        "fn null_ptr() -> Ptr Int\n  unsafe Ptr.null()\n\nfn main() -> Int\n  0\n",
+        "pub fn null_ptr() -> Ptr Int\n  unsafe Ptr.null()\n\npub fn main() -> Int\n  0\n",
         "kea-cli-ptr-null-unsafe-inline",
         "kea",
     );
@@ -7843,7 +7843,7 @@ fn compile_accepts_builtin_ptr_null_inside_inline_unsafe_expression() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_builtin_ptr_alloc_from_safe_context() {
     let source_path = write_temp_source(
-        "fn alloc_ptr() -> Ptr Int\n  Ptr.alloc(1)\n\nfn main() -> Int\n  0\n",
+        "pub fn alloc_ptr() -> Ptr Int\n  Ptr.alloc(1)\n\npub fn main() -> Int\n  0\n",
         "kea-cli-ptr-alloc-safe-reject",
         "kea",
     );
@@ -7862,7 +7862,7 @@ fn compile_rejects_builtin_ptr_alloc_from_safe_context() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_builtin_ptr_alloc_read_write_free_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(1)\n    Ptr.write(p, 42)\n    let value = Ptr.read(p)\n    Ptr.free(p)\n    value\n",
+        "pub fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(1)\n    Ptr.write(p, 42)\n    let value = Ptr.read(p)\n    Ptr.free(p)\n    value\n",
         "kea-cli-ptr-alloc-read-write-free",
         "kea",
     );
@@ -7877,7 +7877,7 @@ fn compile_and_execute_builtin_ptr_alloc_read_write_free_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_builtin_ptr_offset_second_slot_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(2)\n    Ptr.write(p, 10)\n    let p1 = Ptr.offset(p, 1)\n    Ptr.write(p1, 20)\n    let total = Ptr.read(p) + Ptr.read(p1)\n    Ptr.free(p)\n    total\n",
+        "pub fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(2)\n    Ptr.write(p, 10)\n    let p1 = Ptr.offset(p, 1)\n    Ptr.write(p1, 20)\n    let total = Ptr.read(p) + Ptr.read(p1)\n    Ptr.free(p)\n    total\n",
         "kea-cli-ptr-offset-slot",
         "kea",
     );
@@ -7892,7 +7892,7 @@ fn compile_and_execute_builtin_ptr_offset_second_slot_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_builtin_ptr_cast_round_trip_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(1)\n    let q: Ptr Int = Ptr.cast(p)\n    Ptr.write(q, 7)\n    let value = Ptr.read(q)\n    Ptr.free(q)\n    value\n",
+        "pub fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(1)\n    let q: Ptr Int = Ptr.cast(p)\n    Ptr.write(q, 7)\n    let value = Ptr.read(q)\n    Ptr.free(q)\n    value\n",
         "kea-cli-ptr-cast-round-trip",
         "kea",
     );
@@ -7907,7 +7907,7 @@ fn compile_and_execute_builtin_ptr_cast_round_trip_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_unsafe_annotation_with_arguments() {
     let source_path = write_temp_source(
-        "@unsafe(\"strict\")\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  raw_add_one(1)\n",
+        "@unsafe(\"strict\")\npub fn raw_add_one(x: Int) -> Int\n  x + 1\n\npub fn main() -> Int\n  raw_add_one(1)\n",
         "kea-cli-unsafe-annotation-args",
         "kea",
     );
@@ -7926,7 +7926,7 @@ fn compile_rejects_unsafe_annotation_with_arguments() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_unsafe_annotation_on_record_declaration() {
     let source_path = write_temp_source(
-        "@unsafe\nstruct Box\n  value: Int\n\nfn main() -> Int\n  0\n",
+        "@unsafe\nstruct Box\n  value: Int\n\npub fn main() -> Int\n  0\n",
         "kea-cli-unsafe-annotation-record",
         "kea",
     );
@@ -7945,7 +7945,7 @@ fn compile_rejects_unsafe_annotation_on_record_declaration() {
 #[cfg(not(target_os = "windows"))]
 fn compile_accepts_unboxed_annotation_on_struct() {
     let source_path = write_temp_source(
-        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\nfn main() -> Int\n  let p = Pair { left: 20, right: 22 }\n  p.left + p.right\n",
+        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\npub fn main() -> Int\n  let p = Pair { left: 20, right: 22 }\n  p.left + p.right\n",
         "kea-cli-unboxed-struct-accept",
         "kea",
     );
@@ -7960,7 +7960,7 @@ fn compile_accepts_unboxed_annotation_on_struct() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_unboxed_annotation_with_arguments() {
     let source_path = write_temp_source(
-        "@unboxed(\"flat\")\nstruct Pair\n  left: Int\n  right: Int\n\nfn main() -> Int\n  0\n",
+        "@unboxed(\"flat\")\nstruct Pair\n  left: Int\n  right: Int\n\npub fn main() -> Int\n  0\n",
         "kea-cli-unboxed-annotation-args",
         "kea",
     );
@@ -7978,7 +7978,7 @@ fn compile_rejects_unboxed_annotation_with_arguments() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_unboxed_annotation_on_function() {
     let source_path = write_temp_source(
-        "@unboxed\nfn bad(x: Int) -> Int\n  x\n\nfn main() -> Int\n  bad(1)\n",
+        "@unboxed\npub fn bad(x: Int) -> Int\n  x\n\npub fn main() -> Int\n  bad(1)\n",
         "kea-cli-unboxed-annotation-function",
         "kea",
     );
@@ -7997,7 +7997,7 @@ fn compile_rejects_unboxed_annotation_on_function() {
 #[cfg(not(target_os = "windows"))]
 fn compile_rejects_unboxed_struct_with_heap_field() {
     let source_path = write_temp_source(
-        "@unboxed\nstruct Bad\n  name: String\n\nfn main() -> Int\n  0\n",
+        "@unboxed\nstruct Bad\n  name: String\n\npub fn main() -> Int\n  0\n",
         "kea-cli-unboxed-heap-field-reject",
         "kea",
     );
@@ -8014,7 +8014,7 @@ fn compile_rejects_unboxed_struct_with_heap_field() {
 #[test]
 fn compile_unboxed_local_record_elides_heap_alloc_in_stats() {
     let source_path = write_temp_source(
-        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\nfn main() -> Int\n  let p = Pair { left: 20, right: 22 }\n  p.left + p.right\n",
+        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\npub fn main() -> Int\n  let p = Pair { left: 20, right: 22 }\n  p.left + p.right\n",
         "kea-cli-unboxed-local-no-alloc-stats",
         "kea",
     );
@@ -8060,7 +8060,7 @@ fn compile_unboxed_local_record_elides_heap_alloc_in_stats() {
 #[test]
 fn compile_unboxed_local_record_move_alias_elides_heap_alloc_in_stats() {
     let source_path = write_temp_source(
-        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\nfn main() -> Int\n  let p0 = Pair { left: 20, right: 22 }\n  let p1 = p0\n  p1.left + p1.right\n",
+        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\npub fn main() -> Int\n  let p0 = Pair { left: 20, right: 22 }\n  let p1 = p0\n  p1.left + p1.right\n",
         "kea-cli-unboxed-local-alias-no-alloc-stats",
         "kea",
     );
@@ -8106,7 +8106,7 @@ fn compile_unboxed_local_record_move_alias_elides_heap_alloc_in_stats() {
 #[test]
 fn compile_unboxed_local_record_if_join_elides_heap_alloc_in_stats() {
     let source_path = write_temp_source(
-        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\nfn main() -> Int\n  let p = Pair { left: 20, right: 22 }\n  let q = if p.left == 20\n    p\n  else\n    p\n  q.left + q.right\n",
+        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\npub fn main() -> Int\n  let p = Pair { left: 20, right: 22 }\n  let q = if p.left == 20\n    p\n  else\n    p\n  q.left + q.right\n",
         "kea-cli-unboxed-local-if-join-no-alloc-stats",
         "kea",
     );
@@ -8152,7 +8152,7 @@ fn compile_unboxed_local_record_if_join_elides_heap_alloc_in_stats() {
 #[test]
 fn compile_local_payload_sum_case_elides_heap_alloc_in_stats() {
     let source_path = write_temp_source(
-        "enum Pairish\n  Pair(Int, Int)\n  Swap(Int, Int)\n\nfn main() -> Int\n  let p = Pairish.Pair(20, 22)\n  case p\n    Pairish.Pair(a, b) -> a + b\n    Pairish.Swap(a, b) -> a + b\n",
+        "enum Pairish\n  Pair(Int, Int)\n  Swap(Int, Int)\n\npub fn main() -> Int\n  let p = Pairish.Pair(20, 22)\n  case p\n    Pairish.Pair(a, b) -> a + b\n    Pairish.Swap(a, b) -> a + b\n",
         "kea-cli-payload-sum-local-no-alloc-stats",
         "kea",
     );
@@ -8198,7 +8198,7 @@ fn compile_local_payload_sum_case_elides_heap_alloc_in_stats() {
 #[test]
 fn compile_local_payload_sum_if_join_elides_heap_alloc_in_stats() {
     let source_path = write_temp_source(
-        "enum Pairish\n  Pair(Int, Int)\n  Swap(Int, Int)\n\nfn main() -> Int\n  let p = Pairish.Pair(20, 22)\n  let q = if 1 == 1\n    p\n  else\n    p\n  case q\n    Pairish.Pair(a, b) -> a + b\n    Pairish.Swap(a, b) -> a + b\n",
+        "enum Pairish\n  Pair(Int, Int)\n  Swap(Int, Int)\n\npub fn main() -> Int\n  let p = Pairish.Pair(20, 22)\n  let q = if 1 == 1\n    p\n  else\n    p\n  case q\n    Pairish.Pair(a, b) -> a + b\n    Pairish.Swap(a, b) -> a + b\n",
         "kea-cli-payload-sum-if-join-no-alloc-stats",
         "kea",
     );
@@ -8244,7 +8244,7 @@ fn compile_local_payload_sum_if_join_elides_heap_alloc_in_stats() {
 #[test]
 fn compile_local_payload_sum_if_join_call_escape_counts_alloc_in_stats() {
     let source_path = write_temp_source(
-        "enum Pairish\n  Pair(Int, Int)\n  Swap(Int, Int)\n\nfn sink(p: Pairish) -> Int\n  case p\n    Pairish.Pair(a, b) -> a + b\n    Pairish.Swap(a, b) -> a + b\n\nfn main() -> Int\n  let p = Pairish.Pair(20, 22)\n  let q = if 1 == 1\n    p\n  else\n    p\n  sink(q)\n",
+        "enum Pairish\n  Pair(Int, Int)\n  Swap(Int, Int)\n\npub fn sink(p: Pairish) -> Int\n  case p\n    Pairish.Pair(a, b) -> a + b\n    Pairish.Swap(a, b) -> a + b\n\npub fn main() -> Int\n  let p = Pairish.Pair(20, 22)\n  let q = if 1 == 1\n    p\n  else\n    p\n  sink(q)\n",
         "kea-cli-payload-sum-if-join-call-escape-stats",
         "kea",
     );
@@ -8277,7 +8277,7 @@ fn compile_local_payload_sum_if_join_call_escape_counts_alloc_in_stats() {
 #[test]
 fn compile_local_mixed_sum_kernel_elides_alloc_and_release_in_stats() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case Some(20)\n    Some(v) -> v\n    None -> 0\n",
+        "pub fn main() -> Int\n  case Some(20)\n    Some(v) -> v\n    None -> 0\n",
         "kea-cli-mixed-sum-direct-case-stats",
         "kea",
     );
@@ -8325,7 +8325,7 @@ fn compile_local_mixed_sum_kernel_elides_alloc_and_release_in_stats() {
 #[test]
 fn compile_mixed_sum_if_join_kernel_elides_alloc_and_release_in_stats() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let opt = if 1 == 1\n    Some(20)\n  else\n    None\n  case opt\n    Some(v) -> v\n    None -> 0\n",
+        "pub fn main() -> Int\n  let opt = if 1 == 1\n    Some(20)\n  else\n    None\n  case opt\n    Some(v) -> v\n    None -> 0\n",
         "kea-cli-mixed-sum-if-join-stats",
         "kea",
     );
@@ -8364,7 +8364,7 @@ fn compile_mixed_sum_if_join_kernel_elides_alloc_and_release_in_stats() {
 #[test]
 fn compile_value_only_record_if_join_reduces_consume_alloc_in_stats() {
     let source_path = write_temp_source(
-        "struct Point\n  x: Int\n\nfn consume(flag: Bool, p: Point) -> Unit\n  let q = if flag\n    p\n  else\n    Point { x: 1 }\n  let out = Point { x: q.x + 1 }\n  ()\n\nfn main() -> Int\n  consume(true, Point { x: 0 })\n  consume(false, Point { x: 0 })\n  0\n",
+        "struct Point\n  x: Int\n\npub fn consume(flag: Bool, p: Point) -> Unit\n  let q = if flag\n    p\n  else\n    Point { x: 1 }\n  let out = Point { x: q.x + 1 }\n  ()\n\npub fn main() -> Int\n  consume(true, Point { x: 0 })\n  consume(false, Point { x: 0 })\n  0\n",
         "kea-cli-value-only-record-if-join-reuse-stats",
         "kea",
     );
@@ -8408,7 +8408,7 @@ fn compile_value_only_record_if_join_reduces_consume_alloc_in_stats() {
 #[test]
 fn compile_loop_mixed_unit_walk_keeps_record_alloc_floor_in_stats() {
     let source_path = write_temp_source(
-        "struct Point\n  x: Int\n\nfn walk(n: Int, p: Point) -> Unit\n  let cur = if n % 2 == 0\n    p\n  else\n    Point { x: p.x + 1 }\n  if n <= 0\n    ()\n  else\n    walk(n - 1, cur)\n\nfn main() -> Int\n  walk(64, Point { x: 0 })\n  0\n",
+        "struct Point\n  x: Int\n\npub fn walk(n: Int, p: Point) -> Unit\n  let cur = if n % 2 == 0\n    p\n  else\n    Point { x: p.x + 1 }\n  if n <= 0\n    ()\n  else\n    walk(n - 1, cur)\n\npub fn main() -> Int\n  walk(64, Point { x: 0 })\n  0\n",
         "kea-cli-loop-mixed-unit-walk-stats",
         "kea",
     );
@@ -8465,7 +8465,7 @@ fn compile_loop_mixed_unit_walk_keeps_record_alloc_floor_in_stats() {
 #[test]
 fn compile_unboxed_struct_emits_no_retain_release_in_stats() {
     let source_path = write_temp_source(
-        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\nfn mk(n: Int) -> Pair\n  Pair { left: n, right: n + 1 }\n\nfn main() -> Int\n  let p0 = mk(20)\n  let p1 = p0\n  p1.left + p1.right\n",
+        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\npub fn mk(n: Int) -> Pair\n  Pair { left: n, right: n + 1 }\n\npub fn main() -> Int\n  let p0 = mk(20)\n  let p1 = p0\n  p1.left + p1.right\n",
         "kea-cli-unboxed-stats",
         "kea",
     );
@@ -8502,7 +8502,7 @@ fn compile_unboxed_struct_emits_no_retain_release_in_stats() {
 #[cfg(not(target_os = "windows"))]
 fn compile_build_and_execute_aot_ptr_alloc_read_write_free_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(1)\n    Ptr.write(p, 42)\n    let value = Ptr.read(p)\n    Ptr.free(p)\n    value\n",
+        "pub fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(1)\n    Ptr.write(p, 42)\n    let value = Ptr.read(p)\n    Ptr.free(p)\n    value\n",
         "kea-cli-aot-ptr-alloc-read-write-free",
         "kea",
     );
@@ -8524,7 +8524,7 @@ fn compile_build_and_execute_aot_ptr_alloc_read_write_free_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_build_and_execute_aot_payload_constructor_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",
+        "enum Flag\n  Yep(Int)\n  Nope\n\npub fn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",
         "kea-cli-aot-sum-case",
         "kea",
     );
@@ -8546,7 +8546,7 @@ fn compile_build_and_execute_aot_payload_constructor_case_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_build_and_execute_aot_mutually_recursive_struct_enum_exit_code() {
     let source_path = write_temp_source(
-        "struct MatchArm\n  body: HirExpr\n  tag: Int\n\nenum HirExpr\n  Lit(Int)\n  Match(HirExpr, MatchArm)\n\nfn depth(e: HirExpr) -> Int\n  case e\n    Lit(_) -> 0\n    Match(inner, _) -> 1 + depth(inner)\n\nfn main() -> Int\n  let arm = MatchArm { body: Lit(1), tag: 0 }\n  depth(Match(Lit(5), arm))\n",
+        "struct MatchArm\n  body: HirExpr\n  tag: Int\n\nenum HirExpr\n  Lit(Int)\n  Match(HirExpr, MatchArm)\n\npub fn depth(e: HirExpr) -> Int\n  case e\n    Lit(_) -> 0\n    Match(inner, _) -> 1 + depth(inner)\n\npub fn main() -> Int\n  let arm = MatchArm { body: Lit(1), tag: 0 }\n  depth(Match(Lit(5), arm))\n",
         "kea-cli-aot-mutual-recursive-type-defs",
         "kea",
     );
@@ -8568,7 +8568,7 @@ fn compile_build_and_execute_aot_mutually_recursive_struct_enum_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_build_and_execute_aot_io_stdout_unit_main_exit_code() {
     let source_path = write_temp_source(
-        "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"hello aot\")\n",
+        "effect IO\n  fn stdout(msg: String) -> Unit\n\npub fn main() -[IO]> Unit\n  IO.stdout(\"hello aot\")\n",
         "kea-cli-aot-io-stdout",
         "kea",
     );
@@ -8595,7 +8595,7 @@ fn compile_build_and_execute_aot_io_stdout_unit_main_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_build_and_execute_aot_io_stdout_concat_exit_code() {
     let source_path = write_temp_source(
-        "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"hello \" ++ \"aot\")\n",
+        "effect IO\n  fn stdout(msg: String) -> Unit\n\npub fn main() -[IO]> Unit\n  IO.stdout(\"hello \" ++ \"aot\")\n",
         "kea-cli-aot-io-stdout-concat",
         "kea",
     );
@@ -8622,7 +8622,7 @@ fn compile_build_and_execute_aot_io_stdout_concat_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_build_and_execute_aot_io_stderr_unit_main_exit_code() {
     let source_path = write_temp_source(
-        "effect IO\n  fn stderr(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stderr(\"hello aot err\")\n",
+        "effect IO\n  fn stderr(msg: String) -> Unit\n\npub fn main() -[IO]> Unit\n  IO.stderr(\"hello aot err\")\n",
         "kea-cli-aot-io-stderr",
         "kea",
     );
@@ -8660,7 +8660,7 @@ fn compile_build_and_execute_aot_io_read_write_file_exit_code() {
     let io_missing_literal = io_missing_path.to_string_lossy().replace('\\', "\\\\");
     let source_path = write_temp_source(
         &format!(
-            "effect IO\n  fn write_file(path: String, data: String) -> Unit\n  fn read_file(path: String) -> String\n\nfn main() -[IO]> Int\n  IO.write_file(\"{io_file_literal}\", \"hello-aot\")\n  let msg = IO.read_file(\"{io_file_literal}\")\n  let missing = IO.read_file(\"{io_missing_literal}\")\n  if msg != missing\n    1\n  else\n    0\n"
+            "effect IO\n  fn write_file(path: String, data: String) -> Unit\n  fn read_file(path: String) -> String\n\npub fn main() -[IO]> Int\n  IO.write_file(\"{io_file_literal}\", \"hello-aot\")\n  let msg = IO.read_file(\"{io_file_literal}\")\n  let missing = IO.read_file(\"{io_missing_literal}\")\n  if msg != missing\n    1\n  else\n    0\n"
         ),
         "kea-cli-aot-io-read-write",
         "kea",
@@ -8684,24 +8684,24 @@ fn compile_build_and_execute_aot_io_read_write_file_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_jit_and_aot_exit_code_parity_corpus() {
     let cases = [
-        ("fn main() -> Int\n  let x = 40\n  x + 2\n", 42),
+        ("pub fn main() -> Int\n  let x = 40\n  x + 2\n", 42),
         (
-            "struct User\n  age: Int\n\nfn main() -> Int\n  let u = User { age: 41 }\n  u.age + 1\n",
+            "struct User\n  age: Int\n\npub fn main() -> Int\n  let u = User { age: 41 }\n  u.age + 1\n",
             42,
         ),
         (
-            "enum Maybe a\n  Just(a)\n  Nothing\n\nfn main() -> Int\n  case Just(41)\n    Just(n) -> n + 1\n    Nothing -> 0\n",
+            "enum Maybe a\n  Just(a)\n  Nothing\n\npub fn main() -> Int\n  case Just(41)\n    Just(n) -> n + 1\n    Nothing -> 0\n",
             42,
         ),
         (
-            "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn main() -> Int\n  apply(|x| x + 1, 41)\n",
+            "pub fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\npub fn main() -> Int\n  apply(|x| x + 1, 41)\n",
             42,
         ),
         (
-            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn f() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn f() -[Fail Int]> Int\n  fail 7\n\npub fn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
             7,
         ),
-        ("fn main() -> Int\n  5.shift_left(3) + 2\n", 42),
+        ("pub fn main() -> Int\n  5.shift_left(3) + 2\n", 42),
     ];
 
     for (idx, (source, expected_exit)) in cases.iter().enumerate() {
@@ -8737,7 +8737,7 @@ fn compile_jit_and_aot_exit_code_parity_corpus() {
 #[test]
 fn compile_and_execute_bitwise_and_method_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  42.bit_and(15)\n",
+        "pub fn main() -> Int\n  42.bit_and(15)\n",
         "kea-cli-bitwise-and",
         "kea",
     );
@@ -8751,7 +8751,7 @@ fn compile_and_execute_bitwise_and_method_exit_code() {
 #[test]
 fn compile_and_execute_prefixed_integer_literals_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  0x2A + 0b1010 + 0o10\n",
+        "pub fn main() -> Int\n  0x2A + 0b1010 + 0o10\n",
         "kea-cli-prefixed-int-literals",
         "kea",
     );
@@ -8765,7 +8765,7 @@ fn compile_and_execute_prefixed_integer_literals_exit_code() {
 #[test]
 fn compile_and_execute_underscored_numeric_literals_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  1_000_000 + 0x10\n",
+        "pub fn main() -> Int\n  1_000_000 + 0x10\n",
         "kea-cli-underscored-numeric-literals",
         "kea",
     );
@@ -8779,7 +8779,7 @@ fn compile_and_execute_underscored_numeric_literals_exit_code() {
 #[test]
 fn compile_and_execute_mixed_width_signed_arithmetic_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let a: Int8 = 12\n  let b: Int16 = 30\n  a + b\n",
+        "pub fn main() -> Int\n  let a: Int8 = 12\n  let b: Int16 = 30\n  a + b\n",
         "kea-cli-mixed-width-signed-arithmetic",
         "kea",
     );
@@ -8793,7 +8793,7 @@ fn compile_and_execute_mixed_width_signed_arithmetic_exit_code() {
 #[test]
 fn compile_and_execute_mixed_width_unsigned_arithmetic_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let a: UInt8 = 10\n  let b: UInt16 = 7\n  a + b\n",
+        "pub fn main() -> Int\n  let a: UInt8 = 10\n  let b: UInt16 = 7\n  a + b\n",
         "kea-cli-mixed-width-unsigned-arithmetic",
         "kea",
     );
@@ -8807,7 +8807,7 @@ fn compile_and_execute_mixed_width_unsigned_arithmetic_exit_code() {
 #[test]
 fn compile_and_execute_mixed_width_signed_unsigned_arithmetic_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let a: Int8 = -5\n  let b: UInt8 = 10\n  a + b\n",
+        "pub fn main() -> Int\n  let a: Int8 = -5\n  let b: UInt8 = 10\n  a + b\n",
         "kea-cli-mixed-width-signed-unsigned-arithmetic",
         "kea",
     );
@@ -8820,7 +8820,7 @@ fn compile_and_execute_mixed_width_signed_unsigned_arithmetic_exit_code() {
 
 #[test]
 fn compile_and_execute_int8_main_exit_code() {
-    let source_path = write_temp_source("fn main() -> Int8\n  42\n", "kea-cli-int8-main", "kea");
+    let source_path = write_temp_source("pub fn main() -> Int8\n  42\n", "kea-cli-int8-main", "kea");
 
     let run = run_file(&source_path).expect("Int8 main run should succeed");
     assert_eq!(run.exit_code, 42);
@@ -8831,7 +8831,7 @@ fn compile_and_execute_int8_main_exit_code() {
 #[test]
 fn compile_and_execute_uint16_main_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> UInt16\n  let x: UInt16 = 500\n  x\n",
+        "pub fn main() -> UInt16\n  let x: UInt16 = 500\n  x\n",
         "kea-cli-uint16-main",
         "kea",
     );
@@ -8845,7 +8845,7 @@ fn compile_and_execute_uint16_main_exit_code() {
 #[test]
 fn compile_and_execute_int8_call_arg_coercion_exit_code() {
     let source_path = write_temp_source(
-        "fn id(x: Int8) -> Int8\n  x\n\nfn main() -> Int8\n  id(42)\n",
+        "pub fn id(x: Int8) -> Int8\n  x\n\npub fn main() -> Int8\n  id(42)\n",
         "kea-cli-int8-call-arg",
         "kea",
     );
@@ -8859,7 +8859,7 @@ fn compile_and_execute_int8_call_arg_coercion_exit_code() {
 #[test]
 fn compile_and_execute_int8_try_from_some_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case Int8.try_from(42)\n    Some(v) -> v + 0\n    None -> 0\n",
+        "pub fn main() -> Int\n  case Int8.try_from(42)\n    Some(v) -> v + 0\n    None -> 0\n",
         "kea-cli-int8-try-from-some",
         "kea",
     );
@@ -8873,7 +8873,7 @@ fn compile_and_execute_int8_try_from_some_exit_code() {
 #[test]
 fn compile_and_execute_int8_try_from_fixed_width_input_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let x: Int8 = 42\n  case Int8.try_from(x)\n    Some(v) -> v + 0\n    None -> 0\n",
+        "pub fn main() -> Int\n  let x: Int8 = 42\n  case Int8.try_from(x)\n    Some(v) -> v + 0\n    None -> 0\n",
         "kea-cli-int8-try-from-int8-input",
         "kea",
     );
@@ -8887,7 +8887,7 @@ fn compile_and_execute_int8_try_from_fixed_width_input_exit_code() {
 #[test]
 fn compile_and_execute_int8_try_from_none_exit_code() {
     let source_path = write_temp_source(
-        "fn id(x: Int) -> Int\n  x\n\nfn main() -> Int\n  case Int8.try_from(id(200))\n    Some(_) -> 0\n    None -> 1\n",
+        "pub fn id(x: Int) -> Int\n  x\n\npub fn main() -> Int\n  case Int8.try_from(id(200))\n    Some(_) -> 0\n    None -> 1\n",
         "kea-cli-int8-try-from-none",
         "kea",
     );
@@ -8901,7 +8901,7 @@ fn compile_and_execute_int8_try_from_none_exit_code() {
 #[test]
 fn compile_and_execute_uint8_try_from_negative_none_exit_code() {
     let source_path = write_temp_source(
-        "fn id(x: Int) -> Int\n  x\n\nfn main() -> Int\n  case UInt8.try_from(id(-1))\n    Some(_) -> 0\n    None -> 1\n",
+        "pub fn id(x: Int) -> Int\n  x\n\npub fn main() -> Int\n  case UInt8.try_from(id(-1))\n    Some(_) -> 0\n    None -> 1\n",
         "kea-cli-uint8-try-from-negative",
         "kea",
     );
@@ -8915,7 +8915,7 @@ fn compile_and_execute_uint8_try_from_negative_none_exit_code() {
 #[test]
 fn compile_rejects_const_try_from_overflow() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case Int8.try_from(200)\n    Some(_) -> 0\n    None -> 1\n",
+        "pub fn main() -> Int\n  case Int8.try_from(200)\n    Some(_) -> 0\n    None -> 1\n",
         "kea-cli-const-try-from-overflow",
         "kea",
     );
@@ -8932,7 +8932,7 @@ fn compile_rejects_const_try_from_overflow() {
 #[test]
 fn compile_rejects_try_from_non_integer_input() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case Int8.try_from(\"oops\")\n    Some(_) -> 0\n    None -> 1\n",
+        "pub fn main() -> Int\n  case Int8.try_from(\"oops\")\n    Some(_) -> 0\n    None -> 1\n",
         "kea-cli-try-from-non-integer",
         "kea",
     );
@@ -8949,7 +8949,7 @@ fn compile_rejects_try_from_non_integer_input() {
 #[test]
 fn compile_rejects_division_by_zero_literal() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  1 / 0\n",
+        "pub fn main() -> Int\n  1 / 0\n",
         "kea-cli-div-by-zero-literal",
         "kea",
     );
@@ -8967,7 +8967,7 @@ fn compile_rejects_division_by_zero_literal() {
 #[test]
 fn compile_rejects_modulo_by_zero_literal() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  7 % 0\n",
+        "pub fn main() -> Int\n  7 % 0\n",
         "kea-cli-mod-by-zero-literal",
         "kea",
     );
@@ -8985,7 +8985,7 @@ fn compile_rejects_modulo_by_zero_literal() {
 #[test]
 fn compile_rejects_state_effect_payload_with_unique_type() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn bad() -[State UniqueInt]> Int\n  0\n\nfn main() -> Int\n  0\n",
+        "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn bad() -[State UniqueInt]> Int\n  0\n\npub fn main() -> Int\n  0\n",
         "kea-cli-state-unique-effect-payload",
         "kea",
     );
@@ -9002,7 +9002,7 @@ fn compile_rejects_state_effect_payload_with_unique_type() {
 #[test]
 fn compile_rejects_state_effect_payload_with_nested_unique_type() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\ntype Wrapped = { value: Unique(Int), tag: Int }\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn bad() -[State Wrapped]> Int\n  0\n\nfn main() -> Int\n  0\n",
+        "enum Unique a\n  Unique(a)\n\ntype Wrapped = { value: Unique(Int), tag: Int }\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn bad() -[State Wrapped]> Int\n  0\n\npub fn main() -> Int\n  0\n",
         "kea-cli-state-nested-unique-effect-payload",
         "kea",
     );
@@ -9020,7 +9020,7 @@ fn compile_rejects_state_effect_payload_with_nested_unique_type() {
 #[test]
 fn compile_and_execute_unique_roundtrip_through_tail_resumptive_handler_exit_code() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect Echo A\n  fn echo(value: A) -> A\n\nfn roundtrip(value: UniqueInt) -[Echo UniqueInt]> Int\n  let out = Echo.echo(value)\n  case out\n    Unique(v) -> v\n\nfn main() -> Int\n  handle roundtrip(Unique(7))\n    Echo.echo(v) -> resume v\n",
+        "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect Echo A\n  fn echo(value: A) -> A\n\npub fn roundtrip(value: UniqueInt) -[Echo UniqueInt]> Int\n  let out = Echo.echo(value)\n  case out\n    Unique(v) -> v\n\npub fn main() -> Int\n  handle roundtrip(Unique(7))\n    Echo.echo(v) -> resume v\n",
         "kea-cli-unique-tail-handler-roundtrip",
         "kea",
     );
@@ -9036,7 +9036,7 @@ fn compile_and_execute_unique_roundtrip_through_tail_resumptive_handler_exit_cod
 #[test]
 fn compile_rejects_unique_use_after_move() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let first = consume(u)\n  first + consume(u)\n",
+        "enum Unique a\n  Unique(a)\n\npub fn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\npub fn main() -> Int\n  let u = Unique(7)\n  let first = consume(u)\n  first + consume(u)\n",
         "kea-cli-unique-use-after-move",
         "kea",
     );
@@ -9053,7 +9053,7 @@ fn compile_rejects_unique_use_after_move() {
 #[test]
 fn compile_rejects_unique_branch_move_mismatch() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  if true\n    consume(u)\n  else\n    0\n",
+        "enum Unique a\n  Unique(a)\n\npub fn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\npub fn main() -> Int\n  let u = Unique(7)\n  if true\n    consume(u)\n  else\n    0\n",
         "kea-cli-unique-branch-move-mismatch",
         "kea",
     );
@@ -9070,7 +9070,7 @@ fn compile_rejects_unique_branch_move_mismatch() {
 #[test]
 fn compile_rejects_unique_capture_then_reuse() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let f = || consume(u)\n  consume(u)\n",
+        "enum Unique a\n  Unique(a)\n\npub fn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\npub fn main() -> Int\n  let u = Unique(7)\n  let f = || consume(u)\n  consume(u)\n",
         "kea-cli-unique-capture-then-reuse",
         "kea",
     );
@@ -9087,7 +9087,7 @@ fn compile_rejects_unique_capture_then_reuse() {
 #[test]
 fn compile_rejects_consuming_borrow_parameter_in_handler_clause() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn bad(borrow value: Unique Int) -> Int\n  handle State.get()\n    State.get() ->\n      case value\n        Unique(v) -> v\n    State.put(next) -> resume ()\n\nfn main() -> Int\n  0\n",
+        "enum Unique a\n  Unique(a)\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn bad(borrow value: Unique Int) -> Int\n  handle State.get()\n    State.get() ->\n      case value\n        Unique(v) -> v\n    State.put(next) -> resume ()\n\npub fn main() -> Int\n  0\n",
         "kea-cli-borrow-handler-clause-consume-rejected",
         "kea",
     );
@@ -9105,7 +9105,7 @@ fn compile_rejects_consuming_borrow_parameter_in_handler_clause() {
 #[test]
 fn compile_rejects_consuming_borrow_parameter_in_handler_clause_through_alias() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\neffect Tick\n  fn step() -> Unit\n\nfn consume(v: Unique Int) -> Unit\n  ()\n\nfn bad(borrow value: Unique Int) -[Tick]> Unit\n  handle Tick.step()\n    Tick.step() ->\n      let forwarded = value\n      consume(forwarded)\n      resume ()\n\nfn main() -> Int\n  0\n",
+        "enum Unique a\n  Unique(a)\n\neffect Tick\n  fn step() -> Unit\n\npub fn consume(v: Unique Int) -> Unit\n  ()\n\npub fn bad(borrow value: Unique Int) -[Tick]> Unit\n  handle Tick.step()\n    Tick.step() ->\n      let forwarded = value\n      consume(forwarded)\n      resume ()\n\npub fn main() -> Int\n  0\n",
         "kea-cli-borrow-handler-clause-alias-consume-rejected",
         "kea",
     );
@@ -9123,7 +9123,7 @@ fn compile_rejects_consuming_borrow_parameter_in_handler_clause_through_alias() 
 #[test]
 fn compile_rejects_consuming_borrow_parameter_in_then_clause() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\neffect Dummy\n  fn noop() -> Unit\n\nfn bad(borrow value: Unique Int) -> Int\n  handle Dummy.noop()\n    Dummy.noop() -> resume ()\n    then result ->\n      case value\n        Unique(v) -> v\n\nfn main() -> Int\n  0\n",
+        "enum Unique a\n  Unique(a)\n\neffect Dummy\n  fn noop() -> Unit\n\npub fn bad(borrow value: Unique Int) -> Int\n  handle Dummy.noop()\n    Dummy.noop() -> resume ()\n    then result ->\n      case value\n        Unique(v) -> v\n\npub fn main() -> Int\n  0\n",
         "kea-cli-borrow-then-clause-consume-rejected",
         "kea",
     );
@@ -9141,7 +9141,7 @@ fn compile_rejects_consuming_borrow_parameter_in_then_clause() {
 #[test]
 fn compile_rejects_consuming_borrow_parameter_in_then_clause_through_alias() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\neffect Dummy\n  fn noop() -> Unit\n\nfn bad(borrow value: Unique Int) -> Int\n  handle Dummy.noop()\n    Dummy.noop() -> resume ()\n    then result ->\n      let forwarded = value\n      case forwarded\n        Unique(v) -> v\n\nfn main() -> Int\n  0\n",
+        "enum Unique a\n  Unique(a)\n\neffect Dummy\n  fn noop() -> Unit\n\npub fn bad(borrow value: Unique Int) -> Int\n  handle Dummy.noop()\n    Dummy.noop() -> resume ()\n    then result ->\n      let forwarded = value\n      case forwarded\n        Unique(v) -> v\n\npub fn main() -> Int\n  0\n",
         "kea-cli-borrow-then-clause-alias-consume-rejected",
         "kea",
     );
@@ -9159,7 +9159,7 @@ fn compile_rejects_consuming_borrow_parameter_in_then_clause_through_alias() {
 #[test]
 fn compile_rejects_passing_borrow_parameter_into_effect_operation() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect Echo A\n  fn echo(value: A) -> A\n\nfn bad(borrow value: UniqueInt) -[Echo UniqueInt]> Int\n  let out = Echo.echo(value)\n  case out\n    Unique(v) -> v\n\nfn main() -> Int\n  0\n",
+        "enum Unique a\n  Unique(a)\n\ntype UniqueInt = Unique(Int)\n\neffect Echo A\n  fn echo(value: A) -> A\n\npub fn bad(borrow value: UniqueInt) -[Echo UniqueInt]> Int\n  let out = Echo.echo(value)\n  case out\n    Unique(v) -> v\n\npub fn main() -> Int\n  0\n",
         "kea-cli-borrow-effect-op-consume-rejected",
         "kea",
     );
@@ -9177,7 +9177,7 @@ fn compile_rejects_passing_borrow_parameter_into_effect_operation() {
 #[test]
 fn compile_and_execute_borrow_param_does_not_consume_caller_unique() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn touch(borrow value: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = touch(u)\n  let _ = touch(u)\n  7\n",
+        "enum Unique a\n  Unique(a)\n\npub fn touch(borrow value: Unique Int) -> Int\n  1\n\npub fn main() -> Int\n  let u = Unique(7)\n  let _ = touch(u)\n  let _ = touch(u)\n  7\n",
         "kea-cli-borrow-does-not-consume",
         "kea",
     );
@@ -9191,7 +9191,7 @@ fn compile_and_execute_borrow_param_does_not_consume_caller_unique() {
 #[test]
 fn compile_and_execute_auto_borrow_inferred_param_does_not_consume_caller_unique() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn touch(value: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = touch(u)\n  let _ = touch(u)\n  7\n",
+        "enum Unique a\n  Unique(a)\n\npub fn touch(value: Unique Int) -> Int\n  1\n\npub fn main() -> Int\n  let u = Unique(7)\n  let _ = touch(u)\n  let _ = touch(u)\n  7\n",
         "kea-cli-auto-borrow-inferred-does-not-consume",
         "kea",
     );
@@ -9206,7 +9206,7 @@ fn compile_and_execute_auto_borrow_inferred_param_does_not_consume_caller_unique
 #[test]
 fn compile_rejects_auto_borrow_inference_for_consuming_parameter() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn take(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = take(u)\n  let _ = take(u)\n  0\n",
+        "enum Unique a\n  Unique(a)\n\npub fn take(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\npub fn main() -> Int\n  let u = Unique(7)\n  let _ = take(u)\n  let _ = take(u)\n  0\n",
         "kea-cli-auto-borrow-does-not-infer-consuming-param",
         "kea",
     );
@@ -9223,7 +9223,7 @@ fn compile_rejects_auto_borrow_inference_for_consuming_parameter() {
 #[test]
 fn compile_rejects_consuming_borrow_parameter_in_callee() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn take(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn bad(borrow value: Unique Int) -> Int\n  take(value)\n",
+        "enum Unique a\n  Unique(a)\n\npub fn take(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\npub fn bad(borrow value: Unique Int) -> Int\n  take(value)\n",
         "kea-cli-borrow-callee-consume-rejected",
         "kea",
     );
@@ -9240,7 +9240,7 @@ fn compile_rejects_consuming_borrow_parameter_in_callee() {
 #[test]
 fn compile_rejects_returning_borrow_parameter() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn leak(borrow value: Unique Int) -> Unique Int\n  value\n",
+        "enum Unique a\n  Unique(a)\n\npub fn leak(borrow value: Unique Int) -> Unique Int\n  value\n",
         "kea-cli-borrow-return-escape-rejected",
         "kea",
     );
@@ -9257,7 +9257,7 @@ fn compile_rejects_returning_borrow_parameter() {
 #[test]
 fn compile_rejects_returning_borrow_parameter_through_alias() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn leak_alias(borrow value: Unique Int) -> Unique Int\n  let forwarded = value\n  forwarded\n",
+        "enum Unique a\n  Unique(a)\n\npub fn leak_alias(borrow value: Unique Int) -> Unique Int\n  let forwarded = value\n  forwarded\n",
         "kea-cli-borrow-return-alias-escape-rejected",
         "kea",
     );
@@ -9275,7 +9275,7 @@ fn compile_rejects_returning_borrow_parameter_through_alias() {
 #[test]
 fn compile_rejects_capturing_borrow_parameter() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn leak_capture(borrow value: Unique Int) -> fn() -> Int\n  ||\n    case value\n      Unique(v) -> v\n",
+        "enum Unique a\n  Unique(a)\n\npub fn leak_capture(borrow value: Unique Int) -> fn() -> Int\n  ||\n    case value\n      Unique(v) -> v\n",
         "kea-cli-borrow-capture-escape-rejected",
         "kea",
     );
@@ -9292,7 +9292,7 @@ fn compile_rejects_capturing_borrow_parameter() {
 #[test]
 fn compile_rejects_capturing_borrow_parameter_through_alias() {
     let source_path = write_temp_source(
-        "enum Unique a\n  Unique(a)\n\nfn leak_capture_alias(borrow value: Unique Int) -> fn() -> Int\n  let forwarded = value\n  ||\n    case forwarded\n      Unique(v) -> v\n",
+        "enum Unique a\n  Unique(a)\n\npub fn leak_capture_alias(borrow value: Unique Int) -> fn() -> Int\n  let forwarded = value\n  ||\n    case forwarded\n      Unique(v) -> v\n",
         "kea-cli-borrow-capture-alias-escape-rejected",
         "kea",
     );
@@ -9315,13 +9315,13 @@ fn compile_and_execute_qualified_borrow_call_does_not_consume_unique() {
 
     std::fs::write(
             src_dir.join("helper.kea"),
-            "enum Unique a\n  Unique(a)\n\nfn new(x: Int) -> Unique Int\n  Unique(x)\n\nfn touch(borrow value: Unique Int) -> Int\n  1\n",
+            "enum Unique a\n  Unique(a)\n\npub fn new(x: Int) -> Unique Int\n  Unique(x)\n\npub fn touch(borrow value: Unique Int) -> Int\n  1\n",
         )
         .expect("helper module write should succeed");
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Helper\n\nfn main() -> Int\n  let u = Helper.new(7)\n  let _ = Helper.touch(u)\n  let _ = Helper.touch(u)\n  7\n",
+            "use Helper\n\npub fn main() -> Int\n  let u = Helper.new(7)\n  let _ = Helper.touch(u)\n  let _ = Helper.touch(u)\n  7\n",
         )
         .expect("app module write should succeed");
 
@@ -9339,13 +9339,13 @@ fn compile_and_execute_qualified_auto_borrow_inferred_call_does_not_consume_uniq
 
     std::fs::write(
             src_dir.join("helper.kea"),
-            "enum Unique a\n  Unique(a)\n\nfn new(x: Int) -> Unique Int\n  Unique(x)\n\nfn touch(value: Unique Int) -> Int\n  1\n",
+            "enum Unique a\n  Unique(a)\n\npub fn new(x: Int) -> Unique Int\n  Unique(x)\n\npub fn touch(value: Unique Int) -> Int\n  1\n",
         )
         .expect("helper module write should succeed");
     let app_path = src_dir.join("app.kea");
     std::fs::write(
             &app_path,
-            "use Helper\n\nfn main() -> Int\n  let u = Helper.new(7)\n  let _ = Helper.touch(u)\n  let _ = Helper.touch(u)\n  7\n",
+            "use Helper\n\npub fn main() -> Int\n  let u = Helper.new(7)\n  let _ = Helper.touch(u)\n  let _ = Helper.touch(u)\n  7\n",
         )
         .expect("app module write should succeed");
 
@@ -9359,7 +9359,7 @@ fn compile_and_execute_qualified_auto_borrow_inferred_call_does_not_consume_uniq
 #[test]
 fn compile_and_execute_wrapping_add_method_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  20.wrapping_add(22)\n",
+        "pub fn main() -> Int\n  20.wrapping_add(22)\n",
         "kea-cli-wrapping-add",
         "kea",
     );
@@ -9373,7 +9373,7 @@ fn compile_and_execute_wrapping_add_method_exit_code() {
 #[test]
 fn compile_and_execute_wrapping_sub_method_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  100.wrapping_sub(58)\n",
+        "pub fn main() -> Int\n  100.wrapping_sub(58)\n",
         "kea-cli-wrapping-sub",
         "kea",
     );
@@ -9387,7 +9387,7 @@ fn compile_and_execute_wrapping_sub_method_exit_code() {
 #[test]
 fn compile_and_execute_wrapping_mul_method_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  6.wrapping_mul(7)\n",
+        "pub fn main() -> Int\n  6.wrapping_mul(7)\n",
         "kea-cli-wrapping-mul",
         "kea",
     );
@@ -9401,7 +9401,7 @@ fn compile_and_execute_wrapping_mul_method_exit_code() {
 #[test]
 fn compile_and_execute_popcount_method_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  0b101011.popcount()\n",
+        "pub fn main() -> Int\n  0b101011.popcount()\n",
         "kea-cli-popcount",
         "kea",
     );
@@ -9415,7 +9415,7 @@ fn compile_and_execute_popcount_method_exit_code() {
 #[test]
 fn compile_and_execute_leading_zeros_method_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  0b1000.leading_zeros()\n",
+        "pub fn main() -> Int\n  0b1000.leading_zeros()\n",
         "kea-cli-leading-zeros",
         "kea",
     );
@@ -9429,7 +9429,7 @@ fn compile_and_execute_leading_zeros_method_exit_code() {
 #[test]
 fn compile_and_execute_trailing_zeros_method_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  0b1000.trailing_zeros()\n",
+        "pub fn main() -> Int\n  0b1000.trailing_zeros()\n",
         "kea-cli-trailing-zeros",
         "kea",
     );
@@ -9443,7 +9443,7 @@ fn compile_and_execute_trailing_zeros_method_exit_code() {
 #[test]
 fn compile_and_execute_shift_left_method_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  1.shift_left(3)\n",
+        "pub fn main() -> Int\n  1.shift_left(3)\n",
         "kea-cli-bitwise-shift-left",
         "kea",
     );
@@ -9457,7 +9457,7 @@ fn compile_and_execute_shift_left_method_exit_code() {
 #[test]
 fn compile_and_execute_bit_not_method_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  255.bit_not()\n",
+        "pub fn main() -> Int\n  255.bit_not()\n",
         "kea-cli-bitwise-not",
         "kea",
     );
@@ -9471,7 +9471,7 @@ fn compile_and_execute_bit_not_method_exit_code() {
 #[test]
 fn compile_and_execute_shift_right_unsigned_method_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  16.shift_right_unsigned(2)\n",
+        "pub fn main() -> Int\n  16.shift_right_unsigned(2)\n",
         "kea-cli-bitwise-shift-right-u",
         "kea",
     );
@@ -9486,7 +9486,7 @@ fn compile_and_execute_shift_right_unsigned_method_exit_code() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_division_by_zero_panics_with_message() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let x = 10\n  let y = 0\n  x / y\n",
+        "pub fn main() -> Int\n  let x = 10\n  let y = 0\n  x / y\n",
         "kea-cli-div-by-zero",
         "kea",
     );
@@ -9514,7 +9514,7 @@ fn compile_and_execute_division_by_zero_panics_with_message() {
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_modulo_by_zero_panics_with_message() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let x = 10\n  let y = 0\n  x % y\n",
+        "pub fn main() -> Int\n  let x = 10\n  let y = 0\n  x % y\n",
         "kea-cli-mod-by-zero",
         "kea",
     );
@@ -9541,7 +9541,7 @@ fn compile_and_execute_modulo_by_zero_panics_with_message() {
 #[test]
 fn compile_and_execute_division_nonzero_works() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  100 / 10\n",
+        "pub fn main() -> Int\n  100 / 10\n",
         "kea-cli-div-nonzero",
         "kea",
     );
@@ -9555,7 +9555,7 @@ fn compile_and_execute_division_nonzero_works() {
 #[test]
 fn compile_and_execute_mutual_recursion_exit_code() {
     let source_path = write_temp_source(
-        "fn is_even(n: Int) -> Int\n  if n == 0\n    1\n  else\n    is_odd(n - 1)\n\nfn is_odd(n: Int) -> Int\n  if n == 0\n    0\n  else\n    is_even(n - 1)\n\nfn main() -> Int\n  is_even(10)\n",
+        "pub fn is_even(n: Int) -> Int\n  if n == 0\n    1\n  else\n    is_odd(n - 1)\n\npub fn is_odd(n: Int) -> Int\n  if n == 0\n    0\n  else\n    is_even(n - 1)\n\npub fn main() -> Int\n  is_even(10)\n",
         "kea-cli-mutual-recursion",
         "kea",
     );
@@ -9569,7 +9569,7 @@ fn compile_and_execute_mutual_recursion_exit_code() {
 #[test]
 fn compile_and_execute_case_match_on_recursive_enum_from_function_return_exit_code() {
     let source_path = write_temp_source(
-        "enum Chain\n  End\n  Link(Int, Chain)\n\nfn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n - 1))\n\nfn is_end(c: Chain) -> Int\n  case c\n    Chain.End -> 1\n    Chain.Link(_, _) -> 0\n\nfn main() -> Int\n  is_end(build(3))\n",
+        "enum Chain\n  End\n  Link(Int, Chain)\n\npub fn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n - 1))\n\npub fn is_end(c: Chain) -> Int\n  case c\n    Chain.End -> 1\n    Chain.Link(_, _) -> 0\n\npub fn main() -> Int\n  is_end(build(3))\n",
         "kea-cli-recursive-enum-case-from-call",
         "kea",
     );
@@ -9583,7 +9583,7 @@ fn compile_and_execute_case_match_on_recursive_enum_from_function_return_exit_co
 #[test]
 fn compile_and_execute_recursive_enum_case_with_step_two_builder_exit_code() {
     let source_path = write_temp_source(
-        "enum Chain\n  End\n  Link(Int, Chain)\n\nfn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n - 2))\n\nfn sum_chain(c: Chain, acc: Int) -> Int\n  case c\n    Chain.End -> acc\n    Chain.Link(v, rest) -> sum_chain(rest, acc + v)\n\nfn main() -> Int\n  sum_chain(build(6), 0)\n",
+        "enum Chain\n  End\n  Link(Int, Chain)\n\npub fn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n - 2))\n\npub fn sum_chain(c: Chain, acc: Int) -> Int\n  case c\n    Chain.End -> acc\n    Chain.Link(v, rest) -> sum_chain(rest, acc + v)\n\npub fn main() -> Int\n  sum_chain(build(6), 0)\n",
         "kea-cli-recursive-enum-step-two-case",
         "kea",
     );
@@ -9597,7 +9597,7 @@ fn compile_and_execute_recursive_enum_case_with_step_two_builder_exit_code() {
 #[test]
 fn compile_and_execute_recursive_enum_case_with_add_negative_step_builder_exit_code() {
     let source_path = write_temp_source(
-        "enum Chain\n  End\n  Link(Int, Chain)\n\nfn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n + -2))\n\nfn sum_chain(c: Chain, acc: Int) -> Int\n  case c\n    Chain.End -> acc\n    Chain.Link(v, rest) -> sum_chain(rest, acc + v)\n\nfn main() -> Int\n  sum_chain(build(6), 0)\n",
+        "enum Chain\n  End\n  Link(Int, Chain)\n\npub fn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n + -2))\n\npub fn sum_chain(c: Chain, acc: Int) -> Int\n  case c\n    Chain.End -> acc\n    Chain.Link(v, rest) -> sum_chain(rest, acc + v)\n\npub fn main() -> Int\n  sum_chain(build(6), 0)\n",
         "kea-cli-recursive-enum-add-negative-step-case",
         "kea",
     );
@@ -9611,7 +9611,7 @@ fn compile_and_execute_recursive_enum_case_with_add_negative_step_builder_exit_c
 #[test]
 fn compile_and_execute_recursive_enum_case_with_expression_step_and_threshold_exit_code() {
     let source_path = write_temp_source(
-        "enum Chain\n  End\n  Link(Int, Chain)\n\nfn build(n: Int) -> Chain\n  if n <= 1 + 1\n    Chain.End\n  else\n    Chain.Link(n, build(n - (1 + 1)))\n\nfn sum_chain(c: Chain, acc: Int) -> Int\n  case c\n    Chain.End -> acc\n    Chain.Link(v, rest) -> sum_chain(rest, acc + v)\n\nfn main() -> Int\n  sum_chain(build(6), 0)\n",
+        "enum Chain\n  End\n  Link(Int, Chain)\n\npub fn build(n: Int) -> Chain\n  if n <= 1 + 1\n    Chain.End\n  else\n    Chain.Link(n, build(n - (1 + 1)))\n\npub fn sum_chain(c: Chain, acc: Int) -> Int\n  case c\n    Chain.End -> acc\n    Chain.Link(v, rest) -> sum_chain(rest, acc + v)\n\npub fn main() -> Int\n  sum_chain(build(6), 0)\n",
         "kea-cli-recursive-enum-expression-threshold-step-case",
         "kea",
     );
@@ -9625,7 +9625,7 @@ fn compile_and_execute_recursive_enum_case_with_expression_step_and_threshold_ex
 #[test]
 fn compile_and_execute_recursive_enum_case_with_pre_call_helper_exit_code() {
     let source_path = write_temp_source(
-        "enum Chain\n  End\n  Link(Int, Chain)\n\nfn weight(x: Int) -> Int\n  x + x\n\nfn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(weight(n), build(n - 1))\n\nfn sum_chain(c: Chain, acc: Int) -> Int\n  case c\n    Chain.End -> acc\n    Chain.Link(v, rest) -> sum_chain(rest, acc + v)\n\nfn main() -> Int\n  sum_chain(build(3), 0)\n",
+        "enum Chain\n  End\n  Link(Int, Chain)\n\npub fn weight(x: Int) -> Int\n  x + x\n\npub fn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(weight(n), build(n - 1))\n\npub fn sum_chain(c: Chain, acc: Int) -> Int\n  case c\n    Chain.End -> acc\n    Chain.Link(v, rest) -> sum_chain(rest, acc + v)\n\npub fn main() -> Int\n  sum_chain(build(3), 0)\n",
         "kea-cli-recursive-enum-pre-call-helper-case",
         "kea",
     );
@@ -9639,7 +9639,7 @@ fn compile_and_execute_recursive_enum_case_with_pre_call_helper_exit_code() {
 #[test]
 fn compile_and_execute_recursive_enum_case_with_gt_recurse_guard_exit_code() {
     let source_path = write_temp_source(
-        "enum Chain\n  End\n  Link(Int, Chain)\n\nfn build(n: Int) -> Chain\n  if n > 0\n    Chain.Link(n, build(n - 1))\n  else\n    Chain.End\n\nfn sum_chain(c: Chain, acc: Int) -> Int\n  case c\n    Chain.End -> acc\n    Chain.Link(v, rest) -> sum_chain(rest, acc + v)\n\nfn main() -> Int\n  sum_chain(build(3), 0)\n",
+        "enum Chain\n  End\n  Link(Int, Chain)\n\npub fn build(n: Int) -> Chain\n  if n > 0\n    Chain.Link(n, build(n - 1))\n  else\n    Chain.End\n\npub fn sum_chain(c: Chain, acc: Int) -> Int\n  case c\n    Chain.End -> acc\n    Chain.Link(v, rest) -> sum_chain(rest, acc + v)\n\npub fn main() -> Int\n  sum_chain(build(3), 0)\n",
         "kea-cli-recursive-enum-gt-guard-case",
         "kea",
     );
@@ -9653,7 +9653,7 @@ fn compile_and_execute_recursive_enum_case_with_gt_recurse_guard_exit_code() {
 #[test]
 fn compile_and_execute_forward_reference_exit_code() {
     let source_path = write_temp_source(
-        "fn caller() -> Int\n  callee(40)\n\nfn callee(x: Int) -> Int\n  x + 2\n\nfn main() -> Int\n  caller()\n",
+        "pub fn caller() -> Int\n  callee(40)\n\npub fn callee(x: Int) -> Int\n  x + 2\n\npub fn main() -> Int\n  caller()\n",
         "kea-cli-forward-ref",
         "kea",
     );
@@ -9667,7 +9667,7 @@ fn compile_and_execute_forward_reference_exit_code() {
 #[test]
 fn compile_and_execute_higher_order_function_pointer_exit_code() {
     let source_path = write_temp_source(
-        "fn inc(n: Int) -> Int\n  n + 1\n\nfn apply_twice(f: fn(Int) -> Int, x: Int) -> Int\n  f(f(x))\n\nfn main() -> Int\n  apply_twice(inc, 41)\n",
+        "pub fn inc(n: Int) -> Int\n  n + 1\n\npub fn apply_twice(f: fn(Int) -> Int, x: Int) -> Int\n  f(f(x))\n\npub fn main() -> Int\n  apply_twice(inc, 41)\n",
         "kea-cli-hof-fn-pointer",
         "kea",
     );
@@ -9681,7 +9681,7 @@ fn compile_and_execute_higher_order_function_pointer_exit_code() {
 #[test]
 fn compile_and_execute_higher_order_lambda_argument_exit_code() {
     let source_path = write_temp_source(
-        "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn main() -> Int\n  apply(|x| x + 1, 41)\n",
+        "pub fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\npub fn main() -> Int\n  apply(|x| x + 1, 41)\n",
         "kea-cli-hof-lambda-arg",
         "kea",
     );
@@ -9695,7 +9695,7 @@ fn compile_and_execute_higher_order_lambda_argument_exit_code() {
 #[test]
 fn compile_and_execute_float_captured_in_lambda_exit_code() {
     let source_path = write_temp_source(
-        "fn apply(f: fn(Float) -> Float, x: Float) -> Float\n  f(x)\n\nfn main() -> Int\n  let offset = 1.5\n  let result = apply(|x| x + offset, 40.0)\n  if result > 41.0\n    42\n  else\n    0\n",
+        "pub fn apply(f: fn(Float) -> Float, x: Float) -> Float\n  f(x)\n\npub fn main() -> Int\n  let offset = 1.5\n  let result = apply(|x| x + offset, 40.0)\n  if result > 41.0\n    42\n  else\n    0\n",
         "kea-cli-float-lambda-capture",
         "kea",
     );
@@ -9709,7 +9709,7 @@ fn compile_and_execute_float_captured_in_lambda_exit_code() {
 #[test]
 fn compile_and_execute_direct_lambda_call_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  (|x| x + 1)(41)\n",
+        "pub fn main() -> Int\n  (|x| x + 1)(41)\n",
         "kea-cli-direct-lambda-call",
         "kea",
     );
@@ -9723,7 +9723,7 @@ fn compile_and_execute_direct_lambda_call_exit_code() {
 #[test]
 fn compile_and_execute_tail_recursive_countdown_exit_code() {
     let source_path = write_temp_source(
-        "fn count(n: Int, acc: Int) -> Int\n  if n == 0\n    acc\n  else\n    count(n - 1, acc + 1)\n\nfn main() -> Int\n  count(100000, 0)\n",
+        "pub fn count(n: Int, acc: Int) -> Int\n  if n == 0\n    acc\n  else\n    count(n - 1, acc + 1)\n\npub fn main() -> Int\n  count(100000, 0)\n",
         "kea-cli-tail-recursive-countdown",
         "kea",
     );
@@ -9737,7 +9737,7 @@ fn compile_and_execute_tail_recursive_countdown_exit_code() {
 #[test]
 fn compile_and_execute_tail_recursive_factorial_mod_exit_code() {
     let source_path = write_temp_source(
-        "fn fact_mod(n: Int, acc: Int) -> Int\n  if n == 0\n    acc\n  else\n    fact_mod(n - 1, (acc * n) % 1000000007)\n\nfn main() -> Int\n  fact_mod(100000, 1)\n",
+        "pub fn fact_mod(n: Int, acc: Int) -> Int\n  if n == 0\n    acc\n  else\n    fact_mod(n - 1, (acc * n) % 1000000007)\n\npub fn main() -> Int\n  fact_mod(100000, 1)\n",
         "kea-cli-tail-recursive-factorial-mod",
         "kea",
     );
@@ -9751,7 +9751,7 @@ fn compile_and_execute_tail_recursive_factorial_mod_exit_code() {
 #[test]
 fn compile_and_execute_refcount_allocation_churn_exit_code() {
     let source_path = write_temp_source(
-        "struct Box\n  n: Int\n\nfn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\nfn main() -> Int\n  churn(5000, 0)\n",
+        "struct Box\n  n: Int\n\npub fn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\npub fn main() -> Int\n  churn(5000, 0)\n",
         "kea-cli-refcount-churn",
         "kea",
     );
@@ -9769,18 +9769,18 @@ fn compile_elides_release_ops_for_value_only_record_churn_program() {
     let stdlib_dir = project_dir.join("stdlib");
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
     std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
-    std::fs::write(stdlib_dir.join("prelude.kea"), "fn ping() -> Int\n  7\n")
+    std::fs::write(stdlib_dir.join("prelude.kea"), "pub fn ping() -> Int\n  7\n")
         .expect("prelude module write should succeed");
     std::fs::write(
         stdlib_dir.join("show.kea"),
-        "trait Show a\n  fn show(value: a) -> String\n\nfn show(value: Int) -> String\n  \"0\"\n",
+        "trait Show a\n  fn show(value: a) -> String\n\npub fn show(value: Int) -> String\n  \"0\"\n",
     )
     .expect("show module write should succeed");
 
     let source_path = src_dir.join("app.kea");
     std::fs::write(
             &source_path,
-            "struct Box\n  n: Int\n\nfn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\nfn main() -> Int\n  churn(1024, 0)\n",
+            "struct Box\n  n: Int\n\npub fn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\npub fn main() -> Int\n  churn(1024, 0)\n",
         )
         .expect("app module write should succeed");
 
@@ -9815,7 +9815,7 @@ fn compile_elides_release_ops_for_value_only_record_churn_program() {
 #[test]
 fn compile_elides_heap_alias_retain_release_churn_in_stats() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let s = \"x\"\n  let t = s\n  1\n",
+        "pub fn main() -> Int\n  let s = \"x\"\n  let t = s\n  1\n",
         "kea-cli-alias-rc-fusion-stats",
         "kea",
     );
@@ -9849,7 +9849,7 @@ fn compile_elides_heap_alias_retain_release_churn_in_stats() {
 #[test]
 fn compile_elides_linear_heap_alias_chain_retain_churn_in_stats() {
     let source_path = write_temp_source(
-        "struct Box\n  n: Int\n\nfn main() -> Int\n  let b0 = Box { n: 1 }\n  let b1 = b0\n  let b2 = b1\n  let b3 = b2\n  b3.n\n",
+        "struct Box\n  n: Int\n\npub fn main() -> Int\n  let b0 = Box { n: 1 }\n  let b1 = b0\n  let b2 = b1\n  let b3 = b2\n  b3.n\n",
         "kea-cli-linear-alias-chain-rc-fusion-stats",
         "kea",
     );
@@ -9905,7 +9905,7 @@ fn compile_elides_linear_heap_alias_chain_retain_churn_in_stats() {
 #[test]
 fn compile_and_execute_local_function_alias_call_exit_code() {
     let source_path = write_temp_source(
-        "fn inc(n: Int) -> Int\n  n + 1\n\nfn main() -> Int\n  let g = inc\n  g(41)\n",
+        "pub fn inc(n: Int) -> Int\n  n + 1\n\npub fn main() -> Int\n  let g = inc\n  g(41)\n",
         "kea-cli-local-fn-alias",
         "kea",
     );
@@ -9919,7 +9919,7 @@ fn compile_and_execute_local_function_alias_call_exit_code() {
 #[test]
 fn compile_and_execute_let_bound_lambda_call_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let f = |x| x + 1\n  f(41)\n",
+        "pub fn main() -> Int\n  let f = |x| x + 1\n  f(41)\n",
         "kea-cli-let-lambda-call",
         "kea",
     );
@@ -9933,7 +9933,7 @@ fn compile_and_execute_let_bound_lambda_call_exit_code() {
 #[test]
 fn compile_and_execute_returned_capturing_lambda_call_exit_code() {
     let source_path = write_temp_source(
-        "fn make_adder(y: Int) -> fn(Int) -> Int\n  |x| x + y\n\nfn main() -> Int\n  let add2 = make_adder(2)\n  add2(40)\n",
+        "pub fn make_adder(y: Int) -> fn(Int) -> Int\n  |x| x + y\n\npub fn main() -> Int\n  let add2 = make_adder(2)\n  add2(40)\n",
         "kea-cli-returned-capturing-lambda-call",
         "kea",
     );
@@ -9947,7 +9947,7 @@ fn compile_and_execute_returned_capturing_lambda_call_exit_code() {
 #[test]
 fn compile_and_execute_immediate_capturing_lambda_call_exit_code() {
     let source_path = write_temp_source(
-        "fn make_adder(y: Int) -> fn(Int) -> Int\n  |x| x + y\n\nfn main() -> Int\n  make_adder(2)(40)\n",
+        "pub fn make_adder(y: Int) -> fn(Int) -> Int\n  |x| x + y\n\npub fn main() -> Int\n  make_adder(2)(40)\n",
         "kea-cli-immediate-capturing-lambda-call",
         "kea",
     );
@@ -9961,7 +9961,7 @@ fn compile_and_execute_immediate_capturing_lambda_call_exit_code() {
 #[test]
 fn compile_and_execute_escaping_capturing_lambda_value_exit_code() {
     let source_path = write_temp_source(
-        "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn make_adder(y: Int) -> fn(Int) -> Int\n  |x| x + y\n\nfn main() -> Int\n  apply(make_adder(2), 40)\n",
+        "pub fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\npub fn make_adder(y: Int) -> fn(Int) -> Int\n  |x| x + y\n\npub fn main() -> Int\n  apply(make_adder(2), 40)\n",
         "kea-cli-escaping-capturing-lambda",
         "kea",
     );
@@ -9975,7 +9975,7 @@ fn compile_and_execute_escaping_capturing_lambda_value_exit_code() {
 #[test]
 fn compile_and_execute_multiple_closures_capture_same_heap_value_exit_code() {
     let source_path = write_temp_source(
-        "use List\n\nfn main() -> Int\n  let xs = List.Cons(1, List.Cons(2, List.Nil))\n  let f = || List.length(xs)\n  let g = || List.length(xs) + 1\n  f() + g()\n",
+        "use List\n\npub fn main() -> Int\n  let xs = List.Cons(1, List.Cons(2, List.Nil))\n  let f = || List.length(xs)\n  let g = || List.length(xs) + 1\n  f() + g()\n",
         "kea-cli-multi-closure-shared-capture",
         "kea",
     );
@@ -9989,7 +9989,7 @@ fn compile_and_execute_multiple_closures_capture_same_heap_value_exit_code() {
 #[test]
 fn compile_and_execute_nested_lambda_returning_lambda_in_local_binding_exit_code() {
     let source_path = write_temp_source(
-        "fn outer(a: Int) -> fn(Int) -> Int\n  let make = |b|\n    |c| a + b + c\n  make(30)\n\nfn main() -> Int\n  let f = outer(10)\n  f(2)\n",
+        "pub fn outer(a: Int) -> fn(Int) -> Int\n  let make = |b|\n    |c| a + b + c\n  make(30)\n\npub fn main() -> Int\n  let f = outer(10)\n  f(2)\n",
         "kea-cli-nested-closure-three-scope-capture",
         "kea",
     );
@@ -10003,7 +10003,7 @@ fn compile_and_execute_nested_lambda_returning_lambda_in_local_binding_exit_code
 #[test]
 fn compile_and_execute_closure_capture_and_post_capture_use_of_heap_value_exit_code() {
     let source_path = write_temp_source(
-        "use List\n\nfn main() -> Int\n  let xs = List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)))\n  let f = || List.length(xs)\n  let direct = List.length(xs)\n  f() + direct\n",
+        "use List\n\npub fn main() -> Int\n  let xs = List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)))\n  let f = || List.length(xs)\n  let direct = List.length(xs)\n  f() + direct\n",
         "kea-cli-closure-capture-post-use-heap",
         "kea",
     );
@@ -10017,7 +10017,7 @@ fn compile_and_execute_closure_capture_and_post_capture_use_of_heap_value_exit_c
 #[test]
 fn compile_and_execute_log_with_collected_logs_high_volume_exit_code() {
     let source_path = write_temp_source(
-        "use Log\nuse List\n\nfn emit(n: Int) -[Log]> Unit\n  if n == 0\n    ()\n  else\n    Log.info(\"x\")\n    emit(n - 1)\n\nfn run() -[Log]> Int\n  emit(200)\n  7\n\nfn main() -> Int\n  let pair = Log.with_collected_logs(run)\n  let value = pair.0\n  let logs = pair.1\n  if value == 7 and List.length(logs) == 200\n    42\n  else\n    0\n",
+        "use Log\nuse List\n\npub fn emit(n: Int) -[Log]> Unit\n  if n == 0\n    ()\n  else\n    Log.info(\"x\")\n    emit(n - 1)\n\npub fn run() -[Log]> Int\n  emit(200)\n  7\n\npub fn main() -> Int\n  let pair = Log.with_collected_logs(run)\n  let value = pair.0\n  let logs = pair.1\n  if value == 7 and List.length(logs) == 200\n    42\n  else\n    0\n",
         "kea-cli-log-with-collected-high-volume",
         "kea",
     );
@@ -10031,7 +10031,7 @@ fn compile_and_execute_log_with_collected_logs_high_volume_exit_code() {
 #[test]
 fn compile_and_execute_fail_only_main_ok_path_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -[Fail]> Int\n  12\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn main() -[Fail]> Int\n  12\n",
         "kea-cli-fail-main-ok",
         "kea",
     );
@@ -10045,7 +10045,7 @@ fn compile_and_execute_fail_only_main_ok_path_exit_code() {
 #[test]
 fn compile_and_execute_fail_only_main_err_path_reports_unhandled_fail() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -[Fail Int]> Int\n  fail 9\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn main() -[Fail Int]> Int\n  fail 9\n",
         "kea-cli-fail-main-err",
         "kea",
     );
@@ -10062,7 +10062,7 @@ fn compile_and_execute_fail_only_main_err_path_reports_unhandled_fail() {
 #[test]
 fn compile_and_execute_state_tail_handler_count_to_exit_code() {
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  handle count_to(10)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\npub fn main() -> Int\n  handle count_to(10)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n",
         "kea-cli-state-tail-handler-count-to",
         "kea",
     );
@@ -10076,7 +10076,7 @@ fn compile_and_execute_state_tail_handler_count_to_exit_code() {
 #[test]
 fn compile_and_execute_state_tail_handler_count_to_one_million_exit_code() {
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  handle count_to(1000000)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\npub fn main() -> Int\n  handle count_to(1000000)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n",
         "kea-cli-state-tail-handler-count-to-1m",
         "kea",
     );
@@ -10090,7 +10090,7 @@ fn compile_and_execute_state_tail_handler_count_to_one_million_exit_code() {
 #[test]
 fn compile_state_tail_handler_count_to_marks_tail_self_call_in_stats() {
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  handle count_to(10)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\npub fn main() -> Int\n  handle count_to(10)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n",
         "kea-cli-state-tail-handler-tail-stats",
         "kea",
     );
@@ -10114,7 +10114,7 @@ fn compile_state_tail_handler_count_to_marks_tail_self_call_in_stats() {
 #[test]
 fn compile_and_execute_nested_state_handler_inner_shadows_outer_exit_code() {
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn read_state() -[State Int]> Int\n  State.get()\n\nfn run_inner() -[State Int]> Int\n  handle read_state()\n    State.get() -> resume 2\n    State.put(s) -> resume ()\n\nfn main() -> Int\n  handle run_inner()\n    State.get() -> resume 9\n    State.put(s) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn read_state() -[State Int]> Int\n  State.get()\n\npub fn run_inner() -[State Int]> Int\n  handle read_state()\n    State.get() -> resume 2\n    State.put(s) -> resume ()\n\npub fn main() -> Int\n  handle run_inner()\n    State.get() -> resume 9\n    State.put(s) -> resume ()\n",
         "kea-cli-state-nested-handler-shadow",
         "kea",
     );
@@ -10128,7 +10128,7 @@ fn compile_and_execute_nested_state_handler_inner_shadows_outer_exit_code() {
 #[test]
 fn compile_and_execute_handle_then_clause_transforms_result_exit_code() {
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  let pair = handle count_to(5)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n    then result ->\n      result + 100\n  pair\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\npub fn main() -> Int\n  let pair = handle count_to(5)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n    then result ->\n      result + 100\n  pair\n",
         "kea-cli-handle-then-transform",
         "kea",
     );
@@ -10142,7 +10142,7 @@ fn compile_and_execute_handle_then_clause_transforms_result_exit_code() {
 #[test]
 fn compile_and_execute_log_tail_handler_resume_unit_exit_code() {
     let source_path = write_temp_source(
-        "effect Log\n  fn log(msg: Int) -> Unit\n\nfn greet() -[Log]> Int\n  Log.log(7)\n  11\n\nfn main() -> Int\n  handle greet()\n    Log.log(msg) -> resume ()\n",
+        "effect Log\n  fn log(msg: Int) -> Unit\n\npub fn greet() -[Log]> Int\n  Log.log(7)\n  11\n\npub fn main() -> Int\n  handle greet()\n    Log.log(msg) -> resume ()\n",
         "kea-cli-log-tail-handler",
         "kea",
     );
@@ -10156,7 +10156,7 @@ fn compile_and_execute_log_tail_handler_resume_unit_exit_code() {
 #[test]
 fn compile_and_execute_reader_tail_handler_resume_value_exit_code() {
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn read() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle read()\n    Reader.ask() -> resume 42\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn read() -[Reader Int]> Int\n  Reader.ask()\n\npub fn main() -> Int\n  handle read()\n    Reader.ask() -> resume 42\n",
         "kea-cli-reader-tail-handler",
         "kea",
     );
@@ -10170,7 +10170,7 @@ fn compile_and_execute_reader_tail_handler_resume_value_exit_code() {
 #[test]
 fn compile_and_execute_effectful_named_callback_parameter_exit_code() {
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn with_reader(env: C, f: fn() -[Reader C]> Int) -> Int\n  handle f()\n    Reader.ask() -> resume env\n\nfn app() -[Reader Int]> Int\n  Reader.ask() + 1\n\nfn main() -> Int\n  with_reader(41, app)\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn with_reader(env: C, f: fn() -[Reader C]> Int) -> Int\n  handle f()\n    Reader.ask() -> resume env\n\npub fn app() -[Reader Int]> Int\n  Reader.ask() + 1\n\npub fn main() -> Int\n  with_reader(41, app)\n",
         "kea-cli-effectful-named-callback",
         "kea",
     );
@@ -10184,7 +10184,7 @@ fn compile_and_execute_effectful_named_callback_parameter_exit_code() {
 #[test]
 fn compile_and_execute_effectful_with_callback_lambda_exit_code() {
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn with_reader(env: C, @with f: fn() -[Reader C]> Int) -> Int\n  handle f()\n    Reader.ask() -> resume env\n\nfn main() -> Int\n  with with_reader(41)\n  Reader.ask() + 1\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn with_reader(env: C, @with f: fn() -[Reader C]> Int) -> Int\n  handle f()\n    Reader.ask() -> resume env\n\npub fn main() -> Int\n  with with_reader(41)\n  Reader.ask() + 1\n",
         "kea-cli-effectful-with-callback-lambda",
         "kea",
     );
@@ -10198,7 +10198,7 @@ fn compile_and_execute_effectful_with_callback_lambda_exit_code() {
 #[test]
 fn compile_and_execute_effectful_generic_callback_return_exit_code() {
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn with_reader(env: C, f: fn() -[Reader C]> T) -> T\n  handle f()\n    Reader.ask() -> resume env\n\nfn app() -[Reader Int]> Int\n  Reader.ask() + 1\n\nfn main() -> Int\n  with_reader(41, app)\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn with_reader(env: C, f: fn() -[Reader C]> T) -> T\n  handle f()\n    Reader.ask() -> resume env\n\npub fn app() -[Reader Int]> Int\n  Reader.ask() + 1\n\npub fn main() -> Int\n  with_reader(41, app)\n",
         "kea-cli-effectful-generic-callback-return",
         "kea",
     );
@@ -10212,7 +10212,7 @@ fn compile_and_execute_effectful_generic_callback_return_exit_code() {
 #[test]
 fn compile_and_execute_handler_returns_closure_capturing_effect_value_exit_code() {
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn make_adder() -[Reader Int]> fn(Int) -> Int\n  let base = Reader.ask()\n  |x| x + base\n\nfn main() -> Int\n  let add = handle make_adder()\n    Reader.ask() -> resume 40\n  add(2)\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn make_adder() -[Reader Int]> fn(Int) -> Int\n  let base = Reader.ask()\n  |x| x + base\n\npub fn main() -> Int\n  let add = handle make_adder()\n    Reader.ask() -> resume 40\n  add(2)\n",
         "kea-cli-handler-returns-capturing-closure",
         "kea",
     );
@@ -10226,7 +10226,7 @@ fn compile_and_execute_handler_returns_closure_capturing_effect_value_exit_code(
 #[test]
 fn compile_and_execute_handler_resume_with_closure_capturing_clause_arg_exit_code() {
     let source_path = write_temp_source(
-        "effect Factory\n  fn build(seed: Int) -> fn(Int) -> Int\n\nfn program() -[Factory]> fn(Int) -> Int\n  Factory.build(40)\n\nfn main() -> Int\n  let add = handle program()\n    Factory.build(seed) -> resume (|x| x + seed)\n  add(2)\n",
+        "effect Factory\n  fn build(seed: Int) -> fn(Int) -> Int\n\npub fn program() -[Factory]> fn(Int) -> Int\n  Factory.build(40)\n\npub fn main() -> Int\n  let add = handle program()\n    Factory.build(seed) -> resume (|x| x + seed)\n  add(2)\n",
         "kea-cli-handler-resume-closure-captures-clause-arg",
         "kea",
     );
@@ -10241,7 +10241,7 @@ fn compile_and_execute_handler_resume_with_closure_capturing_clause_arg_exit_cod
 #[test]
 fn compile_and_execute_handler_two_argument_callback_clause_exit_code() {
     let source_path = write_temp_source(
-        "effect Math\n  fn add(a: Int, b: Int) -> Int\n\nfn program() -[Math]> Int\n  Math.add(40, 2)\n\nfn main() -> Int\n  handle program()\n    Math.add(a, b) -> resume a + b\n",
+        "effect Math\n  fn add(a: Int, b: Int) -> Int\n\npub fn program() -[Math]> Int\n  Math.add(40, 2)\n\npub fn main() -> Int\n  handle program()\n    Math.add(a, b) -> resume a + b\n",
         "kea-cli-handler-two-arg-callback-clause",
         "kea",
     );
@@ -10255,7 +10255,7 @@ fn compile_and_execute_handler_two_argument_callback_clause_exit_code() {
 #[test]
 fn compile_and_reject_handler_callback_clause_non_variable_arg_pattern() {
     let source_path = write_temp_source(
-        "effect Math\n  fn add(a: Int, b: Int) -> Int\n\nfn program() -[Math]> Int\n  Math.add(40, 2)\n\nfn main() -> Int\n  handle program()\n    Math.add(40, b) -> resume 40 + b\n",
+        "effect Math\n  fn add(a: Int, b: Int) -> Int\n\npub fn program() -[Math]> Int\n  Math.add(40, 2)\n\npub fn main() -> Int\n  handle program()\n    Math.add(40, b) -> resume 40 + b\n",
         "kea-cli-handler-callback-clause-non-var-pattern",
         "kea",
     );
@@ -10273,7 +10273,7 @@ fn compile_and_reject_handler_callback_clause_non_variable_arg_pattern() {
 #[test]
 fn compile_and_execute_log_side_effecting_handler_clause_exit_code() {
     let source_path = write_temp_source(
-        "effect IO\n  fn stdout(msg: String) -> Unit\n\neffect Log\n  fn info(msg: String) -> Unit\n\nfn program() -[Log]> Int\n  Log.info(\"hello\")\n  7\n\nfn with_stdout_logger(f: fn() -[Log]> Int) -[IO]> Int\n  handle f()\n    Log.info(msg) ->\n      IO.stdout(msg)\n      resume ()\n\nfn main() -[IO]> Int\n  with_stdout_logger(program)\n",
+        "effect IO\n  fn stdout(msg: String) -> Unit\n\neffect Log\n  fn info(msg: String) -> Unit\n\npub fn program() -[Log]> Int\n  Log.info(\"hello\")\n  7\n\npub fn with_stdout_logger(f: fn() -[Log]> Int) -[IO]> Int\n  handle f()\n    Log.info(msg) ->\n      IO.stdout(msg)\n      resume ()\n\npub fn main() -[IO]> Int\n  with_stdout_logger(program)\n",
         "kea-cli-log-side-effecting-handler-clause",
         "kea",
     );
@@ -10287,7 +10287,7 @@ fn compile_and_execute_log_side_effecting_handler_clause_exit_code() {
 #[test]
 fn compile_and_execute_handle_then_clause_reads_handled_state_exit_code() {
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn bump() -[State Int]> Int\n  let s = State.get()\n  State.put(s + 1)\n  State.get()\n\nfn main() -> Int\n  let result = handle bump()\n    State.get() -> resume 41\n    State.put(next) -> resume ()\n    then value ->\n      State.get()\n  result\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn bump() -[State Int]> Int\n  let s = State.get()\n  State.put(s + 1)\n  State.get()\n\npub fn main() -> Int\n  let result = handle bump()\n    State.get() -> resume 41\n    State.put(next) -> resume ()\n    then value ->\n      State.get()\n  result\n",
         "kea-cli-handle-then-reads-state",
         "kea",
     );
@@ -10301,7 +10301,7 @@ fn compile_and_execute_handle_then_clause_reads_handled_state_exit_code() {
 #[test]
 fn compile_and_execute_handle_then_clause_case_body_exit_code() {
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn read() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle read()\n    Reader.ask() -> resume 2\n    then value ->\n      case value\n        2 -> 42\n        _ -> 0\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn read() -[Reader Int]> Int\n  Reader.ask()\n\npub fn main() -> Int\n  handle read()\n    Reader.ask() -> resume 2\n    then value ->\n      case value\n        2 -> 42\n        _ -> 0\n",
         "kea-cli-handle-then-case-body",
         "kea",
     );
@@ -10315,7 +10315,7 @@ fn compile_and_execute_handle_then_clause_case_body_exit_code() {
 #[test]
 fn compile_and_execute_generic_two_op_tail_handler_exit_code() {
     let source_path = write_temp_source(
-        "effect Counter\n  fn read() -> Int\n  fn write(next: Int) -> Unit\n\nfn count_to(n: Int) -[Counter]> Int\n  let i = Counter.read()\n  if i >= n\n    i\n  else\n    Counter.write(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  handle count_to(6)\n    Counter.read() -> resume 0\n    Counter.write(next) -> resume ()\n",
+        "effect Counter\n  fn read() -> Int\n  fn write(next: Int) -> Unit\n\npub fn count_to(n: Int) -[Counter]> Int\n  let i = Counter.read()\n  if i >= n\n    i\n  else\n    Counter.write(i + 1)\n    count_to(n)\n\npub fn main() -> Int\n  handle count_to(6)\n    Counter.read() -> resume 0\n    Counter.write(next) -> resume ()\n",
         "kea-cli-generic-two-op-tail-handler",
         "kea",
     );
@@ -10329,7 +10329,7 @@ fn compile_and_execute_generic_two_op_tail_handler_exit_code() {
 #[test]
 fn compile_and_execute_generic_two_getter_tail_handler_exit_code() {
     let source_path = write_temp_source(
-        "effect Foo\n  fn a() -> Int\n  fn b() -> Int\n\nfn body() -[Foo]> Int\n  Foo.a() + Foo.b()\n\nfn main() -> Int\n  handle body()\n    Foo.a() -> resume 10\n    Foo.b() -> resume 2\n",
+        "effect Foo\n  fn a() -> Int\n  fn b() -> Int\n\npub fn body() -[Foo]> Int\n  Foo.a() + Foo.b()\n\npub fn main() -> Int\n  handle body()\n    Foo.a() -> resume 10\n    Foo.b() -> resume 2\n",
         "kea-cli-generic-two-getter-tail-handler",
         "kea",
     );
@@ -10343,7 +10343,7 @@ fn compile_and_execute_generic_two_getter_tail_handler_exit_code() {
 #[test]
 fn compile_and_execute_nested_handlers_for_different_effects_exit_code() {
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\nfn count_with_log(n: Int) -[State Int, Log]> Int\n  let i = State.get()\n  Log.log(i)\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_with_log(n)\n\nfn run_state(n: Int) -[Log]> Int\n  handle count_with_log(n)\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n\nfn main() -> Int\n  handle run_state(4)\n    Log.log(msg) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\npub fn count_with_log(n: Int) -[State Int, Log]> Int\n  let i = State.get()\n  Log.log(i)\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_with_log(n)\n\npub fn run_state(n: Int) -[Log]> Int\n  handle count_with_log(n)\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n\npub fn main() -> Int\n  handle run_state(4)\n    Log.log(msg) -> resume ()\n",
         "kea-cli-nested-handlers-different-effects",
         "kea",
     );
@@ -10357,7 +10357,7 @@ fn compile_and_execute_nested_handlers_for_different_effects_exit_code() {
 #[test]
 fn compile_and_execute_nested_same_effect_handlers_three_levels_exit_code() {
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn inner() -[Reader Int]> Int\n  Reader.ask()\n\nfn middle() -[Reader Int]> Int\n  let a = handle inner()\n    Reader.ask() -> resume 2\n  a + Reader.ask()\n\nfn outer() -[Reader Int]> Int\n  let b = handle middle()\n    Reader.ask() -> resume 20\n  b + Reader.ask()\n\nfn main() -> Int\n  handle outer()\n    Reader.ask() -> resume 200\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn inner() -[Reader Int]> Int\n  Reader.ask()\n\npub fn middle() -[Reader Int]> Int\n  let a = handle inner()\n    Reader.ask() -> resume 2\n  a + Reader.ask()\n\npub fn outer() -[Reader Int]> Int\n  let b = handle middle()\n    Reader.ask() -> resume 20\n  b + Reader.ask()\n\npub fn main() -> Int\n  handle outer()\n    Reader.ask() -> resume 200\n",
         "kea-cli-nested-same-effect-handlers-three-levels",
         "kea",
     );
@@ -10372,18 +10372,18 @@ fn compile_and_execute_nested_same_effect_handlers_three_levels_exit_code() {
 fn compile_and_execute_nested_same_effect_handlers_ten_levels_exit_code() {
     let depth = 10;
     let mut source = String::from(
-        "effect Reader C\n  fn ask() -> C\n\nfn level0() -[Reader Int]> Int\n  Reader.ask()\n\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn level0() -[Reader Int]> Int\n  Reader.ask()\n\n",
     );
 
     for level in 1..=depth {
         source.push_str(&format!(
-                "fn level{level}() -[Reader Int]> Int\n  let inner = handle level{}()\n    Reader.ask() -> resume {level}\n  inner + Reader.ask()\n\n",
+                "pub fn level{level}() -[Reader Int]> Int\n  let inner = handle level{}()\n    Reader.ask() -> resume {level}\n  inner + Reader.ask()\n\n",
                 level - 1
             ));
     }
 
     source.push_str(&format!(
-        "fn main() -> Int\n  handle level{depth}()\n    Reader.ask() -> resume {}\n",
+        "pub fn main() -> Int\n  handle level{depth}()\n    Reader.ask() -> resume {}\n",
         depth + 1
     ));
 
@@ -10402,7 +10402,7 @@ fn compile_and_execute_nested_same_effect_handlers_ten_levels_exit_code() {
 #[test]
 fn compile_and_execute_recursive_handler_installation_depth_exit_code() {
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn descend(n: Int) -[Reader Int]> Int\n  if n == 0\n    Reader.ask()\n  else\n    let inner = handle descend(n - 1)\n      Reader.ask() -> resume n\n    inner + 1\n\nfn main() -> Int\n  handle descend(25)\n    Reader.ask() -> resume 0\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn descend(n: Int) -[Reader Int]> Int\n  if n == 0\n    Reader.ask()\n  else\n    let inner = handle descend(n - 1)\n      Reader.ask() -> resume n\n    inner + 1\n\npub fn main() -> Int\n  handle descend(25)\n    Reader.ask() -> resume 0\n",
         "kea-cli-recursive-handler-installation-depth",
         "kea",
     );
@@ -10418,7 +10418,7 @@ fn handler_clause_residual_fail_propagates() {
     // A handler clause body that calls Fail.fail should propagate the failure
     // to the outer `catch` via the TLS slot.  The outer catch receives Err.
     let source_path = write_temp_source(
-        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Unit\n  Echo.say(\"hello\")\n\nfn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      Fail.fail(\"no says allowed\")\n      resume ()\n  case r\n    Ok(_) -> 0\n    Err(_) -> 42\n",
+        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\npub fn computation() -[Echo]> Unit\n  Echo.say(\"hello\")\n\npub fn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      Fail.fail(\"no says allowed\")\n      resume ()\n  case r\n    Ok(_) -> 0\n    Err(_) -> 42\n",
         "kea-cli-tls-fail-propagates",
         "kea",
     );
@@ -10438,7 +10438,7 @@ fn handler_clause_residual_fail_not_triggered() {
     // because hir_body_has_residual_fail returns true, but at runtime the
     // Fail path is never taken, so the outer catch should see Ok.
     let source_path = write_temp_source(
-        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Unit\n  Echo.say(\"hello\")\n\nfn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      if 0 == 1\n        Fail.fail(\"never reached\")\n      else\n        ()\n      resume ()\n  case r\n    Ok(_) -> 42\n    Err(_) -> 0\n",
+        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\npub fn computation() -[Echo]> Unit\n  Echo.say(\"hello\")\n\npub fn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      if 0 == 1\n        Fail.fail(\"never reached\")\n      else\n        ()\n      resume ()\n  case r\n    Ok(_) -> 42\n    Err(_) -> 0\n",
         "kea-cli-tls-fail-not-triggered",
         "kea",
     );
@@ -10457,7 +10457,7 @@ fn handler_clause_residual_fail_nested() {
     // The inner handler's catch intercepts the inner Fail via TLS and
     // the outer handler's catch should NOT see inner Fail (slot is cleared).
     let source_path = write_temp_source(
-        "effect Inner\n  fn op() -> Unit\n\neffect Outer\n  fn run() -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn inner_comp() -[Inner]> Unit\n  Inner.op()\n\nfn main() -> Int\n  let inner_r = catch handle inner_comp()\n    Inner.op() ->\n      Fail.fail(\"inner fail\")\n      resume ()\n  case inner_r\n    Ok(_) -> 0\n    Err(_) -> 42\n",
+        "effect Inner\n  fn op() -> Unit\n\neffect Outer\n  fn run() -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\npub fn inner_comp() -[Inner]> Unit\n  Inner.op()\n\npub fn main() -> Int\n  let inner_r = catch handle inner_comp()\n    Inner.op() ->\n      Fail.fail(\"inner fail\")\n      resume ()\n  case inner_r\n    Ok(_) -> 0\n    Err(_) -> 42\n",
         "kea-cli-tls-fail-nested",
         "kea",
     );
@@ -10477,7 +10477,7 @@ fn handler_clause_residual_fail_multi_yield() {
     // slot is set on the first invocation and the second invocation's payload
     // is dropped (slot already non-null).  The outer catch sees exactly one Err.
     let source_path = write_temp_source(
-        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Unit\n  Echo.say(\"first\")\n  Echo.say(\"second\")\n\nfn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      Fail.fail(s)\n      resume ()\n  case r\n    Ok(_) -> 0\n    Err(_) -> 42\n",
+        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\npub fn computation() -[Echo]> Unit\n  Echo.say(\"first\")\n  Echo.say(\"second\")\n\npub fn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      Fail.fail(s)\n      resume ()\n  case r\n    Ok(_) -> 0\n    Err(_) -> 42\n",
         "kea-cli-tls-fail-multi-yield",
         "kea",
     );
@@ -10495,7 +10495,7 @@ fn compile_handler_clause_with_direct_fail_call_is_rejected() {
     // Previously rejected; now that TLS propagation is implemented, this
     // should compile and run correctly — the outer catch receives the Fail.
     let source_path = write_temp_source(
-        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Int\n  Echo.say(\"hello\")\n  42\n\nfn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      Fail.fail(\"no says allowed\")\n      resume ()\n  case r\n    Ok(v) -> v\n    Err(_) -> 99\n",
+        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\npub fn computation() -[Echo]> Int\n  Echo.say(\"hello\")\n  42\n\npub fn main() -> Int\n  let r = catch handle computation()\n    Echo.say(s) ->\n      Fail.fail(\"no says allowed\")\n      resume ()\n  case r\n    Ok(v) -> v\n    Err(_) -> 99\n",
         "kea-cli-handler-clause-residual-fail",
         "kea",
     );
@@ -10516,7 +10516,7 @@ fn compile_handler_clause_fail_inside_catch_is_allowed() {
     // the catch swallows the failure before it can escape the callback.
     // Echo.say returns Unit so resume must provide Unit; computation returns 42.
     let source_path = write_temp_source(
-        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\nfn computation() -[Echo]> Int\n  Echo.say(\"hello\")\n  42\n\nfn main() -> Int\n  handle computation()\n    Echo.say(s) ->\n      let _ = catch Fail.fail(\"swallowed\")\n      resume ()\n",
+        "effect Echo\n  fn say(s: String) -> Unit\n\neffect Fail E\n  fn fail(error: E) -> Never\n\npub fn computation() -[Echo]> Int\n  Echo.say(\"hello\")\n  42\n\npub fn main() -> Int\n  handle computation()\n    Echo.say(s) ->\n      let _ = catch Fail.fail(\"swallowed\")\n      resume ()\n",
         "kea-cli-handler-clause-fail-inside-catch",
         "kea",
     );
@@ -10530,7 +10530,7 @@ fn compile_handler_clause_fail_inside_catch_is_allowed() {
 #[test]
 fn compile_and_reject_fail_triggered_after_resume_in_current_lowering() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\neffect Gate\n  fn read() -> Int\n\nfn program() -[Gate, Fail Int]> Int\n  let n = Gate.read()\n  if n == 0\n    fail 9\n  else\n    n\n\nfn main() -> Int\n  let r = catch handle program()\n    Gate.read() -> resume 0\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\neffect Gate\n  fn read() -> Int\n\npub fn program() -[Gate, Fail Int]> Int\n  let n = Gate.read()\n  if n == 0\n    fail 9\n  else\n    n\n\npub fn main() -> Int\n  let r = catch handle program()\n    Gate.read() -> resume 0\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-resume-path-fail-caught",
         "kea",
     );
@@ -10557,7 +10557,7 @@ fn compile_and_execute_state_put_inside_state_clause_with_side_effects() {
     // re-entrant effect dispatch and is now correctly handled via the
     // general callback path with Block-ending-in-Resume classification.
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn probe() -[State Int]> Int\n  State.put(5)\n  0\n\nfn run_inner() -[State Int]> Int\n  handle probe()\n    State.get() -> resume 0\n    State.put(next) ->\n      State.put(next + 10)\n      resume ()\n\nfn main() -> Int\n  handle run_inner()\n    State.get() -> resume 100\n    State.put(next) -> resume ()\n    then value ->\n      State.get()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn probe() -[State Int]> Int\n  State.put(5)\n  0\n\npub fn run_inner() -[State Int]> Int\n  handle probe()\n    State.get() -> resume 0\n    State.put(next) ->\n      State.put(next + 10)\n      resume ()\n\npub fn main() -> Int\n  handle run_inner()\n    State.get() -> resume 100\n    State.put(next) -> resume ()\n    then value ->\n      State.get()\n",
         "kea-cli-state-put-inside-state-clause-forwards",
         "kea",
     );
@@ -10572,7 +10572,7 @@ fn compile_and_execute_state_put_inside_state_clause_with_side_effects() {
 #[test]
 fn compile_and_execute_fail_inside_state_does_not_rollback_state_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn boom() -[Fail Int]> Int\n  fail 7\n\nfn run() -[State Int]> Int\n  State.put(5)\n  let result = catch boom()\n  case result\n    Ok(v) -> v\n    Err(e) -> State.get()\n\nfn main() -> Int\n  handle run()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn boom() -[Fail Int]> Int\n  fail 7\n\npub fn run() -[State Int]> Int\n  State.put(5)\n  let result = catch boom()\n  case result\n    Ok(v) -> v\n    Err(e) -> State.get()\n\npub fn main() -> Int\n  handle run()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
         "kea-cli-fail-inside-state-no-rollback",
         "kea",
     );
@@ -10589,7 +10589,7 @@ fn compile_and_execute_fail_inside_state_does_not_rollback_state_exit_code() {
 fn compile_and_execute_evidence_three_deep_call_chain_exit_code() {
     // handler → fn1 → fn2 → State.get(), evidence threaded through 3 levels
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn level2() -[State Int]> Int\n  State.get()\n\nfn level1() -[State Int]> Int\n  level2() + 1\n\nfn main() -> Int\n  handle level1()\n    State.get() -> resume 41\n    State.put(next) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn level2() -[State Int]> Int\n  State.get()\n\npub fn level1() -[State Int]> Int\n  level2() + 1\n\npub fn main() -> Int\n  handle level1()\n    State.get() -> resume 41\n    State.put(next) -> resume ()\n",
         "kea-cli-evidence-three-deep",
         "kea",
     );
@@ -10604,7 +10604,7 @@ fn compile_and_execute_evidence_three_deep_call_chain_exit_code() {
 fn compile_and_execute_evidence_five_deep_call_chain_exit_code() {
     // handler → fn1 → fn2 → fn3 → fn4 → State.get()
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn d4() -[State Int]> Int\n  State.get()\n\nfn d3() -[State Int]> Int\n  d4()\n\nfn d2() -[State Int]> Int\n  d3()\n\nfn d1() -[State Int]> Int\n  d2()\n\nfn main() -> Int\n  handle d1()\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn d4() -[State Int]> Int\n  State.get()\n\npub fn d3() -[State Int]> Int\n  d4()\n\npub fn d2() -[State Int]> Int\n  d3()\n\npub fn d1() -[State Int]> Int\n  d2()\n\npub fn main() -> Int\n  handle d1()\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
         "kea-cli-evidence-five-deep",
         "kea",
     );
@@ -10619,7 +10619,7 @@ fn compile_and_execute_evidence_five_deep_call_chain_exit_code() {
 fn compile_and_execute_effect_polymorphic_callback_forwards_handler_exit_code() {
     // fn apply takes effectful callback, handler installed by caller
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn apply(f: fn() -[State Int]> Int) -[State Int]> Int\n  f()\n\nfn read_state() -[State Int]> Int\n  State.get()\n\nfn main() -> Int\n  handle apply(read_state)\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn apply(f: fn() -[State Int]> Int) -[State Int]> Int\n  f()\n\npub fn read_state() -[State Int]> Int\n  State.get()\n\npub fn main() -> Int\n  handle apply(read_state)\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
         "kea-cli-effect-polymorphic-callback",
         "kea",
     );
@@ -10634,7 +10634,7 @@ fn compile_and_execute_effect_polymorphic_callback_forwards_handler_exit_code() 
 fn compile_and_execute_effect_polymorphic_callback_with_put_exit_code() {
     // effectful callback that both reads and writes state
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn apply(f: fn() -[State Int]> Int) -[State Int]> Int\n  f()\n\nfn bump_state() -[State Int]> Int\n  let s = State.get()\n  State.put(s + 1)\n  State.get()\n\nfn main() -> Int\n  handle apply(bump_state)\n    State.get() -> resume 41\n    State.put(next) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn apply(f: fn() -[State Int]> Int) -[State Int]> Int\n  f()\n\npub fn bump_state() -[State Int]> Int\n  let s = State.get()\n  State.put(s + 1)\n  State.get()\n\npub fn main() -> Int\n  handle apply(bump_state)\n    State.get() -> resume 41\n    State.put(next) -> resume ()\n",
         "kea-cli-effect-polymorphic-callback-put",
         "kea",
     );
@@ -10649,7 +10649,7 @@ fn compile_and_execute_effect_polymorphic_callback_with_put_exit_code() {
 fn compile_and_execute_inline_state_handler_get_returns_initial_exit_code() {
     // Inline handler: handle body directly calls State.get() in same function
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn main() -> Int\n  handle State.get()\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn main() -> Int\n  handle State.get()\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
         "kea-cli-inline-state-handler",
         "kea",
     );
@@ -10666,7 +10666,7 @@ fn compile_cross_boundary_1arg_unit_non_tail_handler() {
     // Store.save(42) fires in do_save(), handler in main() transforms result with +1.
     // Body returns 100, chain adds 1 → exit 101.
     let source_path = write_temp_source(
-        "effect Store\n  fn save(value: Int) -> Unit\n\nfn do_save() -[Store]> Int\n  Store.save(42)\n  100\n\nfn main() -> Int\n  handle do_save()\n    Store.save(v) ->\n      let r = resume ()\n      r + 1\n",
+        "effect Store\n  fn save(value: Int) -> Unit\n\npub fn do_save() -[Store]> Int\n  Store.save(42)\n  100\n\npub fn main() -> Int\n  handle do_save()\n    Store.save(v) ->\n      let r = resume ()\n      r + 1\n",
         "kea-cli-cross-boundary-1arg-unit-non-tail",
         "kea",
     );
@@ -10685,7 +10685,7 @@ fn compile_state_get_survives_across_handler_boundary() {
     // release_cells, it gets freed before the handler body calls State.get().
     // This test catches dangling pointer regressions (was SIGBUS/garbage pre-fix).
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn read_state() -[State Int]> Int\n  State.get()\n\nfn main() -> Int\n  handle read_state()\n    State.get() -> resume 77\n    State.put(next) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn read_state() -[State Int]> Int\n  State.get()\n\npub fn main() -> Int\n  handle read_state()\n    State.get() -> resume 77\n    State.put(next) -> resume ()\n",
         "kea-cli-state-survives-boundary",
         "kea",
     );
@@ -10701,7 +10701,7 @@ fn compile_state_put_then_get_across_boundary() {
     // State.put followed by State.get in a different function.
     // Both callbacks must hold valid references to the same state cell.
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn update_and_read() -[State Int]> Int\n  State.put(99)\n  State.get()\n\nfn main() -> Int\n  handle update_and_read()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn update_and_read() -[State Int]> Int\n  State.put(99)\n  State.get()\n\npub fn main() -> Int\n  handle update_and_read()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
         "kea-cli-state-put-get-boundary",
         "kea",
     );
@@ -10717,7 +10717,7 @@ fn compile_state_multiple_gets_across_boundary() {
     // Multiple State.get() calls across function boundary.
     // State cell must remain valid for all invocations.
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn double_get() -[State Int]> Int\n  let a = State.get()\n  let b = State.get()\n  a + b\n\nfn main() -> Int\n  handle double_get()\n    State.get() -> resume 21\n    State.put(next) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn double_get() -[State Int]> Int\n  let a = State.get()\n  let b = State.get()\n  a + b\n\npub fn main() -> Int\n  handle double_get()\n    State.get() -> resume 21\n    State.put(next) -> resume ()\n",
         "kea-cli-state-multi-get-boundary",
         "kea",
     );
@@ -10732,7 +10732,7 @@ fn compile_state_multiple_gets_across_boundary() {
 fn compile_state_interleaved_put_get_across_boundary() {
     // Interleaved put/get: put(10), get, put(20), get → should return 20
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn interleave() -[State Int]> Int\n  State.put(10)\n  let _ = State.get()\n  State.put(20)\n  State.get()\n\nfn main() -> Int\n  handle interleave()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn interleave() -[State Int]> Int\n  State.put(10)\n  let _ = State.get()\n  State.put(20)\n  State.get()\n\npub fn main() -> Int\n  handle interleave()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
         "kea-cli-state-interleave-boundary",
         "kea",
     );
@@ -10747,7 +10747,7 @@ fn compile_state_interleaved_put_get_across_boundary() {
 fn compile_and_execute_mixed_dispatch_and_direct_effects_exit_code() {
     // function with both State (dispatch via handler) and IO (direct capability)
     let source_path = write_temp_source(
-        "use IO\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn compute() -[State Int, IO]> Int\n  IO.stdout(\"hello\")\n  State.get()\n\nfn main() -[IO]> Int\n  handle compute()\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
+        "use IO\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn compute() -[State Int, IO]> Int\n  IO.stdout(\"hello\")\n  State.get()\n\npub fn main() -[IO]> Int\n  handle compute()\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
         "kea-cli-mixed-dispatch-and-direct",
         "kea",
     );
@@ -10762,7 +10762,7 @@ fn compile_and_execute_mixed_dispatch_and_direct_effects_exit_code() {
 fn compile_and_execute_nested_evidence_inner_shadows_outer_exit_code() {
     // inner handler provides new evidence for same effect, shadowing outer
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn inner_read() -[Reader Int]> Int\n  Reader.ask()\n\nfn middle() -[Reader Int]> Int\n  let a = handle inner_read()\n    Reader.ask() -> resume 2\n  a + Reader.ask()\n\nfn main() -> Int\n  handle middle()\n    Reader.ask() -> resume 40\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn inner_read() -[Reader Int]> Int\n  Reader.ask()\n\npub fn middle() -[Reader Int]> Int\n  let a = handle inner_read()\n    Reader.ask() -> resume 2\n  a + Reader.ask()\n\npub fn main() -> Int\n  handle middle()\n    Reader.ask() -> resume 40\n",
         "kea-cli-nested-evidence-shadows",
         "kea",
     );
@@ -10777,7 +10777,7 @@ fn compile_and_execute_nested_evidence_inner_shadows_outer_exit_code() {
 fn compile_and_execute_evidence_through_closure_exit_code() {
     // closure captures evidence from enclosing handler scope
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn make_and_call() -[Reader Int]> Int\n  let f = || Reader.ask() + 1\n  f()\n\nfn main() -> Int\n  handle make_and_call()\n    Reader.ask() -> resume 41\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn make_and_call() -[Reader Int]> Int\n  let f = || Reader.ask() + 1\n  f()\n\npub fn main() -> Int\n  handle make_and_call()\n    Reader.ask() -> resume 41\n",
         "kea-cli-evidence-through-closure",
         "kea",
     );
@@ -10794,7 +10794,7 @@ fn compile_and_execute_capability_mock_io_stdout_exit_code() {
     let source_path = write_temp_source(
         // IO.exit is included as a zero-resume clause: Never-returning ops don't call
         // resume — the clause body value becomes the handle expression result directly.
-        "use IO\n\nfn program() -[IO]> Int\n  IO.stdout(\"intercepted\")\n  42\n\nfn main() -> Int\n  handle program()\n    IO.stdout(msg) -> resume ()\n    IO.stderr(msg) -> resume ()\n    IO.read_file(path) -> resume \"\"\n    IO.write_file(path, data) -> resume ()\n    IO.file_exists(path) -> resume True\n    IO.env_var(name) -> resume \"\"\n    IO.mkdir(path) -> resume ()\n    IO.exit(code) -> code\n",
+        "use IO\n\npub fn program() -[IO]> Int\n  IO.stdout(\"intercepted\")\n  42\n\npub fn main() -> Int\n  handle program()\n    IO.stdout(msg) -> resume ()\n    IO.stderr(msg) -> resume ()\n    IO.read_file(path) -> resume \"\"\n    IO.write_file(path, data) -> resume ()\n    IO.file_exists(path) -> resume True\n    IO.env_var(name) -> resume \"\"\n    IO.mkdir(path) -> resume ()\n    IO.exit(code) -> code\n",
         "kea-cli-capability-mock-io-stdout",
         "kea",
     );
@@ -10815,7 +10815,7 @@ fn compile_and_execute_zero_resume_io_exit_intercepted_by_handler() {
     // IO.exit is a Never-returning op; its handler clause body (code) becomes
     // the handle expression result, intercepting the abort and returning 42.
     let source_path = write_temp_source(
-        "use IO\n\nfn program() -[IO]> Int\n  IO.exit(42)\n\nfn main() -> Int\n  handle program()\n    IO.exit(code) -> code\n",
+        "use IO\n\npub fn program() -[IO]> Int\n  IO.exit(42)\n\npub fn main() -> Int\n  handle program()\n    IO.exit(code) -> code\n",
         "kea-cli-zero-resume-io-exit",
         "kea",
     );
@@ -10831,7 +10831,7 @@ fn compile_and_execute_zero_resume_normal_completion_path() {
     // When the handled body completes without calling the Never-returning op,
     // the handle expression returns the body's normal result (not the clause body).
     let source_path = write_temp_source(
-        "use IO\n\nfn program() -[IO]> Int\n  99\n\nfn main() -> Int\n  handle program()\n    IO.exit(code) -> code\n",
+        "use IO\n\npub fn program() -[IO]> Int\n  99\n\npub fn main() -> Int\n  handle program()\n    IO.exit(code) -> code\n",
         "kea-cli-zero-resume-normal-completion",
         "kea",
     );
@@ -10852,7 +10852,7 @@ fn compile_non_tail_resume_transforms_result() {
     // Zero-arg non-tail resume via callback stacking (pure reader effect)
     // let x = resume 40; x + 2  →  callback returns 40, chain adds 2
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn body() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 40\n      x + 2\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn body() -[Reader Int]> Int\n  Reader.ask()\n\npub fn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 40\n      x + 2\n",
         "kea-cli-non-tail-resume-transforms",
         "kea",
     );
@@ -10868,7 +10868,7 @@ fn compile_non_tail_resume_with_pre_resume_computation() {
     // Pre-resume computation feeds into resume value (no captures needed)
     // let r = resume (x * 2); r + 1
     let source_path = write_temp_source(
-        "effect Transform\n  fn get(x: Int) -> Int\n\nfn body() -[Transform]> Int\n  Transform.get(20)\n\nfn main() -> Int\n  handle body()\n    Transform.get(x) ->\n      let r = resume x * 2\n      r + 2\n",
+        "effect Transform\n  fn get(x: Int) -> Int\n\npub fn body() -[Transform]> Int\n  Transform.get(20)\n\npub fn main() -> Int\n  handle body()\n    Transform.get(x) ->\n      let r = resume x * 2\n      r + 2\n",
         "kea-cli-non-tail-resume-pre-resume-comp",
         "kea",
     );
@@ -10884,7 +10884,7 @@ fn compile_non_tail_resume_with_pre_resume_computation() {
 fn compile_non_tail_resume_choose_first() {
     // Choose pattern: resume with first option, return the pick
     let source_path = write_temp_source(
-        "effect Choose\n  fn choose(n: Int) -> Int\n\nfn body() -[Choose]> Int\n  Choose.choose(100)\n\nfn main() -> Int\n  handle body()\n    Choose.choose(n) ->\n      let picked = resume n\n      picked\n",
+        "effect Choose\n  fn choose(n: Int) -> Int\n\npub fn body() -[Choose]> Int\n  Choose.choose(100)\n\npub fn main() -> Int\n  handle body()\n    Choose.choose(n) ->\n      let picked = resume n\n      picked\n",
         "kea-cli-non-tail-resume-choose-first",
         "kea",
     );
@@ -10900,7 +10900,7 @@ fn compile_non_tail_resume_with_then_clause() {
     // Non-tail resume composes with then clause
     // post-resume produces intermediate, then-clause transforms it
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn body() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 40\n      x + 2\n    then result ->\n      result + 100\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn body() -[Reader Int]> Int\n  Reader.ask()\n\npub fn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 40\n      x + 2\n    then result ->\n      result + 100\n",
         "kea-cli-non-tail-resume-then-clause",
         "kea",
     );
@@ -10923,7 +10923,7 @@ fn compile_non_tail_resume_multi_yield_choose() {
     // Chain: identity → wrap(picked*2) → wrap(wrap(picked*2))
     // Unwind: chain(30) = ((30 * 2) * 2) = 120
     let source_path = write_temp_source(
-        "effect Choose\n  fn choose(n: Int) -> Int\n\nfn body() -[Choose]> Int\n  let a = Choose.choose(10)\n  let b = Choose.choose(20)\n  a + b\n\nfn main() -> Int\n  handle body()\n    Choose.choose(n) ->\n      let picked = resume n\n      picked * 2\n",
+        "effect Choose\n  fn choose(n: Int) -> Int\n\npub fn body() -[Choose]> Int\n  let a = Choose.choose(10)\n  let b = Choose.choose(20)\n  a + b\n\npub fn main() -> Int\n  handle body()\n    Choose.choose(n) ->\n      let picked = resume n\n      picked * 2\n",
         "kea-cli-non-tail-multi-yield-choose",
         "kea",
     );
@@ -10942,7 +10942,7 @@ fn compile_non_tail_resume_single_yield_with_chain() {
     // Chain: identity → wrap(picked + 1)
     // Unwind: chain(20) = identity(20 + 1) = 21
     let source_path = write_temp_source(
-        "effect Choose\n  fn choose(n: Int) -> Int\n\nfn body() -[Choose]> Int\n  Choose.choose(20)\n\nfn main() -> Int\n  handle body()\n    Choose.choose(n) ->\n      let picked = resume n\n      picked + 1\n",
+        "effect Choose\n  fn choose(n: Int) -> Int\n\npub fn body() -[Choose]> Int\n  Choose.choose(20)\n\npub fn main() -> Int\n  handle body()\n    Choose.choose(n) ->\n      let picked = resume n\n      picked + 1\n",
         "kea-cli-non-tail-single-yield-chain",
         "kea",
     );
@@ -10960,7 +10960,7 @@ fn compile_non_tail_resume_multi_yield_zero_arg() {
     // Chain: identity → wrap(x * 3) → wrap(wrap(x * 3))
     // Unwind: chain(20) = ((20 * 3) * 3) = 180
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn body() -[Reader Int]> Int\n  let a = Reader.ask()\n  let b = Reader.ask()\n  a + b\n\nfn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 10\n      x * 3\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn body() -[Reader Int]> Int\n  let a = Reader.ask()\n  let b = Reader.ask()\n  a + b\n\npub fn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 10\n      x * 3\n",
         "kea-cli-non-tail-multi-yield-zero-arg",
         "kea",
     );
@@ -10976,7 +10976,7 @@ fn compile_non_tail_resume_with_pre_resume_binding_capture() {
     // Pre-resume binding `n` captured in post-resume body via __kea_internal_capture_store.
     // Transform.get(x=10): n = x + 5 = 15, resume 15, body returns 15, r = 15, r + n = 30.
     let source_path = write_temp_source(
-        "effect Transform\n  fn get(x: Int) -> Int\n\nfn body() -[Transform]> Int\n  Transform.get(10)\n\nfn main() -> Int\n  handle body()\n    Transform.get(x) ->\n      let n = x + 5\n      let r = resume n\n      r + n\n",
+        "effect Transform\n  fn get(x: Int) -> Int\n\npub fn body() -[Transform]> Int\n  Transform.get(10)\n\npub fn main() -> Int\n  handle body()\n    Transform.get(x) ->\n      let n = x + 5\n      let r = resume n\n      r + n\n",
         "kea-cli-non-tail-resume-pre-resume-capture",
         "kea",
     );
@@ -10995,7 +10995,7 @@ fn compile_non_tail_resume_with_pre_resume_capture_multi_yield() {
     // Chain unwind (LIFO): second's post-resume(40) = 40 + 25 = 65,
     //                       first's post-resume(65) = 65 + 15 = 80
     let source_path = write_temp_source(
-        "effect Choose\n  fn choose(x: Int) -> Int\n\nfn body() -[Choose]> Int\n  let a = Choose.choose(10)\n  let b = Choose.choose(20)\n  a + b\n\nfn main() -> Int\n  handle body()\n    Choose.choose(x) ->\n      let n = x + 5\n      let r = resume n\n      r + n\n",
+        "effect Choose\n  fn choose(x: Int) -> Int\n\npub fn body() -[Choose]> Int\n  let a = Choose.choose(10)\n  let b = Choose.choose(20)\n  a + b\n\npub fn main() -> Int\n  handle body()\n    Choose.choose(x) ->\n      let n = x + 5\n      let r = resume n\n      r + n\n",
         "kea-cli-non-tail-pre-resume-capture-multi-yield",
         "kea",
     );
@@ -11011,7 +11011,7 @@ fn compile_non_tail_resume_clause_arg_and_pre_resume_capture_combined() {
     // Transform.get(x=10): n = x * 2 = 20, resume n = resume 20, body returns 20,
     // r = 20, r + n + x = 20 + 20 + 10 = 50.
     let source_path = write_temp_source(
-        "effect Transform\n  fn get(x: Int) -> Int\n\nfn body() -[Transform]> Int\n  Transform.get(10)\n\nfn main() -> Int\n  handle body()\n    Transform.get(x) ->\n      let n = x * 2\n      let r = resume n\n      r + n + x\n",
+        "effect Transform\n  fn get(x: Int) -> Int\n\npub fn body() -[Transform]> Int\n  Transform.get(10)\n\npub fn main() -> Int\n  handle body()\n    Transform.get(x) ->\n      let n = x * 2\n      let r = resume n\n      r + n + x\n",
         "kea-cli-non-tail-clause-arg-and-pre-resume-capture",
         "kea",
     );
@@ -11027,7 +11027,7 @@ fn compile_rejects_pure_function_calling_effectful_forward_reference() {
     // which has `[Reader Int]`, so `pure` transitively performs Reader.
     // The compiler must reject `pure`'s declared `->` signature.
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn pure(n: Int) -> Int\n  if n == 0\n    0\n  else\n    eff(n - 1)\n\nfn eff(n: Int) -[Reader Int]> Int\n  if n == 0\n    Reader.ask()\n  else\n    pure(n - 1)\n\nfn main() -> Int\n  handle eff(2)\n    Reader.ask() -> resume 7\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn pure(n: Int) -> Int\n  if n == 0\n    0\n  else\n    eff(n - 1)\n\npub fn eff(n: Int) -[Reader Int]> Int\n  if n == 0\n    Reader.ask()\n  else\n    pure(n - 1)\n\npub fn main() -> Int\n  handle eff(2)\n    Reader.ask() -> resume 7\n",
         "kea-cli-mutual-recursion-pure-effectful-reject",
         "kea",
     );
@@ -11046,7 +11046,7 @@ fn compile_rejects_pure_function_calling_effectful_forward_reference() {
 fn compile_rejects_pure_function_directly_calling_effectful() {
     // A pure function directly calling an effectful function must be rejected.
     let source_path = write_temp_source(
-        "effect Log\n  fn info(msg: String) -> Unit\n\nfn greet() -[Log]> Unit\n  Log.info(\"hi\")\n\nfn wrapper() -> Unit\n  greet()\n\nfn main() -> Int\n  0\n",
+        "effect Log\n  fn info(msg: String) -> Unit\n\npub fn greet() -[Log]> Unit\n  Log.info(\"hi\")\n\npub fn wrapper() -> Unit\n  greet()\n\npub fn main() -> Int\n  0\n",
         "kea-cli-pure-calls-effectful-direct",
         "kea",
     );
@@ -11064,7 +11064,7 @@ fn compile_rejects_pure_function_directly_calling_effectful() {
 fn compile_and_execute_pure_function_with_handle_covering_all_effects() {
     // A pure function that handles all effects of its callee should pass.
     let source_path = write_temp_source(
-        "effect Counter\n  fn next() -> Int\n\nfn count() -[Counter]> Int\n  Counter.next()\n\nfn main() -> Int\n  handle count()\n    Counter.next() -> resume 42\n",
+        "effect Counter\n  fn next() -> Int\n\npub fn count() -[Counter]> Int\n  Counter.next()\n\npub fn main() -> Int\n  handle count()\n    Counter.next() -> resume 42\n",
         "kea-cli-pure-handle-all-effects",
         "kea",
     );
@@ -11081,7 +11081,7 @@ fn compile_and_execute_higher_order_pure_function_with_callback() {
     // should not be rejected — the open tail variable is not a
     // concrete effect violation.
     let source_path = write_temp_source(
-        "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn main() -> Int\n  apply(|x| x + 1, 41)\n",
+        "pub fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\npub fn main() -> Int\n  apply(|x| x + 1, 41)\n",
         "kea-cli-pure-higher-order-callback",
         "kea",
     );
@@ -11094,7 +11094,7 @@ fn compile_and_execute_higher_order_pure_function_with_callback() {
 
 #[test]
 fn compile_and_execute_function_with_fifty_parameters_exit_code() {
-    let mut source = String::from("fn sum50(");
+    let mut source = String::from("pub fn sum50(");
     for i in 1..=50 {
         if i > 1 {
             source.push_str(", ");
@@ -11108,7 +11108,7 @@ fn compile_and_execute_function_with_fifty_parameters_exit_code() {
         }
         source.push_str(&format!("a{i}"));
     }
-    source.push_str("\n\nfn main() -> Int\n  sum50(");
+    source.push_str("\n\npub fn main() -> Int\n  sum50(");
     for i in 1..=50 {
         if i > 1 {
             source.push_str(", ");
@@ -11126,7 +11126,7 @@ fn compile_and_execute_function_with_fifty_parameters_exit_code() {
 
 #[test]
 fn compile_project_with_fifty_parameters_does_not_overflow() {
-    let mut source = String::from("fn sum50(");
+    let mut source = String::from("pub fn sum50(");
     for i in 1..=50 {
         if i > 1 {
             source.push_str(", ");
@@ -11140,7 +11140,7 @@ fn compile_project_with_fifty_parameters_does_not_overflow() {
         }
         source.push_str(&format!("a{i}"));
     }
-    source.push_str("\n\nfn main() -> Int\n  sum50(");
+    source.push_str("\n\npub fn main() -> Int\n  sum50(");
     for i in 1..=50 {
         if i > 1 {
             source.push_str(", ");
@@ -11157,7 +11157,7 @@ fn compile_project_with_fifty_parameters_does_not_overflow() {
 
 #[test]
 fn compile_and_execute_hundred_nested_let_bindings_exit_code() {
-    let mut source = String::from("fn main() -> Int\n");
+    let mut source = String::from("pub fn main() -> Int\n");
     for i in 0..100 {
         source.push_str(&format!("  let x{i} = {}\n", i + 1));
     }
@@ -11173,12 +11173,12 @@ fn compile_and_execute_hundred_nested_let_bindings_exit_code() {
 #[test]
 fn compile_and_execute_program_with_hundred_top_level_functions_exit_code() {
     let mut source = String::new();
-    source.push_str("fn f99(n: Int) -> Int\n  n\n\n");
+    source.push_str("pub fn f99(n: Int) -> Int\n  n\n\n");
     for i in (0..99).rev() {
         let next = i + 1;
-        source.push_str(&format!("fn f{i}(n: Int) -> Int\n  f{next}(n) + 1\n\n"));
+        source.push_str(&format!("pub fn f{i}(n: Int) -> Int\n  f{next}(n) + 1\n\n"));
     }
-    source.push_str("fn main() -> Int\n  f0(0)\n");
+    source.push_str("pub fn main() -> Int\n  f0(0)\n");
 
     let source_path = write_temp_source(&source, "kea-cli-hundred-top-level-functions", "kea");
 
@@ -11194,10 +11194,10 @@ fn compile_and_execute_program_with_hundred_mutually_recursive_top_level_functio
     for i in 0..100 {
         let next = (i + 1) % 100;
         source.push_str(&format!(
-            "fn f{i}(n: Int) -> Int\n  if n == 0\n    {i}\n  else\n    f{next}(n - 1)\n\n"
+            "pub fn f{i}(n: Int) -> Int\n  if n == 0\n    {i}\n  else\n    f{next}(n - 1)\n\n"
         ));
     }
-    source.push_str("fn main() -> Int\n  f0(100)\n");
+    source.push_str("pub fn main() -> Int\n  f0(100)\n");
 
     let source_path =
         write_temp_source(&source, "kea-cli-hundred-mutual-top-level-functions", "kea");
@@ -11215,14 +11215,14 @@ fn compile_project_accepts_effect_row_with_twenty_effects() {
     for i in 1..=20 {
         source.push_str(&format!("effect E{i}\n  fn ping() -> Unit\n\n"));
     }
-    source.push_str("fn stress() -[");
+    source.push_str("pub fn stress() -[");
     for i in 1..=20 {
         if i > 1 {
             source.push_str(", ");
         }
         source.push_str(&format!("E{i}"));
     }
-    source.push_str("]> Int\n  7\n\nfn main() -> Int\n  0\n");
+    source.push_str("]> Int\n  7\n\npub fn main() -> Int\n  0\n");
 
     let source_path = write_temp_source(&source, "kea-cli-effect-row-twenty-effects", "kea");
 
@@ -11239,7 +11239,7 @@ fn compile_and_execute_deeply_nested_option_type_annotation_exit_code() {
         nested = format!("Option({nested})");
     }
     let source = format!(
-        "fn main() -> Int\n  let v: {nested} = None\n  case v\n    None -> 1\n    Some(_) -> 0\n"
+        "pub fn main() -> Int\n  let v: {nested} = None\n  case v\n    None -> 1\n    Some(_) -> 0\n"
     );
 
     let source_path = write_temp_source(&source, "kea-cli-deep-option-type", "kea");
@@ -11256,7 +11256,7 @@ fn compile_and_execute_thousand_line_case_with_five_hundred_variants_exit_code()
     for i in 0..500 {
         source.push_str(&format!("  V{i}\n"));
     }
-    source.push_str("\nfn main() -> Int\n  case V499\n");
+    source.push_str("\npub fn main() -> Int\n  case V499\n");
     for i in 0..500 {
         source.push_str(&format!("    V{i} -> {i}\n"));
     }
@@ -11271,7 +11271,7 @@ fn compile_and_execute_thousand_line_case_with_five_hundred_variants_exit_code()
 #[test]
 fn compile_and_execute_negative_modulo_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  -5 % 3\n",
+        "pub fn main() -> Int\n  -5 % 3\n",
         "kea-cli-negative-modulo",
         "kea",
     );
@@ -11295,7 +11295,7 @@ fn compile_build_and_execute_aot_string_interpolation_with_fifty_expressions_std
     }
 
     let source = format!(
-        "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  let s = \"{interpolated}\"\n  IO.stdout(s)\n"
+        "effect IO\n  fn stdout(msg: String) -> Unit\n\npub fn main() -[IO]> Unit\n  let s = \"{interpolated}\"\n  IO.stdout(s)\n"
     );
     let source_path = write_temp_source(&source, "kea-cli-string-interpolation-fifty", "kea");
     let output_path = temp_artifact_path("kea-cli-aot-string-interpolation-fifty", "bin");
@@ -11326,7 +11326,7 @@ fn compile_and_execute_handler_clause_with_side_effects_before_tail_resume() {
     // non-tail-resumptive; now correctly handled via the general
     // callback path with Block-ending-in-Resume classification.
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\nfn f() -[State Int, Log]> Int\n  State.get()\n\nfn run_state() -[Log]> Int\n  handle f()\n    State.get() ->\n      Log.log(1)\n      resume 0\n    State.put(next) -> resume ()\n\nfn main() -> Int\n  handle run_state()\n    Log.log(msg) -> resume ()\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\npub fn f() -[State Int, Log]> Int\n  State.get()\n\npub fn run_state() -[Log]> Int\n  handle f()\n    State.get() ->\n      Log.log(1)\n      resume 0\n    State.put(next) -> resume ()\n\npub fn main() -> Int\n  handle run_state()\n    Log.log(msg) -> resume ()\n",
         "kea-cli-handler-side-effects-before-resume",
         "kea",
     );
@@ -11340,7 +11340,7 @@ fn compile_and_execute_handler_clause_with_side_effects_before_tail_resume() {
 #[test]
 fn compile_and_reject_handler_clause_with_nested_handle_before_resume() {
     let source_path = write_temp_source(
-        "effect Reader C\n  fn ask() -> C\n\nfn main() -> Int\n  handle Reader.ask()\n    Reader.ask() ->\n      let inner = handle Reader.ask()\n        Reader.ask() -> resume 2\n      resume inner\n",
+        "effect Reader C\n  fn ask() -> C\n\npub fn main() -> Int\n  handle Reader.ask()\n    Reader.ask() ->\n      let inner = handle Reader.ask()\n        Reader.ask() -> resume 2\n      resume inner\n",
         "kea-cli-reject-nested-handle-before-resume",
         "kea",
     );
@@ -11359,7 +11359,7 @@ fn compile_and_reject_handler_clause_with_nested_handle_before_resume() {
 #[test]
 fn compile_and_reject_partial_handler_clause_set_for_effect() {
     let source_path = write_temp_source(
-        "effect Counter\n  fn read() -> Int\n  fn write(next: Int) -> Unit\n\nfn g() -[Counter]> Int\n  Counter.write(1)\n  Counter.read()\n\nfn main() -> Int\n  handle g()\n    Counter.read() -> resume 0\n",
+        "effect Counter\n  fn read() -> Int\n  fn write(next: Int) -> Unit\n\npub fn g() -[Counter]> Int\n  Counter.write(1)\n  Counter.read()\n\npub fn main() -> Int\n  handle g()\n    Counter.read() -> resume 0\n",
         "kea-cli-reject-partial-effect-handler-clauses",
         "kea",
     );
@@ -11376,7 +11376,7 @@ fn compile_and_reject_partial_handler_clause_set_for_effect() {
 #[test]
 fn compile_and_execute_catch_fail_result_case_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn f() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn f() -[Fail Int]> Int\n  fail 7\n\npub fn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-catch-fail-case",
         "kea",
     );
@@ -11390,7 +11390,7 @@ fn compile_and_execute_catch_fail_result_case_exit_code() {
 #[test]
 fn compile_and_execute_catch_ok_result_case_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn f() -[Fail Int]> Int\n  5\n\nfn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn f() -[Fail Int]> Int\n  5\n\npub fn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-catch-ok-case",
         "kea",
     );
@@ -11404,7 +11404,7 @@ fn compile_and_execute_catch_ok_result_case_exit_code() {
 #[test]
 fn compile_and_execute_nested_catch_inner_handles_inner_fail_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn inner() -[Fail Int]> Int\n  fail 3\n\nfn outer() -[Fail Int]> Int\n  let handled = catch inner()\n  let inner_value = case handled\n    Ok(v) -> v\n    Err(e) -> e + 1\n  if inner_value == 4\n    fail 9\n  else\n    0\n\nfn main() -> Int\n  let r = catch outer()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn inner() -[Fail Int]> Int\n  fail 3\n\npub fn outer() -[Fail Int]> Int\n  let handled = catch inner()\n  let inner_value = case handled\n    Ok(v) -> v\n    Err(e) -> e + 1\n  if inner_value == 4\n    fail 9\n  else\n    0\n\npub fn main() -> Int\n  let r = catch outer()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-catch-nested-inner-handles-inner-fail",
         "kea",
     );
@@ -11418,7 +11418,7 @@ fn compile_and_execute_nested_catch_inner_handles_inner_fail_exit_code() {
 #[test]
 fn compile_and_execute_catch_wraps_handle_result_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\neffect Reader C\n  fn ask() -> C\n\nfn base() -[Reader Int]> Int\n  Reader.ask()\n\nfn wrapped() -[Fail Int]> Int\n  let x = handle base()\n    Reader.ask() -> resume 2\n  if x == 2\n    fail 7\n  else\n    x\n\nfn main() -> Int\n  let r = catch wrapped()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\neffect Reader C\n  fn ask() -> C\n\npub fn base() -[Reader Int]> Int\n  Reader.ask()\n\npub fn wrapped() -[Fail Int]> Int\n  let x = handle base()\n    Reader.ask() -> resume 2\n  if x == 2\n    fail 7\n  else\n    x\n\npub fn main() -> Int\n  let r = catch wrapped()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-catch-wraps-handle-result",
         "kea",
     );
@@ -11432,7 +11432,7 @@ fn compile_and_execute_catch_wraps_handle_result_exit_code() {
 #[test]
 fn compile_and_execute_catch_higher_order_fail_parameter_err_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn call_with_catch(f: fn() -[Fail Int]> Int) -> Result(Int, Int)\n  catch f()\n\nfn boom() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = call_with_catch(boom)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn call_with_catch(f: fn() -[Fail Int]> Int) -> Result(Int, Int)\n  catch f()\n\npub fn boom() -[Fail Int]> Int\n  fail 7\n\npub fn main() -> Int\n  let r = call_with_catch(boom)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-catch-higher-order-fail-err",
         "kea",
     );
@@ -11446,7 +11446,7 @@ fn compile_and_execute_catch_higher_order_fail_parameter_err_exit_code() {
 #[test]
 fn compile_and_execute_catch_higher_order_fail_parameter_ok_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn call_with_catch(f: fn() -[Fail Int]> Int) -> Result(Int, Int)\n  catch f()\n\nfn ok() -[Fail Int]> Int\n  9\n\nfn main() -> Int\n  let r = call_with_catch(ok)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn call_with_catch(f: fn() -[Fail Int]> Int) -> Result(Int, Int)\n  catch f()\n\npub fn ok() -[Fail Int]> Int\n  9\n\npub fn main() -> Int\n  let r = call_with_catch(ok)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-catch-higher-order-fail-ok",
         "kea",
     );
@@ -11460,7 +11460,7 @@ fn compile_and_execute_catch_higher_order_fail_parameter_ok_exit_code() {
 #[test]
 fn compile_and_execute_try_sugar_fail_path_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn step(ok: Bool) -> Result(Int, Int)\n  if ok then Ok(41) else Err(7)\n\nfn run(ok: Bool) -[Fail Int]> Int\n  step(ok)?\n\nfn main() -> Int\n  let r = catch run(false)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn step(ok: Bool) -> Result(Int, Int)\n  if ok then Ok(41) else Err(7)\n\npub fn run(ok: Bool) -[Fail Int]> Int\n  step(ok)?\n\npub fn main() -> Int\n  let r = catch run(false)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-try-sugar-fail",
         "kea",
     );
@@ -11474,7 +11474,7 @@ fn compile_and_execute_try_sugar_fail_path_exit_code() {
 #[test]
 fn compile_rejects_try_sugar_on_non_result_expression() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn run() -[Fail Int]> Int\n  42?\n\nfn main() -> Int\n  let r = catch run()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn run() -[Fail Int]> Int\n  42?\n\npub fn main() -> Int\n  let r = catch run()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-try-sugar-non-result",
         "kea",
     );
@@ -11493,7 +11493,7 @@ fn compile_rejects_try_sugar_on_non_result_expression() {
 #[test]
 fn compile_rejects_try_sugar_when_error_type_mismatches_fail_effect() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: String) -> Never\n\nfn step(ok: Bool) -> Result(Int, Int)\n  if ok then Ok(41) else Err(7)\n\nfn run(ok: Bool) -[Fail String]> Int\n  step(ok)?\n\nfn main() -> Int\n  let r = catch run(false)\n  case r\n    Ok(v) -> v\n    Err(e) -> 0\n",
+        "effect Fail\n  fn fail(err: String) -> Never\n\npub fn step(ok: Bool) -> Result(Int, Int)\n  if ok then Ok(41) else Err(7)\n\npub fn run(ok: Bool) -[Fail String]> Int\n  step(ok)?\n\npub fn main() -> Int\n  let r = catch run(false)\n  case r\n    Ok(v) -> v\n    Err(e) -> 0\n",
         "kea-cli-try-sugar-error-type-mismatch",
         "kea",
     );
@@ -11511,7 +11511,7 @@ fn compile_rejects_try_sugar_when_error_type_mismatches_fail_effect() {
 #[test]
 fn compile_and_execute_try_sugar_ok_path_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn step(ok: Bool) -> Result(Int, Int)\n  if ok then Ok(41) else Err(7)\n\nfn run(ok: Bool) -[Fail Int]> Int\n  step(ok)?\n\nfn main() -> Int\n  let r = catch run(true)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn step(ok: Bool) -> Result(Int, Int)\n  if ok then Ok(41) else Err(7)\n\npub fn run(ok: Bool) -[Fail Int]> Int\n  step(ok)?\n\npub fn main() -> Int\n  let r = catch run(true)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-try-sugar-ok",
         "kea",
     );
@@ -11525,7 +11525,7 @@ fn compile_and_execute_try_sugar_ok_path_exit_code() {
 #[test]
 fn compile_and_execute_catch_fails_when_body_cannot_fail() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -> Int\n  let r = catch 42\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn main() -> Int\n  let r = catch 42\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-catch-cannot-fail",
         "kea",
     );
@@ -11542,7 +11542,7 @@ fn compile_and_execute_catch_fails_when_body_cannot_fail() {
 #[test]
 fn compile_and_execute_fail_in_handler_then_clause_with_outer_catch_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\neffect Reader C\n  fn ask() -> C\n\nfn read() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  let r = catch handle read()\n    Reader.ask() -> resume 1\n    then value ->\n      fail 9\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\neffect Reader C\n  fn ask() -> C\n\npub fn read() -[Reader Int]> Int\n  Reader.ask()\n\npub fn main() -> Int\n  let r = catch handle read()\n    Reader.ask() -> resume 1\n    then value ->\n      fail 9\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-handler-then-fail-propagates-to-catch",
         "kea",
     );
@@ -11556,7 +11556,7 @@ fn compile_and_execute_fail_in_handler_then_clause_with_outer_catch_exit_code() 
 #[test]
 fn compile_rejects_catch_with_wrong_error_type_annotation() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -> Int\n  let r: Result(Int, String) = catch fail 7\n  case r\n    Ok(v) -> v\n    Err(e) -> 0\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn main() -> Int\n  let r: Result(Int, String) = catch fail 7\n  case r\n    Ok(v) -> v\n    Err(e) -> 0\n",
         "kea-cli-catch-wrong-error-annotation",
         "kea",
     );
@@ -11575,7 +11575,7 @@ fn compile_rejects_catch_with_wrong_error_type_annotation() {
 #[test]
 fn compile_and_execute_catch_direct_fail_exit_code() {
     let source_path = write_temp_source(
-        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -> Int\n  let r = catch fail 7\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "effect Fail\n  fn fail(err: Int) -> Never\n\npub fn main() -> Int\n  let r = catch fail 7\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-catch-direct-fail",
         "kea",
     );
@@ -11589,7 +11589,7 @@ fn compile_and_execute_catch_direct_fail_exit_code() {
 #[test]
 fn compile_rejects_cyclic_alias_definitions() {
     let source_path = write_temp_source(
-        "alias A = B\nalias B = A\n\nfn main() -> Int\n  0\n",
+        "alias A = B\nalias B = A\n\npub fn main() -> Int\n  0\n",
         "kea-cli-alias-cycle",
         "kea",
     );
@@ -11606,7 +11606,7 @@ fn compile_rejects_cyclic_alias_definitions() {
 #[test]
 fn compile_rejects_type_annotation_arity_mismatch() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let v: Result(Int) = Ok(1)\n  0\n",
+        "pub fn main() -> Int\n  let v: Result(Int) = Ok(1)\n  0\n",
         "kea-cli-type-arity-mismatch",
         "kea",
     );
@@ -11624,7 +11624,7 @@ fn compile_rejects_type_annotation_arity_mismatch() {
 #[test]
 fn compile_rejects_named_record_field_type_mismatch_with_field_context() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n\nfn main() -> Int\n  let _ = User { age: \"oops\" }\n  0\n",
+        "struct User\n  age: Int\n\npub fn main() -> Int\n  let _ = User { age: \"oops\" }\n  0\n",
         "kea-cli-record-field-type-mismatch",
         "kea",
     );
@@ -11647,7 +11647,7 @@ fn compile_rejects_named_record_field_type_mismatch_with_field_context() {
 #[test]
 fn compile_rejects_row_polymorphic_argument_missing_required_field() {
     let source_path = write_temp_source(
-        "fn get_age(u: { age: Int | r }) -> Int\n  u.age\n\nfn main() -> Int\n  get_age(#{ score: 1 })\n",
+        "pub fn get_age(u: { age: Int | r }) -> Int\n  u.age\n\npub fn main() -> Int\n  get_age(#{ score: 1 })\n",
         "kea-cli-row-poly-missing-field",
         "kea",
     );
@@ -11666,7 +11666,7 @@ fn compile_rejects_row_polymorphic_argument_missing_required_field() {
 #[test]
 fn compile_rejects_function_call_with_too_many_arguments() {
     let source_path = write_temp_source(
-        "fn add(x: Int, y: Int) -> Int\n  x + y\n\nfn main() -> Int\n  add(1, 2, 3)\n",
+        "pub fn add(x: Int, y: Int) -> Int\n  x + y\n\npub fn main() -> Int\n  add(1, 2, 3)\n",
         "kea-cli-call-too-many-args",
         "kea",
     );
@@ -11683,7 +11683,7 @@ fn compile_rejects_function_call_with_too_many_arguments() {
 #[test]
 fn compile_type_errors_do_not_expose_internal_inference_variables() {
     let source_path = write_temp_source(
-        "fn get_age(u: { age: Int | r }) -> Int\n  u.age\n\nfn main() -> Int\n  get_age(#{ age: \"oops\" })\n",
+        "pub fn get_age(u: { age: Int | r }) -> Int\n  u.age\n\npub fn main() -> Int\n  get_age(#{ age: \"oops\" })\n",
         "kea-cli-no-internal-type-vars-in-errors",
         "kea",
     );
@@ -11706,7 +11706,7 @@ fn compile_type_errors_do_not_expose_internal_inference_variables() {
 #[test]
 fn compile_and_execute_trait_qualified_method_single_impl_exit_code() {
     let source_path = write_temp_source(
-        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n\nfn main() -> Int\n  Inc.inc(41)\n",
+        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n\npub fn main() -> Int\n  Inc.inc(41)\n",
         "kea-cli-trait-qualified-single-impl",
         "kea",
     );
@@ -11722,7 +11722,7 @@ fn compile_and_execute_trait_qualified_method_multi_impl_resolves_by_arg_type() 
     // When multiple impls exist, qualified call resolves via argument type inference.
     // `Inc.inc(41)` resolves to `Inc.Int.inc(41)` because `41: Int`.
     let source_path = write_temp_source(
-        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n\nFloat as Inc\n  fn inc(x: Float) -> Float\n    x + 1.0\n\nfn main() -> Int\n  Inc.inc(41)\n",
+        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n\nFloat as Inc\n  fn inc(x: Float) -> Float\n    x + 1.0\n\npub fn main() -> Int\n  Inc.inc(41)\n",
         "kea-cli-trait-qualified-ambiguous-impls",
         "kea",
     );
@@ -11736,7 +11736,7 @@ fn compile_and_execute_trait_qualified_method_multi_impl_resolves_by_arg_type() 
 #[test]
 fn compile_rejects_duplicate_trait_impl_for_same_type() {
     let source_path = write_temp_source(
-        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 2\n\nfn main() -> Int\n  0\n",
+        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 2\n\npub fn main() -> Int\n  0\n",
         "kea-cli-trait-duplicate-impl",
         "kea",
     );
@@ -11753,7 +11753,7 @@ fn compile_rejects_duplicate_trait_impl_for_same_type() {
 #[test]
 fn compile_rejects_impl_missing_required_trait_method() {
     let source_path = write_temp_source(
-        "trait IncDec a\n  fn inc(x: a) -> a\n  fn dec(x: a) -> a\n\nInt as IncDec\n  fn inc(x: Int) -> Int\n    x + 1\n\nfn main() -> Int\n  0\n",
+        "trait IncDec a\n  fn inc(x: a) -> a\n  fn dec(x: a) -> a\n\nInt as IncDec\n  fn inc(x: Int) -> Int\n    x + 1\n\npub fn main() -> Int\n  0\n",
         "kea-cli-trait-missing-method",
         "kea",
     );
@@ -11770,7 +11770,7 @@ fn compile_rejects_impl_missing_required_trait_method() {
 #[test]
 fn compile_rejects_impl_with_extra_non_trait_method() {
     let source_path = write_temp_source(
-        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n  fn dec(x: Int) -> Int\n    x - 1\n\nfn main() -> Int\n  0\n",
+        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n  fn dec(x: Int) -> Int\n    x - 1\n\npub fn main() -> Int\n  0\n",
         "kea-cli-trait-extra-method",
         "kea",
     );
@@ -11787,7 +11787,7 @@ fn compile_rejects_impl_with_extra_non_trait_method() {
 #[test]
 fn compile_rejects_impl_method_return_type_mismatch_even_when_unused() {
     let source_path = write_temp_source(
-        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> String\n    \"oops\"\n\nfn main() -> Int\n  0\n",
+        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> String\n    \"oops\"\n\npub fn main() -> Int\n  0\n",
         "kea-cli-trait-return-type-mismatch",
         "kea",
     );
@@ -11809,7 +11809,7 @@ fn compile_rejects_impl_method_return_type_mismatch_even_when_unused() {
 #[test]
 fn compile_rejects_impl_method_parameter_type_mismatch_even_when_unused() {
     let source_path = write_temp_source(
-        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: String) -> Int\n    0\n\nfn main() -> Int\n  0\n",
+        "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: String) -> Int\n    0\n\npub fn main() -> Int\n  0\n",
         "kea-cli-trait-param-type-mismatch",
         "kea",
     );
@@ -11831,7 +11831,7 @@ fn compile_rejects_impl_method_parameter_type_mismatch_even_when_unused() {
 #[test]
 fn compile_rejects_impl_method_arity_mismatch_even_when_unused() {
     let source_path = write_temp_source(
-        "trait Adder a\n  fn add(x: a, y: a) -> a\n\nInt as Adder\n  fn add(x: Int) -> Int\n    x\n\nfn main() -> Int\n  0\n",
+        "trait Adder a\n  fn add(x: a, y: a) -> a\n\nInt as Adder\n  fn add(x: Int) -> Int\n    x\n\npub fn main() -> Int\n  0\n",
         "kea-cli-trait-arity-mismatch",
         "kea",
     );
@@ -11853,7 +11853,7 @@ fn compile_rejects_impl_method_arity_mismatch_even_when_unused() {
 #[test]
 fn compile_and_execute_bool_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case true\n    true -> 3\n    false -> 8\n",
+        "pub fn main() -> Int\n  case true\n    true -> 3\n    false -> 8\n",
         "kea-cli-case",
         "kea",
     );
@@ -11867,7 +11867,7 @@ fn compile_and_execute_bool_case_exit_code() {
 #[test]
 fn compile_and_execute_bool_case_var_fallback_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case false\n    true -> 3\n    b -> if b then 8 else 6\n",
+        "pub fn main() -> Int\n  case false\n    true -> 3\n    b -> if b then 8 else 6\n",
         "kea-cli-bool-var-fallback-case",
         "kea",
     );
@@ -11881,7 +11881,7 @@ fn compile_and_execute_bool_case_var_fallback_exit_code() {
 #[test]
 fn compile_and_execute_int_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 2\n    1 -> 4\n    2 -> 6\n    _ -> 9\n",
+        "pub fn main() -> Int\n  case 2\n    1 -> 4\n    2 -> 6\n    _ -> 9\n",
         "kea-cli-int-case",
         "kea",
     );
@@ -11895,7 +11895,7 @@ fn compile_and_execute_int_case_exit_code() {
 #[test]
 fn compile_and_execute_float_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 2.5\n    1.5 -> 4\n    2.5 -> 6\n    _ -> 9\n",
+        "pub fn main() -> Int\n  case 2.5\n    1.5 -> 4\n    2.5 -> 6\n    _ -> 9\n",
         "kea-cli-float-case",
         "kea",
     );
@@ -11909,7 +11909,7 @@ fn compile_and_execute_float_case_exit_code() {
 #[test]
 fn compile_and_execute_expression_scrutinee_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 1 + 1\n    1 -> 4\n    2 -> 6\n    _ -> 9\n",
+        "pub fn main() -> Int\n  case 1 + 1\n    1 -> 4\n    2 -> 6\n    _ -> 9\n",
         "kea-cli-expr-case",
         "kea",
     );
@@ -11923,7 +11923,7 @@ fn compile_and_execute_expression_scrutinee_case_exit_code() {
 #[test]
 fn compile_and_execute_case_var_fallback_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 2\n    1 -> 4\n    n -> n\n",
+        "pub fn main() -> Int\n  case 2\n    1 -> 4\n    n -> n\n",
         "kea-cli-case-var-fallback",
         "kea",
     );
@@ -11937,7 +11937,7 @@ fn compile_and_execute_case_var_fallback_exit_code() {
 #[test]
 fn compile_and_execute_unit_enum_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Color\n  Red\n  Green\n\nfn main() -> Int\n  case Color.Red\n    Color.Red -> 1\n    Color.Green -> 2\n",
+        "enum Color\n  Red\n  Green\n\npub fn main() -> Int\n  case Color.Red\n    Color.Red -> 1\n    Color.Green -> 2\n",
         "kea-cli-unit-enum-case",
         "kea",
     );
@@ -11951,7 +11951,7 @@ fn compile_and_execute_unit_enum_case_exit_code() {
 #[test]
 fn compile_and_execute_int_or_pattern_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 2\n    0 | 1 -> 4\n    2 | 3 -> 7\n    _ -> 9\n",
+        "pub fn main() -> Int\n  case 2\n    0 | 1 -> 4\n    2 | 3 -> 7\n    _ -> 9\n",
         "kea-cli-int-or-case",
         "kea",
     );
@@ -11965,7 +11965,7 @@ fn compile_and_execute_int_or_pattern_case_exit_code() {
 #[test]
 fn compile_and_execute_unit_enum_or_pattern_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Color\n  Red\n  Green\n  Blue\n\nfn main() -> Int\n  case Color.Green\n    Color.Red | Color.Green -> 3\n    _ -> 8\n",
+        "enum Color\n  Red\n  Green\n  Blue\n\npub fn main() -> Int\n  case Color.Green\n    Color.Red | Color.Green -> 3\n    _ -> 8\n",
         "kea-cli-unit-enum-or-case",
         "kea",
     );
@@ -11979,7 +11979,7 @@ fn compile_and_execute_unit_enum_or_pattern_case_exit_code() {
 #[test]
 fn compile_and_execute_unqualified_unit_enum_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Color\n  Red\n  Green\n\nfn main() -> Int\n  case Red\n    Red -> 5\n    Green -> 9\n",
+        "enum Color\n  Red\n  Green\n\npub fn main() -> Int\n  case Red\n    Red -> 5\n    Green -> 9\n",
         "kea-cli-unit-enum-unqualified-case",
         "kea",
     );
@@ -11993,7 +11993,7 @@ fn compile_and_execute_unqualified_unit_enum_case_exit_code() {
 #[test]
 fn compile_and_execute_literal_as_pattern_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 0\n    0 as n -> n + 7\n    _ -> 1\n",
+        "pub fn main() -> Int\n  case 0\n    0 as n -> n + 7\n    _ -> 1\n",
         "kea-cli-literal-as-case",
         "kea",
     );
@@ -12007,7 +12007,7 @@ fn compile_and_execute_literal_as_pattern_case_exit_code() {
 #[test]
 fn compile_and_execute_literal_case_guard_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 2\n    2 when true -> 6\n    _ -> 9\n",
+        "pub fn main() -> Int\n  case 2\n    2 when true -> 6\n    _ -> 9\n",
         "kea-cli-literal-guard-case",
         "kea",
     );
@@ -12021,7 +12021,7 @@ fn compile_and_execute_literal_case_guard_exit_code() {
 #[test]
 fn compile_and_execute_literal_as_guard_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 0\n    0 as n when n == 0 -> n + 8\n    _ -> 1\n",
+        "pub fn main() -> Int\n  case 0\n    0 as n when n == 0 -> n + 8\n    _ -> 1\n",
         "kea-cli-literal-as-guard-case",
         "kea",
     );
@@ -12035,7 +12035,7 @@ fn compile_and_execute_literal_as_guard_case_exit_code() {
 #[test]
 fn compile_and_execute_unit_enum_guard_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Color\n  Red\n  Green\n\nfn main() -> Int\n  case Color.Red\n    Color.Red when true -> 4\n    _ -> 1\n",
+        "enum Color\n  Red\n  Green\n\npub fn main() -> Int\n  case Color.Red\n    Color.Red when true -> 4\n    _ -> 1\n",
         "kea-cli-unit-enum-guard-case",
         "kea",
     );
@@ -12049,7 +12049,7 @@ fn compile_and_execute_unit_enum_guard_case_exit_code() {
 #[test]
 fn compile_and_execute_unit_enum_as_guard_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Color\n  Red\n  Green\n\nfn main() -> Int\n  case Color.Red\n    Color.Red as c when true -> 5\n    _ -> 1\n",
+        "enum Color\n  Red\n  Green\n\npub fn main() -> Int\n  case Color.Red\n    Color.Red as c when true -> 5\n    _ -> 1\n",
         "kea-cli-unit-enum-as-guard-case",
         "kea",
     );
@@ -12063,7 +12063,7 @@ fn compile_and_execute_unit_enum_as_guard_case_exit_code() {
 #[test]
 fn compile_and_execute_literal_or_guard_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 1\n    0 | 1 when true -> 6\n    _ -> 1\n",
+        "pub fn main() -> Int\n  case 1\n    0 | 1 when true -> 6\n    _ -> 1\n",
         "kea-cli-literal-or-guard-case",
         "kea",
     );
@@ -12077,7 +12077,7 @@ fn compile_and_execute_literal_or_guard_case_exit_code() {
 #[test]
 fn compile_and_execute_unit_enum_or_guard_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Color\n  Red\n  Green\n  Blue\n\nfn main() -> Int\n  case Color.Red\n    Color.Red | Color.Green when true -> 7\n    _ -> 1\n",
+        "enum Color\n  Red\n  Green\n  Blue\n\npub fn main() -> Int\n  case Color.Red\n    Color.Red | Color.Green when true -> 7\n    _ -> 1\n",
         "kea-cli-unit-enum-or-guard-case",
         "kea",
     );
@@ -12091,7 +12091,7 @@ fn compile_and_execute_unit_enum_or_guard_case_exit_code() {
 #[test]
 fn compile_and_execute_guarded_var_fallback_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 1\n    0 -> 4\n    n when n == 1 -> n + 8\n    _ -> 1\n",
+        "pub fn main() -> Int\n  case 1\n    0 -> 4\n    n when n == 1 -> n + 8\n    _ -> 1\n",
         "kea-cli-guarded-var-fallback-case",
         "kea",
     );
@@ -12105,7 +12105,7 @@ fn compile_and_execute_guarded_var_fallback_case_exit_code() {
 #[test]
 fn compile_and_execute_guarded_wildcard_fallback_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 1\n    0 -> 4\n    _ when true -> 6\n    _ -> 1\n",
+        "pub fn main() -> Int\n  case 1\n    0 -> 4\n    _ when true -> 6\n    _ -> 1\n",
         "kea-cli-guarded-wildcard-fallback-case",
         "kea",
     );
@@ -12119,7 +12119,7 @@ fn compile_and_execute_guarded_wildcard_fallback_case_exit_code() {
 #[test]
 fn compile_and_execute_or_as_pattern_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case 1\n    0 as n | 1 as n -> n + 5\n    _ -> 1\n",
+        "pub fn main() -> Int\n  case 1\n    0 as n | 1 as n -> n + 5\n    _ -> 1\n",
         "kea-cli-or-as-pattern-case",
         "kea",
     );
@@ -12133,7 +12133,7 @@ fn compile_and_execute_or_as_pattern_case_exit_code() {
 #[test]
 fn compile_and_execute_record_pattern_case_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: 4, .. } -> 6\n    _ -> 2\n",
+        "struct User\n  age: Int\n  score: Int\n\npub fn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: 4, .. } -> 6\n    _ -> 2\n",
         "kea-cli-record-pattern-case",
         "kea",
     );
@@ -12147,7 +12147,7 @@ fn compile_and_execute_record_pattern_case_exit_code() {
 #[test]
 fn compile_and_execute_record_pattern_direct_expression_scrutinee_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n\nfn main() -> Int\n  case User { age: 7 }\n    User { age: n } -> n\n",
+        "struct User\n  age: Int\n\npub fn main() -> Int\n  case User { age: 7 }\n    User { age: n } -> n\n",
         "kea-cli-record-pattern-direct-scrutinee",
         "kea",
     );
@@ -12161,7 +12161,7 @@ fn compile_and_execute_record_pattern_direct_expression_scrutinee_exit_code() {
 #[test]
 fn compile_and_execute_record_pattern_renamed_field_binding_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: years, .. } -> years + 2\n    _ -> 0\n",
+        "struct User\n  age: Int\n  score: Int\n\npub fn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: years, .. } -> years + 2\n    _ -> 0\n",
         "kea-cli-record-pattern-rename-bind",
         "kea",
     );
@@ -12175,7 +12175,7 @@ fn compile_and_execute_record_pattern_renamed_field_binding_exit_code() {
 #[test]
 fn compile_and_execute_record_pattern_pun_binding_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age, .. } -> age + 3\n    _ -> 0\n",
+        "struct User\n  age: Int\n  score: Int\n\npub fn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age, .. } -> age + 3\n    _ -> 0\n",
         "kea-cli-record-pattern-pun-bind",
         "kea",
     );
@@ -12189,7 +12189,7 @@ fn compile_and_execute_record_pattern_pun_binding_exit_code() {
 #[test]
 fn compile_and_execute_record_pattern_guard_binding_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: years, .. } when years == 4 -> years + 10\n    _ -> 0\n",
+        "struct User\n  age: Int\n  score: Int\n\npub fn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: years, .. } when years == 4 -> years + 10\n    _ -> 0\n",
         "kea-cli-record-pattern-guard-bind",
         "kea",
     );
@@ -12203,7 +12203,7 @@ fn compile_and_execute_record_pattern_guard_binding_exit_code() {
 #[test]
 fn compile_and_execute_record_pattern_or_literal_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: 3, .. } | User { age: 4, .. } -> 6\n    _ -> 2\n",
+        "struct User\n  age: Int\n  score: Int\n\npub fn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: 3, .. } | User { age: 4, .. } -> 6\n    _ -> 2\n",
         "kea-cli-record-pattern-or",
         "kea",
     );
@@ -12217,7 +12217,7 @@ fn compile_and_execute_record_pattern_or_literal_exit_code() {
 #[test]
 fn compile_and_execute_anon_record_pattern_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let user = #{ age: 4, score: 9 }\n  case user\n    #{ age: 4, .. } -> 6\n    _ -> 2\n",
+        "pub fn main() -> Int\n  let user = #{ age: 4, score: 9 }\n  case user\n    #{ age: 4, .. } -> 6\n    _ -> 2\n",
         "kea-cli-anon-record-pattern-case",
         "kea",
     );
@@ -12231,7 +12231,7 @@ fn compile_and_execute_anon_record_pattern_case_exit_code() {
 #[test]
 fn compile_and_execute_anon_record_pattern_direct_expression_scrutinee_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case #{ age: 7 }\n    #{ age: n } -> n\n",
+        "pub fn main() -> Int\n  case #{ age: 7 }\n    #{ age: n } -> n\n",
         "kea-cli-anon-record-pattern-direct-scrutinee",
         "kea",
     );
@@ -12245,7 +12245,7 @@ fn compile_and_execute_anon_record_pattern_direct_expression_scrutinee_exit_code
 #[test]
 fn compile_and_execute_anon_record_pattern_or_literal_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let user = #{ age: 4, score: 9 }\n  case user\n    #{ age: 3, .. } | #{ age: 4, .. } -> 6\n    _ -> 2\n",
+        "pub fn main() -> Int\n  let user = #{ age: 4, score: 9 }\n  case user\n    #{ age: 3, .. } | #{ age: 4, .. } -> 6\n    _ -> 2\n",
         "kea-cli-anon-record-pattern-or",
         "kea",
     );
@@ -12259,7 +12259,7 @@ fn compile_and_execute_anon_record_pattern_or_literal_exit_code() {
 #[test]
 fn compile_and_execute_anon_record_literal_field_access_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let user = #{ age: 4, score: 9 }\n  user.age\n",
+        "pub fn main() -> Int\n  let user = #{ age: 4, score: 9 }\n  user.age\n",
         "kea-cli-anon-record-field",
         "kea",
     );
@@ -12273,7 +12273,7 @@ fn compile_and_execute_anon_record_literal_field_access_exit_code() {
 #[test]
 fn compile_and_execute_record_construct_and_field_access_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  user.age + user.score\n",
+        "struct User\n  age: Int\n  score: Int\n\npub fn main() -> Int\n  let user = User { age: 4, score: 9 }\n  user.age + user.score\n",
         "kea-cli-record-init-field",
         "kea",
     );
@@ -12287,7 +12287,7 @@ fn compile_and_execute_record_construct_and_field_access_exit_code() {
 #[test]
 fn compile_and_execute_dot_method_dispatch_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n\nfn inc(self: User) -> User\n  self~{ age: self.age + 1 }\n\nfn main() -> Int\n  let user = User { age: 41 }\n  user.inc().age\n",
+        "struct User\n  age: Int\n\npub fn inc(self: User) -> User\n  self~{ age: self.age + 1 }\n\npub fn main() -> Int\n  let user = User { age: 41 }\n  user.inc().age\n",
         "kea-cli-dot-method-dispatch",
         "kea",
     );
@@ -12301,7 +12301,7 @@ fn compile_and_execute_dot_method_dispatch_exit_code() {
 #[test]
 fn compile_and_execute_dot_method_dispatch_on_field_access_receiver_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n\nstruct Wrap\n  inner: User\n\nfn inc(self: User) -> User\n  self~{ age: self.age + 1 }\n\nfn main() -> Int\n  let wrapped = Wrap { inner: User { age: 41 } }\n  wrapped.inner.inc().age\n",
+        "struct User\n  age: Int\n\nstruct Wrap\n  inner: User\n\npub fn inc(self: User) -> User\n  self~{ age: self.age + 1 }\n\npub fn main() -> Int\n  let wrapped = Wrap { inner: User { age: 41 } }\n  wrapped.inner.inc().age\n",
         "kea-cli-dot-method-dispatch-field-receiver",
         "kea",
     );
@@ -12316,10 +12316,10 @@ fn compile_and_execute_dot_method_dispatch_on_field_access_receiver_exit_code() 
 fn compile_and_execute_receiver_placeholder_in_qualified_call_exit_code() {
     // fold(init, list, f) with receiver placement: list.fold(init, _, f)
     let source = concat!(
-        "fn fold(init: Int, list: Int, f: fn(Int, Int) -> Int) -> Int\n",
+        "pub fn fold(init: Int, list: Int, f: fn(Int, Int) -> Int) -> Int\n",
         "  f(init, list)\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  let x = 21\n",
         "  x.fold(21, _, |a, b| a + b)\n",
     );
@@ -12335,7 +12335,7 @@ fn compile_and_execute_receiver_placeholder_in_qualified_call_exit_code() {
 #[test]
 fn compile_and_execute_row_polymorphic_record_field_access_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n  score: Int\n\nfn get_age(u: { age: Int | r }) -> Int\n  u.age\n\nfn main() -> Int\n  let user = User { age: 41, score: 1 }\n  get_age(user)\n",
+        "struct User\n  age: Int\n  score: Int\n\npub fn get_age(u: { age: Int | r }) -> Int\n  u.age\n\npub fn main() -> Int\n  let user = User { age: 41, score: 1 }\n  get_age(user)\n",
         "kea-cli-row-poly-record-field",
         "kea",
     );
@@ -12349,7 +12349,7 @@ fn compile_and_execute_row_polymorphic_record_field_access_exit_code() {
 #[test]
 fn compile_and_execute_record_update_with_spread_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  let updated = user~{ age: user.age + 3 }\n  updated.age + updated.score\n",
+        "struct User\n  age: Int\n  score: Int\n\npub fn main() -> Int\n  let user = User { age: 4, score: 9 }\n  let updated = user~{ age: user.age + 3 }\n  updated.age + updated.score\n",
         "kea-cli-record-update",
         "kea",
     );
@@ -12363,7 +12363,7 @@ fn compile_and_execute_record_update_with_spread_exit_code() {
 #[test]
 fn compile_and_execute_nested_record_update_chain_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  let updated = (user~{ age: user.age + 3 })~{ score: user.score + 4 }\n  updated.age + updated.score\n",
+        "struct User\n  age: Int\n  score: Int\n\npub fn main() -> Int\n  let user = User { age: 4, score: 9 }\n  let updated = (user~{ age: user.age + 3 })~{ score: user.score + 4 }\n  updated.age + updated.score\n",
         "kea-cli-record-update-chain",
         "kea",
     );
@@ -12377,7 +12377,7 @@ fn compile_and_execute_nested_record_update_chain_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_exit_code() {
     let source_path = write_temp_source(
-        "enum Flag\n  Yep(Int)\n  Nope\n\nfn make_flag() -> Flag\n  Yep(7)\n\nfn main() -> Int\n  let ignored = make_flag()\n  3\n",
+        "enum Flag\n  Yep(Int)\n  Nope\n\npub fn make_flag() -> Flag\n  Yep(7)\n\npub fn main() -> Int\n  let ignored = make_flag()\n  3\n",
         "kea-cli-sum-init",
         "kea",
     );
@@ -12391,7 +12391,7 @@ fn compile_and_execute_payload_constructor_exit_code() {
 #[test]
 fn compile_and_execute_mutually_recursive_struct_enum_exit_code() {
     let source_path = write_temp_source(
-        "struct MatchArm\n  body: HirExpr\n  tag: Int\n\nenum HirExpr\n  Lit(Int)\n  Match(HirExpr, MatchArm)\n\nfn depth(e: HirExpr) -> Int\n  case e\n    Lit(_) -> 0\n    Match(inner, _) -> 1 + depth(inner)\n\nfn main() -> Int\n  let arm = MatchArm { body: Lit(1), tag: 0 }\n  depth(Match(Lit(5), arm))\n",
+        "struct MatchArm\n  body: HirExpr\n  tag: Int\n\nenum HirExpr\n  Lit(Int)\n  Match(HirExpr, MatchArm)\n\npub fn depth(e: HirExpr) -> Int\n  case e\n    Lit(_) -> 0\n    Match(inner, _) -> 1 + depth(inner)\n\npub fn main() -> Int\n  let arm = MatchArm { body: Lit(1), tag: 0 }\n  depth(Match(Lit(5), arm))\n",
         "kea-cli-jit-mutual-recursive-type-defs",
         "kea",
     );
@@ -12405,7 +12405,7 @@ fn compile_and_execute_mutually_recursive_struct_enum_exit_code() {
 #[test]
 fn compile_and_execute_sum_payload_record_type_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n\nenum Wrap\n  W(User)\n  N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 1\n    N -> 0\n",
+        "struct User\n  age: Int\n\nenum Wrap\n  W(User)\n  N\n\npub fn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 1\n    N -> 0\n",
         "kea-cli-sum-record-payload",
         "kea",
     );
@@ -12419,7 +12419,7 @@ fn compile_and_execute_sum_payload_record_type_exit_code() {
 #[test]
 fn compile_and_execute_sum_payload_record_pattern_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n\nenum Wrap\n  W(User)\n  N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(User { age: n }) -> n + 2\n    N -> 0\n",
+        "struct User\n  age: Int\n\nenum Wrap\n  W(User)\n  N\n\npub fn main() -> Int\n  case W(User { age: 7 })\n    W(User { age: n }) -> n + 2\n    N -> 0\n",
         "kea-cli-sum-record-payload-pattern",
         "kea",
     );
@@ -12433,7 +12433,7 @@ fn compile_and_execute_sum_payload_record_pattern_exit_code() {
 #[test]
 fn compile_and_execute_sum_payload_record_alias_type_exit_code() {
     let source_path = write_temp_source(
-        "struct User\n  age: Int\n\nalias UserAlias = User\n\nenum Wrap\n  W(UserAlias)\n  N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 5\n    N -> 0\n",
+        "struct User\n  age: Int\n\nalias UserAlias = User\n\nenum Wrap\n  W(UserAlias)\n  N\n\npub fn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 5\n    N -> 0\n",
         "kea-cli-sum-record-payload-alias",
         "kea",
     );
@@ -12447,7 +12447,7 @@ fn compile_and_execute_sum_payload_record_alias_type_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_expression_arg_exit_code() {
     let source_path = write_temp_source(
-        "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",
+        "enum Flag\n  Yep(Int)\n  Nope\n\npub fn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",
         "kea-cli-sum-init-expr-arg",
         "kea",
     );
@@ -12461,7 +12461,7 @@ fn compile_and_execute_payload_constructor_expression_arg_exit_code() {
 #[test]
 fn compile_and_execute_named_payload_constructor_labeled_args_exit_code() {
     let source_path = write_temp_source(
-        "enum Pair\n  Pair(left: Int, right: Int)\n\nfn main() -> Int\n  case Pair(right: 1, left: 40)\n    Pair(left: a, right: b) -> a * 100 + b\n",
+        "enum Pair\n  Pair(left: Int, right: Int)\n\npub fn main() -> Int\n  case Pair(right: 1, left: 40)\n    Pair(left: a, right: b) -> a * 100 + b\n",
         "kea-cli-sum-init-labeled-args",
         "kea",
     );
@@ -12475,7 +12475,7 @@ fn compile_and_execute_named_payload_constructor_labeled_args_exit_code() {
 #[test]
 fn compile_and_execute_qualified_payload_constructor_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Flag.Yep(7)\n    Flag.Yep(n) -> n\n    Flag.Nope -> 0\n",
+        "enum Flag\n  Yep(Int)\n  Nope\n\npub fn main() -> Int\n  case Flag.Yep(7)\n    Flag.Yep(n) -> n\n    Flag.Nope -> 0\n",
         "kea-cli-sum-init-qualified",
         "kea",
     );
@@ -12489,7 +12489,7 @@ fn compile_and_execute_qualified_payload_constructor_case_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(_) -> 11\n    Nope -> 0\n",
+        "enum Flag\n  Yep(Int)\n  Nope\n\npub fn main() -> Int\n  case Yep(7)\n    Yep(_) -> 11\n    Nope -> 0\n",
         "kea-cli-sum-case",
         "kea",
     );
@@ -12503,7 +12503,7 @@ fn compile_and_execute_payload_constructor_case_exit_code() {
 #[test]
 fn compile_and_execute_builtin_result_constructor_case_exit_code() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  case Err(7)\n    Ok(v) -> v\n    Err(e) -> e\n",
+        "pub fn main() -> Int\n  case Err(7)\n    Ok(v) -> v\n    Err(e) -> e\n",
         "kea-cli-builtin-result-case",
         "kea",
     );
@@ -12517,7 +12517,7 @@ fn compile_and_execute_builtin_result_constructor_case_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_bound_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) -> n + 1\n    Nope -> 0\n",
+        "enum Flag\n  Yep(Int)\n  Nope\n\npub fn main() -> Int\n  case Yep(7)\n    Yep(n) -> n + 1\n    Nope -> 0\n",
         "kea-cli-sum-case-bind",
         "kea",
     );
@@ -12531,7 +12531,7 @@ fn compile_and_execute_payload_constructor_bound_case_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_as_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) as whole -> n + 2\n    Nope -> 0\n",
+        "enum Flag\n  Yep(Int)\n  Nope\n\npub fn main() -> Int\n  case Yep(7)\n    Yep(n) as whole -> n + 2\n    Nope -> 0\n",
         "kea-cli-sum-case-as",
         "kea",
     );
@@ -12545,7 +12545,7 @@ fn compile_and_execute_payload_constructor_as_case_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_or_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) | Yep(n) -> n + 3\n    Nope -> 0\n",
+        "enum Flag\n  Yep(Int)\n  Nope\n\npub fn main() -> Int\n  case Yep(7)\n    Yep(n) | Yep(n) -> n + 3\n    Nope -> 0\n",
         "kea-cli-sum-case-or",
         "kea",
     );
@@ -12559,7 +12559,7 @@ fn compile_and_execute_payload_constructor_or_case_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_or_across_variants_exit_code() {
     let source_path = write_temp_source(
-        "enum Either\n  Left(Int)\n  Right(Int)\n  Nope\n\nfn main() -> Int\n  case Right(7)\n    Left(n) | Right(n) -> n + 4\n    Nope -> 0\n",
+        "enum Either\n  Left(Int)\n  Right(Int)\n  Nope\n\npub fn main() -> Int\n  case Right(7)\n    Left(n) | Right(n) -> n + 4\n    Nope -> 0\n",
         "kea-cli-sum-case-or-variants",
         "kea",
     );
@@ -12573,7 +12573,7 @@ fn compile_and_execute_payload_constructor_or_across_variants_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_multi_bind_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Pair\n  Pair(Int, Int)\n  Nope\n\nfn main() -> Int\n  case Pair(4, 6)\n    Pair(a, b) -> a + b\n    Nope -> 0\n",
+        "enum Pair\n  Pair(Int, Int)\n  Nope\n\npub fn main() -> Int\n  case Pair(4, 6)\n    Pair(a, b) -> a + b\n    Nope -> 0\n",
         "kea-cli-sum-case-multi-bind",
         "kea",
     );
@@ -12587,7 +12587,7 @@ fn compile_and_execute_payload_constructor_multi_bind_case_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_literal_check_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(7) -> 14\n    Nope -> 0\n",
+        "enum Flag\n  Yep(Int)\n  Nope\n\npub fn main() -> Int\n  case Yep(7)\n    Yep(7) -> 14\n    Nope -> 0\n",
         "kea-cli-sum-case-literal-check",
         "kea",
     );
@@ -12601,7 +12601,7 @@ fn compile_and_execute_payload_constructor_literal_check_case_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_mixed_literal_bind_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Pair\n  Pair(Int, Int)\n  Nope\n\nfn main() -> Int\n  case Pair(1, 6)\n    Pair(1, b) -> b + 1\n    Nope -> 0\n",
+        "enum Pair\n  Pair(Int, Int)\n  Nope\n\npub fn main() -> Int\n  case Pair(1, 6)\n    Pair(1, b) -> b + 1\n    Nope -> 0\n",
         "kea-cli-sum-case-mixed-literal-bind",
         "kea",
     );
@@ -12615,7 +12615,7 @@ fn compile_and_execute_payload_constructor_mixed_literal_bind_case_exit_code() {
 #[test]
 fn compile_and_execute_nested_payload_constructor_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Maybe a\n  Just(a)\n  Nothing\n\nfn main() -> Int\n  case Just(Just(7))\n    Just(Just(n)) -> n + 8\n    _ -> 0\n",
+        "enum Maybe a\n  Just(a)\n  Nothing\n\npub fn main() -> Int\n  case Just(Just(7))\n    Just(Just(n)) -> n + 8\n    _ -> 0\n",
         "kea-cli-sum-case-nested-payload",
         "kea",
     );
@@ -12629,7 +12629,7 @@ fn compile_and_execute_nested_payload_constructor_case_exit_code() {
 #[test]
 fn compile_and_execute_nested_or_payload_constructor_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Inner\n  A(Int)\n  B(Int)\nenum Outer\n  Wrap(Inner)\n  End\n\nfn main() -> Int\n  case Wrap(B(7))\n    Wrap(A(n) | B(n)) -> n + 12\n    _ -> 0\n",
+        "enum Inner\n  A(Int)\n  B(Int)\nenum Outer\n  Wrap(Inner)\n  End\n\npub fn main() -> Int\n  case Wrap(B(7))\n    Wrap(A(n) | B(n)) -> n + 12\n    _ -> 0\n",
         "kea-cli-sum-case-nested-or-payload",
         "kea",
     );
@@ -12643,7 +12643,7 @@ fn compile_and_execute_nested_or_payload_constructor_case_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_as_guard_case_exit_code() {
     let source_path = write_temp_source(
-        "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) as whole when n == 7 -> n + 5\n    Yep(_) -> 1\n    Nope -> 0\n",
+        "enum Flag\n  Yep(Int)\n  Nope\n\npub fn main() -> Int\n  case Yep(7)\n    Yep(n) as whole when n == 7 -> n + 5\n    Yep(_) -> 1\n    Nope -> 0\n",
         "kea-cli-sum-case-as-guard",
         "kea",
     );
@@ -12657,7 +12657,7 @@ fn compile_and_execute_payload_constructor_as_guard_case_exit_code() {
 #[test]
 fn compile_and_execute_payload_constructor_or_guard_across_variants_exit_code() {
     let source_path = write_temp_source(
-        "enum Either\n  Left(Int)\n  Right(Int)\n  Nope\n\nfn main() -> Int\n  case Right(7)\n    Left(n) | Right(n) when n > 0 -> n + 6\n    Left(_) | Right(_) -> 1\n    Nope -> 0\n",
+        "enum Either\n  Left(Int)\n  Right(Int)\n  Nope\n\npub fn main() -> Int\n  case Right(7)\n    Left(n) | Right(n) when n > 0 -> n + 6\n    Left(_) | Right(_) -> 1\n    Nope -> 0\n",
         "kea-cli-sum-case-or-guard-variants",
         "kea",
     );
@@ -12675,7 +12675,7 @@ fn compile_and_execute_float_in_handler_callback() {
     // Previously, Float args were erased to Dynamic (I64) which would cause
     // wrong register class at the Cranelift ABI level.
     let source_path = write_temp_source(
-        "effect FloatEff\n  fn send(value: Float) -> Unit\n\nfn do_send() -[FloatEff]> Int\n  FloatEff.send(3.14)\n  42\n\nfn main() -> Int\n  handle do_send()\n    FloatEff.send(value) -> resume ()\n",
+        "effect FloatEff\n  fn send(value: Float) -> Unit\n\npub fn do_send() -[FloatEff]> Int\n  FloatEff.send(3.14)\n  42\n\npub fn main() -> Int\n  handle do_send()\n    FloatEff.send(value) -> resume ()\n",
         "kea-cli-float-handler-callback",
         "kea",
     );
@@ -12691,7 +12691,7 @@ fn compile_and_execute_float_state_handler() {
     // Float state type threaded through State effect handler.
     // State.get() returns Float, State.put() accepts Float.
     let source_path = write_temp_source(
-        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn use_state() -[State Float]> Float\n  let x = State.get()\n  State.put(x)\n  State.get()\n\nfn main() -> Int\n  handle use_state()\n    State.get() -> resume 2.71\n    State.put(next) -> resume ()\n  0\n",
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\npub fn use_state() -[State Float]> Float\n  let x = State.get()\n  State.put(x)\n  State.get()\n\npub fn main() -> Int\n  handle use_state()\n    State.get() -> resume 2.71\n    State.put(next) -> resume ()\n  0\n",
         "kea-cli-float-state-handler",
         "kea",
     );
@@ -12744,7 +12744,7 @@ fn parse_check_rejects_extra_args() {
 
 #[test]
 fn check_file_succeeds_on_valid_source() {
-    let source_path = write_temp_source("fn main() -> Int\n  42\n", "kea-check-valid", "kea");
+    let source_path = write_temp_source("pub fn main() -> Int\n  42\n", "kea-check-valid", "kea");
     let result = check_file(&source_path).expect("check should succeed on valid source");
     assert!(!result.has_errors, "valid source should produce no errors");
     let _ = std::fs::remove_file(source_path);
@@ -12756,7 +12756,7 @@ fn check_file_does_not_execute_the_program() {
     // not run the program. We verify by asserting check_file returns Ok and the
     // result has no errors — not that the exit code is 99.
     let source_path = write_temp_source(
-        "fn main() -> Int\n  99\n",
+        "pub fn main() -> Int\n  99\n",
         "kea-check-no-exec",
         "kea",
     );
@@ -12786,7 +12786,7 @@ fn check_file_reports_type_error() {
     // Type mismatch: main declared to return Int but returns a Bool.
     // compile_project surfaces type errors as Err(String), so check_file returns Err.
     let source_path = write_temp_source(
-        "fn main() -> Int\n  true\n",
+        "pub fn main() -> Int\n  true\n",
         "kea-check-type-error",
         "kea",
     );
@@ -12802,7 +12802,7 @@ fn check_file_reports_type_error() {
 fn check_file_reports_parse_error() {
     // Truncated return type — parse error, not a type error.
     let source_path = write_temp_source(
-        "fn main() ->\n",
+        "pub fn main() ->\n",
         "kea-check-parse-error",
         "kea",
     );
@@ -12817,7 +12817,7 @@ fn check_file_reports_parse_error() {
 #[test]
 fn check_file_reports_undefined_variable() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  undefined_var\n",
+        "pub fn main() -> Int\n  undefined_var\n",
         "kea-check-undefined-var",
         "kea",
     );
@@ -12838,7 +12838,7 @@ fn check_file_resolves_cross_module_imports() {
     std::fs::write(src_dir.join("math.kea"), "pub fn double(x: Int) -> Int\n  x * 2\n")
         .expect("math module write should succeed");
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "use Math\nfn main() -> Int\n  Math.double(21)\n")
+    std::fs::write(&app_path, "use Math\npub fn main() -> Int\n  Math.double(21)\n")
         .expect("app module write should succeed");
 
     let result = check_file(&app_path).expect("multi-module check should succeed");
@@ -12860,7 +12860,7 @@ fn check_file_catches_cross_module_type_error() {
         .expect("math module write should succeed");
     // Pass a Bool where Int is expected
     let app_path = src_dir.join("app.kea");
-    std::fs::write(&app_path, "use Math\nfn main() -> Int\n  Math.double(true)\n")
+    std::fs::write(&app_path, "use Math\npub fn main() -> Int\n  Math.double(true)\n")
         .expect("app module write should succeed");
 
     let err = check_file(&app_path)
@@ -12995,7 +12995,7 @@ fn struct_inline_method_coexists_with_file_scope_fn() {
         "  fn magnitude_sq(_ self: Vec2) -> Int\n",
         "    self.x * self.x + self.y * self.y\n",
         "\n",
-        "fn scale(_ v: Vec2, _ factor: Int) -> Vec2\n",
+        "pub fn scale(_ v: Vec2, _ factor: Int) -> Vec2\n",
         "  Vec2 { x: v.x * factor, y: v.y * factor }\n",
         "\n",
         "test \"struct block and file-scope coexist\"\n",
@@ -13030,7 +13030,7 @@ fn enum_block_duplicate_method_is_rejected() {
         "  fn flip(_ self: Coin) -> Coin\n",
         "    Heads\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  0\n",
     );
     let path = write_temp_source(source, "kea-enum-duplicate-method", "kea");
@@ -13055,10 +13055,10 @@ fn merged_namespace_method_vs_file_scope_collision_is_rejected() {
         "  fn unwrap(_ self: Box) -> Int\n",
         "    self.value\n",
         "\n",
-        "fn unwrap(_ b: Box) -> Int\n",
+        "pub fn unwrap(_ b: Box) -> Int\n",
         "  b.value + 1\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  0\n",
     );
     let dir = temp_project_dir("kea-merged-ns-collision");
@@ -13081,12 +13081,12 @@ fn compile_and_execute_gadt_eval_monomorphic_exit_code() {
         "  IntLit(value: Int) : Expr Int\n",
         "  Add(left: Expr Int, right: Expr Int) : Expr Int\n",
         "\n",
-        "fn eval_int(e: Expr Int) -> Int\n",
+        "pub fn eval_int(e: Expr Int) -> Int\n",
         "  case e\n",
         "    IntLit(v) -> v\n",
         "    Add(l, r) -> eval_int(l) + eval_int(r)\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  eval_int(Add(IntLit(20), IntLit(22)))\n",
     );
     let source_path = write_temp_source(source, "kea-gadt-eval-mono", "kea");
@@ -13108,17 +13108,17 @@ fn compile_and_execute_gadt_branch_local_refinement_exit_code() {
         "  Add(left: Expr Int, right: Expr Int) : Expr Int\n",
         "  Cond(guard: Expr Bool, tru: Expr Int, fal: Expr Int) : Expr Int\n",
         "\n",
-        "fn eval_int(e: Expr Int) -> Int\n",
+        "pub fn eval_int(e: Expr Int) -> Int\n",
         "  case e\n",
         "    IntLit(value: v) -> v\n",
         "    Add(left: l, right: r) -> eval_int(l) + eval_int(r)\n",
         "    Cond(guard: g, tru: t, fal: f) -> if eval_bool(g) then eval_int(t) else eval_int(f)\n",
         "\n",
-        "fn eval_bool(e: Expr Bool) -> Bool\n",
+        "pub fn eval_bool(e: Expr Bool) -> Bool\n",
         "  case e\n",
         "    BoolLit(value: v) -> v\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  eval_int(Cond(guard: BoolLit(value: true), tru: IntLit(value: 42), fal: IntLit(value: 0)))\n",
     );
     let source_path = write_temp_source(source, "kea-gadt-branch-local", "kea");
@@ -13133,12 +13133,12 @@ fn compile_and_execute_generic_eq_via_monomorphization_exit_code() {
     // The monomorphize pass specializes `contains` for each concrete type,
     // so evidence threading for Eq is handled automatically.
     let source = concat!(
-        "fn contains(list: List a, x: a) -> Bool where a: Eq\n",
+        "pub fn contains(list: List a, x: a) -> Bool where a: Eq\n",
         "  case list\n",
         "    [] -> false\n",
         "    [h, ..t] -> Eq.eq(h, x) or contains(t, x)\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  if contains([1, 2, 3], 2) and not contains([1, 2, 3], 4) then 42 else 0\n",
     );
     let source_path = write_temp_source(source, "kea-generic-eq", "kea");
@@ -13154,12 +13154,12 @@ fn compile_and_execute_supertrait_dispatch_exit_code() {
     // `Ord` declares `compare`; we use a generic function bounded on `Ord` which transitively
     // requires `Eq`. The solver must check supertrait obligations when resolving `Ord`.
     let source = concat!(
-        "fn max_of(a: a, b: a) -> a where a: Ord\n",
+        "pub fn max_of(a: a, b: a) -> a where a: Ord\n",
         "  case Ord.compare(a, b)\n",
         "    Less -> b\n",
         "    _ -> a\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  max_of(37, 42)\n",
     );
     let source_path = write_temp_source(source, "kea-supertrait", "kea");
@@ -13186,7 +13186,7 @@ fn compile_and_execute_associated_type_via_foldable_exit_code() {
         "  fn unwrap(_ self: MyBox) -> Int\n",
         "    self.value\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  let b = MyBox { value: 42 }\n",
         "  Wrap.unwrap(b)\n",
     );
@@ -13233,7 +13233,7 @@ fn temp_workspace_project_dir(prefix: &str) -> PathBuf {
 /// produce type errors for parameterized effect handler clauses.
 #[test]
 fn process_module_in_env_accepts_parameterized_effect_handler() {
-    let source = "effect Reader C\n  fn ask() -> C\n\nfn read() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle read()\n    Reader.ask() -> resume 42\n";
+    let source = "effect Reader C\n  fn ask() -> C\n\npub fn read() -[Reader Int]> Int\n  Reader.ask()\n\npub fn main() -> Int\n  handle read()\n    Reader.ask() -> resume 42\n";
     let (tokens, warnings) = kea_syntax::lex_layout(source, kea_ast::FileId(0))
         .expect("lex should succeed");
     let module = kea_syntax::parse_module(tokens, kea_ast::FileId(0))
@@ -13293,7 +13293,7 @@ fn process_module_in_env_enforces_unsafe_call_gating_across_session_modules() {
     let mut sum_types = SumTypeRegistry::new();
 
     let (unsafe_mod, warnings0) =
-        parse_module_for_test("@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n", 10);
+        parse_module_for_test("@unsafe\npub fn raw_add_one(x: Int) -> Int\n  x + 1\n", 10);
     let registered = kea::process_module_in_env(
         &unsafe_mod,
         &mut env,
@@ -13312,7 +13312,7 @@ fn process_module_in_env_enforces_unsafe_call_gating_across_session_modules() {
     );
 
     let (safe_caller_mod, warnings1) =
-        parse_module_for_test("fn caller() -> Int\n  raw_add_one(1)\n", 11);
+        parse_module_for_test("pub fn caller() -> Int\n  raw_add_one(1)\n", 11);
     let err = kea::process_module_in_env(
         &safe_caller_mod,
         &mut env,
@@ -13330,7 +13330,7 @@ fn process_module_in_env_enforces_unsafe_call_gating_across_session_modules() {
     );
 
     let (unsafe_block_caller_mod, warnings2) = parse_module_for_test(
-        "fn caller_safe() -> Int\n  unsafe\n    raw_add_one(41)\n",
+        "pub fn caller_safe() -> Int\n  unsafe\n    raw_add_one(41)\n",
         12,
     );
     let allowed = kea::process_module_in_env(
@@ -13358,7 +13358,7 @@ fn process_module_in_env_enforces_unsafe_call_gating_across_session_modules() {
 
 #[test]
 fn compile_accepts_derive_encode_on_struct() {
-    let source = "use Codec\nuse Encode\n\n@derive(Encode)\nstruct Point\n  x: Int\n  y: Int\n\nfn main() -> Int\n  1\n";
+    let source = "use Codec\nuse Encode\n\n@derive(Encode)\nstruct Point\n  x: Int\n  y: Int\n\npub fn main() -> Int\n  1\n";
     let source_path = write_temp_source(source, "kea-cli-derive-encode-struct-accept", "kea");
     let run = run_file(&source_path).expect("compile should succeed");
     assert_eq!(run.exit_code, 1);
@@ -13377,7 +13377,7 @@ fn compile_and_execute_derive_encode_struct_exit_code() {
         "  x: Int\n",
         "  y: Int\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  let p = Point { x: 3, y: 4 }\n",
         "  let j = Encode.encode(p)\n",
         "  case j\n",
@@ -13411,7 +13411,7 @@ fn compile_and_execute_derive_encode_decode_round_trip_struct_exit_code() {
         "  x: Int\n",
         "  y: Int\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  let p = Point { x: 7, y: 11 }\n",
         "  let j = Encode.encode(p)\n",
         "  let dp : Option(Point) = Decode.decode(j)\n",
@@ -13447,7 +13447,7 @@ fn compile_and_execute_derive_encode_decode_round_trip_sum_exit_code() {
         "  Green\n",
         "  Blue\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  let j = Encode.encode(Color.Green)\n",
         "  case Decode.decode(j)\n",
         "    Some(Color.Green) -> 42\n",
@@ -13476,7 +13476,7 @@ fn compile_and_execute_derive_encode_decode_sum_with_payload_exit_code() {
         "  Empty\n",
         "  Boxed(Int)\n",
         "\n",
-        "fn main() -> Int\n",
+        "pub fn main() -> Int\n",
         "  let a = Encode.encode(Wrapper.Empty)\n",
         "  let b = Encode.encode(Wrapper.Boxed(99))\n",
         "  case Decode.decode(a)\n",
