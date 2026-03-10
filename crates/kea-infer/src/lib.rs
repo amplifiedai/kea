@@ -1606,15 +1606,29 @@ impl Unifier {
                     &Type::Row(actual.clone()),
                     format!("r{} := closed({})", r.0, only_actual.len()),
                 );
-                self.substitution.bind_row(r, RowType::closed(only_actual));
+                self.substitution.bind_row(r, RowType::closed(only_actual.clone()));
                 // Expected's extra fields must not exist in actual (it's closed).
-                for (label, _) in &only_expected {
-                    self.errors.push(missing_field_diag(
-                        label,
-                        &actual.fields,
-                        &provenance.reason,
-                        provenance.span,
-                    ));
+                // For effect rows: use aggregated E0014 if any unexpected effects exist.
+                if is_effect_row(&provenance.reason) {
+                    // only_actual = effects in body not declared → error
+                    // only_expected = effects declared but not in body → OK (bound into tail above)
+                    if !only_actual.is_empty() {
+                        self.errors.push(row_diff_diag(
+                            &[],
+                            &only_actual,
+                            &provenance.reason,
+                            provenance.span,
+                        ));
+                    }
+                } else {
+                    for (label, _) in &only_expected {
+                        self.errors.push(missing_field_diag(
+                            label,
+                            &actual.fields,
+                            &provenance.reason,
+                            provenance.span,
+                        ));
+                    }
                 }
             }
 
@@ -1636,14 +1650,27 @@ impl Unifier {
                     format!("r{} := closed({})", r.0, only_expected.len()),
                 );
                 self.substitution
-                    .bind_row(r, RowType::closed(only_expected));
-                for (label, _) in &only_actual {
-                    self.errors.push(extra_field_diag(
-                        label,
-                        &expected.fields,
-                        &provenance.reason,
-                        provenance.span,
-                    ));
+                    .bind_row(r, RowType::closed(only_expected.clone()));
+                // only_actual = effects in body (open actual) not in declared (closed expected) → errors.
+                // only_expected = effects in declared absorbed by binding the tail → NOT an error.
+                if is_effect_row(&provenance.reason) {
+                    if !only_actual.is_empty() {
+                        self.errors.push(row_diff_diag(
+                            &[],
+                            &only_actual,
+                            &provenance.reason,
+                            provenance.span,
+                        ));
+                    }
+                } else {
+                    for (label, _) in &only_actual {
+                        self.errors.push(extra_field_diag(
+                            label,
+                            &expected.fields,
+                            &provenance.reason,
+                            provenance.span,
+                        ));
+                    }
                 }
             }
 
@@ -2526,7 +2553,7 @@ fn is_effect_row(reason: &Reason) -> bool {
 }
 
 /// Plain-language description for a known effect label.
-fn effect_description(label: &Label) -> String {
+pub(crate) fn effect_description(label: &Label) -> String {
     match label.as_str() {
         "IO" => "accesses the file system or console".to_string(),
         "Net" => "accesses the network".to_string(),

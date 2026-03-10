@@ -8781,7 +8781,7 @@ pub(crate) fn unify_effect_row_subsumption(
         actual: widened_actual,
         provenance: Provenance {
             span,
-            reason: Reason::TypeAscription,
+            reason: Reason::EffectRowAnnotation,
         },
     }];
 
@@ -8814,15 +8814,17 @@ pub(crate) fn unify_effect_row_subsumption(
     }
 
     unifier.solve(constraints).map_err(|solve_err| {
-        let mut diag = Diagnostic::error(
-            Category::TypeMismatch,
-            "declared effect row is too weak for the inferred body effects",
-        )
-        .at(span_to_loc(span));
+        // Prefer the structured row-diff diagnostic from the inner unifier (E0014).
+        // Fall back to a generic EffectRowMismatch if no inner diagnostics were produced.
         if let Some(first) = solve_err.diagnostics().first() {
-            diag = diag.with_help(first.message.clone());
+            first.clone()
+        } else {
+            Diagnostic::error(
+                Category::EffectRowMismatch,
+                "declared effect row is too weak for the inferred body effects",
+            )
+            .at(span_to_loc(span))
         }
-        diag
     })?;
     Ok(())
 }
@@ -8997,17 +8999,27 @@ pub fn validate_declared_fn_effect_row_with_env_and_records(
         // Only reject concrete named effects — open tail variables from
         // parametric callbacks (e.g. `[| e1]`) are not violations.
         if fn_decl.return_annotation.is_some() && !inferred_row.row.fields.is_empty() {
-            return Err(Diagnostic::error(
-                Category::TypeMismatch,
-                format!(
-                    "function `{}` is declared pure (`->`) but its body requires effects `{}`",
-                    fn_decl.name.node, inferred_row,
-                ),
-            )
-            .at(span_to_loc(fn_decl.name.span))
-            .with_help(
-                "add an effect annotation: replace `->` with `-[effects]>` to declare the required effects".to_string(),
-            ));
+            let effect_lines: Vec<String> = inferred_row
+                .row
+                .fields
+                .iter()
+                .map(|(label, _)| {
+                    format!(
+                        "  {label:<8} — {}",
+                        crate::effect_description(label)
+                    )
+                })
+                .collect();
+            let body = format!(
+                "function `{}` is declared pure (`->`) but its body requires:\n{}",
+                fn_decl.name.node,
+                effect_lines.join("\n")
+            );
+            return Err(Diagnostic::error(Category::EffectRowMismatch, body)
+                .at(span_to_loc(fn_decl.name.span))
+                .with_help(
+                    "replace `->` with `-[effects]>` to declare the required effects, or handle them in the body".to_string(),
+                ));
         }
         return Ok(());
     };
@@ -9029,29 +9041,8 @@ pub fn validate_declared_fn_effect_row_with_env_and_records(
     };
     validate_effect_row_fail_cardinality(&declared_row, ann.span, "declaration")?;
 
-    if let Err(row_err) = unify_effect_row_subsumption(inferred_row, &declared_row, ann.span) {
-        let mut diag = Diagnostic::error(
-            Category::TypeMismatch,
-            format!(
-                "declared effect `{}` is too weak; body requires `{}`",
-                effect_annotation_label(&parse_declared_effect(ann)),
-                inferred_row,
-            ),
-        )
-        .at(span_to_loc(ann.span))
-        .with_label(
-            span_to_loc(ann.span),
-            format!(
-                "declared effect `{}` ({})",
-                effect_annotation_label(&parse_declared_effect(ann)),
-                declared_row,
-            ),
-        );
-        if let Some(help) = row_err.help {
-            diag = diag.with_help(help);
-        }
-        return Err(diag);
-    }
+    // Propagate the structured E0014 diagnostic from the subsumption checker.
+    unify_effect_row_subsumption(inferred_row, &declared_row, ann.span)?;
     Ok(())
 }
 

@@ -6426,8 +6426,11 @@ fn effect_row_subsumption_rejects_inferred_extra_effects() {
     ]);
     let err = unify_effect_row_subsumption(&actual, &declared, s())
         .expect_err("closed declared row should reject inferred extra effects");
+    // Error is now E0014 EffectRowMismatch with structured diff.
+    assert_eq!(err.category, kea_diag::Category::EffectRowMismatch,
+        "expected EffectRowMismatch, got: {}", err.message);
     assert!(
-        err.message.contains("declared effect row is too weak"),
+        err.message.contains("function effects do not match"),
         "unexpected message: {}",
         err.message
     );
