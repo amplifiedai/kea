@@ -1,0 +1,64 @@
+use List
+use Par
+use Test
+
+fn double(x: Int) -> Int
+  x * 2
+
+fn square(x: Int) -> Int
+  x * x
+
+fn unwrap_int(opt: Option Int) -> Int
+  case opt
+    Some(x) -> x
+    None -> -1
+
+test "Par.run_seq map doubles each element"
+  let result = Par.run_seq(|| Par.map([1, 2, 3], double))
+  Test.assert(List.length(result) == 3)
+  Test.assert(unwrap_int(List.nth(result, 0)) == 2)
+  Test.assert(unwrap_int(List.nth(result, 1)) == 4)
+  Test.assert(unwrap_int(List.nth(result, 2)) == 6)
+
+test "Par.run_seq map empty list returns empty"
+  let empty: List Int = []
+  let result = Par.run_seq(|| Par.map(empty, double))
+  Test.assert(List.is_empty(result))
+
+test "Par.run_seq map preserves order"
+  let result = Par.run_seq(|| Par.map([10, 20, 30], |x| x + 1))
+  Test.assert(List.length(result) == 3)
+  Test.assert(unwrap_int(List.nth(result, 0)) == 11)
+  Test.assert(unwrap_int(List.nth(result, 1)) == 21)
+  Test.assert(unwrap_int(List.nth(result, 2)) == 31)
+
+test "Par.run_seq all2 evaluates both thunks"
+  let result = Par.run_seq(|| Par.all2(|| square(4), || square(5)))
+  let a = result.0
+  let b = result.1
+  Test.assert(a == 16)
+  Test.assert(b == 25)
+
+test "Par.run_seq all3 evaluates three thunks"
+  let result = Par.run_seq(|| Par.all3(|| 1 + 1, || 2 + 2, || 3 + 3))
+  let a = result.0
+  let b = result.1
+  let c = result.2
+  Test.assert(a == 2)
+  Test.assert(b == 4)
+  Test.assert(c == 6)
+
+test "Par.run_par is equivalent to run_seq for sequential stub"
+  let result = Par.run_par(|| Par.map([5, 6, 7], double))
+  Test.assert(List.length(result) == 3)
+  Test.assert(unwrap_int(List.nth(result, 0)) == 10)
+  Test.assert(unwrap_int(List.nth(result, 1)) == 12)
+  Test.assert(unwrap_int(List.nth(result, 2)) == 14)
+
+test "Par handle block can substitute for run_seq"
+  let result = handle Par.map([1, 2, 3], double)
+    Par.map(items, f) -> resume items.List.map(f)
+  Test.assert(List.length(result) == 3)
+  Test.assert(unwrap_int(List.nth(result, 0)) == 2)
+  Test.assert(unwrap_int(List.nth(result, 1)) == 4)
+  Test.assert(unwrap_int(List.nth(result, 2)) == 6)

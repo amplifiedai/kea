@@ -536,6 +536,7 @@ fn run_stdlib_case_corpus_with_kea_test_runner() {
         "option_tests.kea",
         "ord_tests.kea",
         "order_tests.kea",
+        "par_tests.kea",
         "prelude_tests.kea",
         "rand_tests.kea",
         "result_tests.kea",
@@ -14260,6 +14261,58 @@ fn compile_and_execute_http_request_canned_response() {
     );
     let run = run_file(&source_path).expect("Http.request with Net handler should compile and run");
     assert_eq!(run.exit_code, 200);
+    let _ = std::fs::remove_file(source_path);
+}
+
+// ---------------------------------------------------------------------------
+// Par effect tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn par_run_seq_map_produces_correct_results() {
+    let source_path = write_temp_source(
+        "use List\nuse Par\nuse Test\n\nfn double(x: Int) -> Int\n  x * 2\n\ntest \"par map seq\"\n  let result = Par.run_seq(|| Par.map([1, 2, 3], double))\n  Test.assert(List.length(result) == 3)\n  Test.assert(List.sum(result) == 12)\n",
+        "kea-par-run-seq-map",
+        "kea",
+    );
+    let run = run_test_file(&source_path, &Default::default())
+        .expect("Par.run_seq should compile and run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "Par.run_seq failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests ran");
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn par_handle_block_executes_map_sequentially() {
+    let source_path = write_temp_source(
+        "use List\nuse Par\nuse Test\n\nfn triple(x: Int) -> Int\n  x * 3\n\ntest \"par handle block\"\n  let result = handle Par.map([1, 2, 3], triple)\n    Par.map(items, f) -> resume items.List.map(f)\n  Test.assert(List.length(result) == 3)\n  Test.assert(List.sum(result) == 18)\n",
+        "kea-par-handle-block",
+        "kea",
+    );
+    let run = run_test_file(&source_path, &Default::default())
+        .expect("Par handle block should compile and run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "Par handle failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests ran");
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn par_effectful_callback_rejected_at_typecheck() {
+    // Par.map requires a pure callback fn(Int) -> Int.
+    // Passing an effectful fn(Int) -[IO]> Int should fail type checking.
+    // We pass a named function with IO effects to Par.map.
+    let source_path = write_temp_source(
+        "use List\nuse Par\nuse IO\n\nfn log_and_double(x: Int) -[IO]> Int\n  IO.println(show(x))\n  x * 2\n\npub fn main() -[IO, Par]> Unit\n  let _ = Par.map([1, 2], log_and_double)\n  ()\n",
+        "kea-par-effectful-callback",
+        "kea",
+    );
+    let result = check_file(&source_path);
+    assert!(
+        result.is_err() || result.is_ok_and(|r| r.has_errors),
+        "effectful Par callback should be rejected by type checker"
+    );
     let _ = std::fs::remove_file(source_path);
 }
 
