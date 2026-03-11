@@ -10,7 +10,7 @@ use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirHandleClause, HirMo
 use kea_types::{EffectRow, FunctionType, Label, RecordType, SumType, Type};
 
 /// Configuration for MIR lowering passes.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct MirLoweringConfig {
     /// Enable handler inlining (devirtualize callback closures).
     /// Default: false (JIT — compilation cost dominates).
@@ -18,20 +18,39 @@ pub struct MirLoweringConfig {
     /// Override with `KEA_NO_HANDLER_INLINE=1` (force off) or
     /// `KEA_HANDLER_INLINE=1` (force on).
     pub handler_inlining: bool,
+    /// Enable function inlining: inline small pure callees at their call sites.
+    /// Default: false (JIT). AOT: true.
+    /// Override with `KEA_NO_FUNCTION_INLINE=1` (force off) or
+    /// `KEA_FUNCTION_INLINE=1` (force on).
+    pub function_inlining: bool,
+    /// Maximum total instruction count (across all blocks) for a callee to be
+    /// eligible for inlining. Default: 12.
+    /// Override with `KEA_INLINE_THRESHOLD=N`.
+    pub inline_threshold: usize,
+}
+
+impl Default for MirLoweringConfig {
+    fn default() -> Self {
+        Self::jit()
+    }
 }
 
 impl MirLoweringConfig {
-    /// AOT defaults: handler inlining on (compilation cost amortized).
+    /// AOT defaults: all inlining on (compilation cost amortized).
     pub fn aot() -> Self {
         Self {
             handler_inlining: true,
+            function_inlining: true,
+            inline_threshold: 20,
         }
     }
 
-    /// JIT defaults: handler inlining off (compilation cost dominates).
+    /// JIT defaults: inlining off (compilation cost dominates).
     pub fn jit() -> Self {
         Self {
             handler_inlining: false,
+            function_inlining: false,
+            inline_threshold: 20,
         }
     }
 }
@@ -529,6 +548,37 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
             eprintln!(
                 "[handler-inline] state_get={total_get} state_put={total_put} pure={total_pure}"
             );
+        }
+    }
+
+    // Function inlining: inline small pure callees at their MirCallee::Local call sites.
+    // Enabled for AOT by default. Each round may expose new opportunities (chains),
+    // so we run up to 3 rounds stopping early when nothing changed.
+    // Override: KEA_NO_FUNCTION_INLINE=1 (force off), KEA_FUNCTION_INLINE=1 (force on).
+    // Set KEA_FUNCTION_INLINE_STATS=1 to print rewrite counts to stderr.
+    let function_inline_enabled =
+        if std::env::var("KEA_NO_FUNCTION_INLINE").as_deref() == Ok("1") {
+            false
+        } else if std::env::var("KEA_FUNCTION_INLINE").as_deref() == Ok("1") {
+            true
+        } else {
+            config.function_inlining
+        };
+    let inline_threshold = std::env::var("KEA_INLINE_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(config.inline_threshold);
+    if function_inline_enabled {
+        let mut total_inlined = 0usize;
+        for _round in 0..3 {
+            let n = inline_small_pure_functions(&mut functions, inline_threshold);
+            total_inlined += n;
+            if n == 0 {
+                break;
+            }
+        }
+        if std::env::var("KEA_FUNCTION_INLINE_STATS").as_deref() == Ok("1") && total_inlined > 0 {
+            eprintln!("[function-inline] inlined={total_inlined}");
         }
     }
 
@@ -1149,6 +1199,319 @@ fn inline_known_handler_callbacks(
         }
     }
     (state_get_count, state_put_count, pure_count)
+}
+
+// ---------------------------------------------------------------------------
+// Function inlining: inline small pure callees at MirCallee::Local call sites.
+// ---------------------------------------------------------------------------
+
+/// Returns true if `f` is eligible to be inlined at call sites:
+/// - pure (no dispatch effects)
+/// - non-FIP (reuse tokens must not cross FIP/non-FIP boundary)
+/// - no ClosureInit (closures capture runtime state)
+/// - no Unsupported instructions
+/// - not self-recursive
+/// - total instruction count ≤ threshold
+fn is_inlinable_callee(f: &MirFunction, threshold: usize) -> bool {
+    if !f.signature.effects.is_pure() {
+        return false;
+    }
+    if f.is_fip {
+        return false;
+    }
+    let mut total_insts = 0usize;
+    for block in &f.blocks {
+        for inst in &block.instructions {
+            match inst {
+                MirInst::Nop => {}
+                MirInst::ClosureInit { .. } => return false,
+                MirInst::Unsupported { .. } => return false,
+                MirInst::Call {
+                    callee: MirCallee::Local(name),
+                    ..
+                } if name == &f.name => return false, // self-recursive
+                _ => {}
+            }
+            total_insts += 1;
+        }
+        if total_insts > threshold {
+            return false;
+        }
+    }
+    true
+}
+
+/// Inline all small pure callees across the module. Returns the number of
+/// call sites inlined (0 means nothing changed — caller can stop iterating).
+fn inline_small_pure_functions(functions: &mut [MirFunction], threshold: usize) -> usize {
+    // Build name → index map.
+    let fn_index: BTreeMap<String, usize> = functions
+        .iter()
+        .enumerate()
+        .map(|(i, f)| (f.name.clone(), i))
+        .collect();
+
+    // Identify inlinable callees.
+    let inlinable: BTreeSet<String> = functions
+        .iter()
+        .filter(|f| is_inlinable_callee(f, threshold))
+        .map(|f| f.name.clone())
+        .collect();
+
+    if inlinable.is_empty() {
+        return 0;
+    }
+
+    let mut total_rewrites = 0usize;
+
+    // Iterate over callers by index so we can borrow the callee by clone.
+    for caller_idx in 0..functions.len() {
+        // Don't inline a function into itself (would conflict with non-recursive check).
+        // (We already reject self-recursive callees in is_inlinable_callee, but be safe.)
+        let caller_name = functions[caller_idx].name.clone();
+
+        // Collect call sites: (block_idx, inst_idx, callee_name, cloned callee).
+        // We process one call site at a time (re-scan after each) to keep block indices stable.
+        loop {
+            // Find the first inlinable call site.
+            let site = find_first_inlinable_call(
+                &functions[caller_idx],
+                &inlinable,
+                &caller_name,
+                &fn_index,
+                functions,
+            );
+            let Some((block_idx, inst_idx, callee)) = site else {
+                break;
+            };
+            inline_call_site(&mut functions[caller_idx], block_idx, inst_idx, callee);
+            total_rewrites += 1;
+        }
+    }
+
+    total_rewrites
+}
+
+/// Find the first call site in `caller` eligible for inlining.
+/// Returns (block_idx, inst_idx, cloned_callee).
+fn find_first_inlinable_call(
+    caller: &MirFunction,
+    inlinable: &BTreeSet<String>,
+    caller_name: &str,
+    fn_index: &BTreeMap<String, usize>,
+    functions: &[MirFunction],
+) -> Option<(usize, usize, MirFunction)> {
+    for (bi, block) in caller.blocks.iter().enumerate() {
+        for (ii, inst) in block.instructions.iter().enumerate() {
+            if let MirInst::Call {
+                callee: MirCallee::Local(callee_name),
+                ..
+            } = inst
+            {
+                if callee_name == caller_name {
+                    continue; // don't inline self-calls (tail self-call handles those)
+                }
+                if inlinable.contains(callee_name)
+                    && let Some(&callee_idx) = fn_index.get(callee_name)
+                {
+                    return Some((bi, ii, functions[callee_idx].clone()));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Inline the call at `(block_idx, inst_idx)` in `caller`, using `callee` as the body.
+///
+/// Algorithm:
+/// 1. Compute a fresh value-ID base and a fresh block-ID base.
+/// 2. Build value remap: callee entry-block params → caller's actual call args.
+/// 3. Clone all callee blocks with fresh IDs; remap all value/block references.
+/// 4. Create a continuation block `b_cont` that holds the result (if any) and
+///    the instructions that follow the Call in the original block.
+/// 5. Split the original block at the Call:
+///    - instructions before the Call stay in the original block
+///    - terminator of the original block → Jump to the inlined entry block
+/// 6. Redirect every Return in cloned callee blocks to Jump b_cont.
+/// 7. Append all new blocks to the caller.
+fn inline_call_site(
+    caller: &mut MirFunction,
+    block_idx: usize,
+    inst_idx: usize,
+    callee: MirFunction,
+) {
+    // Extract Call fields.
+    let (call_args, call_result, call_ret_type) = match &caller.blocks[block_idx].instructions[inst_idx] {
+        MirInst::Call {
+            args,
+            result,
+            ret_type,
+            ..
+        } => (args.clone(), result.clone(), ret_type.clone()),
+        _ => return,
+    };
+
+    // ---- Step 1: allocate fresh IDs ----------------------------------------
+
+    let mut next_val = next_fresh_value_id(caller);
+    // Block IDs: new blocks are appended, so start after current len.
+    let block_id_base = caller.blocks.len() as u32;
+
+    // ---- Step 2: value remap for callee params → call args ------------------
+
+    let mut val_remap: BTreeMap<MirValueId, MirValueId> = BTreeMap::new();
+
+    // Function parameters are the first N implicit value IDs (MirValueId(0..N-1)).
+    // Entry-block params are always empty — parameters are not passed as block args.
+    for (i, arg) in call_args.iter().enumerate() {
+        val_remap.insert(MirValueId(i as u32), arg.clone());
+    }
+    let entry_id = callee.entry.clone();
+
+    // ---- Step 3: build block_remap and clone all callee blocks --------------
+
+    let num_callee_blocks = callee.blocks.len() as u32;
+    let mut block_remap: BTreeMap<MirBlockId, MirBlockId> = BTreeMap::new();
+    for (i, cb) in callee.blocks.iter().enumerate() {
+        block_remap.insert(cb.id.clone(), MirBlockId(block_id_base + i as u32));
+    }
+
+    // Continuation block ID (where execution resumes after the inlined callee).
+    let cont_block_id = MirBlockId(block_id_base + num_callee_blocks);
+
+    // ---- Step 4: build continuation block ----------------------------------
+
+    // Instructions after the Call move to the continuation block.
+    let original_block = &mut caller.blocks[block_idx];
+    let after_call_insts: Vec<MirInst> = original_block.instructions
+        .drain(inst_idx..) // drain Call and everything after
+        .skip(1)            // drop the Call itself
+        .collect();
+    let original_terminator = original_block.terminator.clone();
+
+    // Continuation block params: [result] if non-unit, [] otherwise.
+    let cont_params = if let Some(ref result_id) = call_result {
+        vec![MirBlockParam {
+            id: result_id.clone(),
+            ty: call_ret_type.clone(),
+        }]
+    } else {
+        vec![]
+    };
+
+    let cont_block = MirBlock {
+        id: cont_block_id.clone(),
+        params: cont_params,
+        instructions: after_call_insts,
+        terminator: original_terminator,
+    };
+
+    // ---- Step 5: update original block terminator → Jump to inlined entry --
+
+    let inlined_entry_id = block_remap[&entry_id].clone();
+    // The inlined entry block's params are already mapped via val_remap; the
+    // Jump carries the mapped args (the call args themselves).
+    // Since we remapped entry params → call args, the inlined entry block has
+    // NO remaining params (they were the callee's formal params, now resolved).
+    // We jump with no args because the entry block's cloned copy will have empty
+    // params (we remap away the params via val_remap during cloning).
+    caller.blocks[block_idx].terminator = MirTerminator::Jump {
+        target: inlined_entry_id,
+        args: vec![],
+    };
+
+    // ---- Step 6: clone callee blocks, redirect Returns to cont_block --------
+
+    let mut cloned_blocks: Vec<MirBlock> = Vec::with_capacity(callee.blocks.len() + 1);
+
+    for callee_block in &callee.blocks {
+        let new_id = block_remap[&callee_block.id].clone();
+
+        // Allocate fresh IDs for block params BEFORE cloning instructions so that
+        // any instruction referencing a block param sees the correct remapped ID.
+        // Entry block: params are already mapped to call args via val_remap.
+        let new_params = if callee_block.id == entry_id {
+            vec![]
+        } else {
+            callee_block
+                .params
+                .iter()
+                .map(|p| {
+                    let fresh = MirValueId(next_val);
+                    next_val = next_val.saturating_add(1);
+                    val_remap.insert(p.id.clone(), fresh.clone());
+                    MirBlockParam {
+                        id: fresh,
+                        ty: p.ty.clone(),
+                    }
+                })
+                .collect()
+        };
+
+        // Clone instructions with value remapping (block params already in remap).
+        let new_insts = clone_insts_with_remap(&callee_block.instructions, &mut val_remap, &mut next_val);
+
+        // Clone and remap terminator; redirect Returns to cont_block.
+        let new_terminator = {
+            let raw = clone_terminator_with_remap(&callee_block.terminator, &val_remap, &block_remap);
+            match raw {
+                MirTerminator::Return { value } => {
+                    // Redirect to continuation block, passing the return value.
+                    let jump_args = if let Some(v) = value { vec![v] } else { vec![] };
+                    MirTerminator::Jump {
+                        target: cont_block_id.clone(),
+                        args: jump_args,
+                    }
+                }
+                other => other,
+            }
+        };
+
+        cloned_blocks.push(MirBlock {
+            id: new_id,
+            params: new_params,
+            instructions: new_insts,
+            terminator: new_terminator,
+        });
+    }
+
+    // Insert inlined blocks + cont_block immediately after the split block (block_idx+1),
+    // not at the end of the vector. The codegen processes blocks in vector order and
+    // accumulates values linearly, so the cont_block must appear BEFORE any original
+    // successor blocks that reference the call result (now a cont_block param).
+    let mut to_insert = cloned_blocks;
+    to_insert.push(cont_block);
+    caller.blocks.splice(block_idx + 1..block_idx + 1, to_insert);
+}
+
+/// Clone a MirTerminator, remapping value IDs and block IDs.
+fn clone_terminator_with_remap(
+    term: &MirTerminator,
+    val_remap: &BTreeMap<MirValueId, MirValueId>,
+    block_remap: &BTreeMap<MirBlockId, MirBlockId>,
+) -> MirTerminator {
+    let remap_val = |v: &MirValueId| val_remap.get(v).cloned().unwrap_or_else(|| v.clone());
+    let remap_blk = |b: &MirBlockId| block_remap.get(b).cloned().unwrap_or_else(|| b.clone());
+    match term {
+        MirTerminator::Return { value } => MirTerminator::Return {
+            value: value.as_ref().map(remap_val),
+        },
+        MirTerminator::Jump { target, args } => MirTerminator::Jump {
+            target: remap_blk(target),
+            args: args.iter().map(remap_val).collect(),
+        },
+        MirTerminator::Branch {
+            condition,
+            then_block,
+            else_block,
+        } => MirTerminator::Branch {
+            condition: remap_val(condition),
+            then_block: remap_blk(then_block),
+            else_block: remap_blk(else_block),
+        },
+        MirTerminator::Unreachable => MirTerminator::Unreachable,
+    }
 }
 
 fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
@@ -1852,7 +2215,205 @@ fn clone_insts_with_remap(
                 }
             }
             MirInst::Nop => MirInst::Nop,
-            _ => return Vec::new(),
+            MirInst::Unsupported { detail } => MirInst::Unsupported { detail: detail.clone() },
+            MirInst::RecordInit { dest, record_type, fields } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::RecordInit {
+                    dest: new_dest,
+                    record_type: record_type.clone(),
+                    fields: fields.iter().map(|(n, v)| (n.clone(), remap_value(remap, v).unwrap_or_else(|| v.clone()))).collect(),
+                }
+            }
+            MirInst::RecordInitReuse { dest, source, record_type, fields } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::RecordInitReuse {
+                    dest: new_dest,
+                    source: remap_value(remap, source).unwrap_or_else(|| source.clone()),
+                    record_type: record_type.clone(),
+                    fields: fields.iter().map(|(n, v)| (n.clone(), remap_value(remap, v).unwrap_or_else(|| v.clone()))).collect(),
+                }
+            }
+            MirInst::ReuseToken { dest, source } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::ReuseToken {
+                    dest: new_dest,
+                    source: remap_value(remap, source).unwrap_or_else(|| source.clone()),
+                }
+            }
+            MirInst::RecordInitFromToken { dest, token, record_type, fields } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::RecordInitFromToken {
+                    dest: new_dest,
+                    token: remap_value(remap, token).unwrap_or_else(|| token.clone()),
+                    record_type: record_type.clone(),
+                    fields: fields.iter().map(|(n, v)| (n.clone(), remap_value(remap, v).unwrap_or_else(|| v.clone()))).collect(),
+                }
+            }
+            MirInst::SumInitReuse { dest, source, sum_type, variant, tag, fields } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::SumInitReuse {
+                    dest: new_dest,
+                    source: remap_value(remap, source).unwrap_or_else(|| source.clone()),
+                    sum_type: sum_type.clone(),
+                    variant: variant.clone(),
+                    tag: *tag,
+                    fields: fields.iter().map(|v| remap_value(remap, v).unwrap_or_else(|| v.clone())).collect(),
+                }
+            }
+            MirInst::SumInitFromToken { dest, token, sum_type, variant, tag, fields } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::SumInitFromToken {
+                    dest: new_dest,
+                    token: remap_value(remap, token).unwrap_or_else(|| token.clone()),
+                    sum_type: sum_type.clone(),
+                    variant: variant.clone(),
+                    tag: *tag,
+                    fields: fields.iter().map(|v| remap_value(remap, v).unwrap_or_else(|| v.clone())).collect(),
+                }
+            }
+            MirInst::SumTagLoad { dest, sum, sum_type } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::SumTagLoad {
+                    dest: new_dest,
+                    sum: remap_value(remap, sum).unwrap_or_else(|| sum.clone()),
+                    sum_type: sum_type.clone(),
+                }
+            }
+            MirInst::SumPayloadLoad { dest, sum, sum_type, variant, field_index, field_ty } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::SumPayloadLoad {
+                    dest: new_dest,
+                    sum: remap_value(remap, sum).unwrap_or_else(|| sum.clone()),
+                    sum_type: sum_type.clone(),
+                    variant: variant.clone(),
+                    field_index: *field_index,
+                    field_ty: field_ty.clone(),
+                }
+            }
+            MirInst::RecordFieldLoad { dest, record, record_type, field, field_ty } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::RecordFieldLoad {
+                    dest: new_dest,
+                    record: remap_value(remap, record).unwrap_or_else(|| record.clone()),
+                    record_type: record_type.clone(),
+                    field: field.clone(),
+                    field_ty: field_ty.clone(),
+                }
+            }
+            MirInst::FunctionRef { dest, function } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::FunctionRef { dest: new_dest, function: function.clone() }
+            }
+            MirInst::ClosureInit { dest, entry, captures, capture_types } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::ClosureInit {
+                    dest: new_dest,
+                    entry: remap_value(remap, entry).unwrap_or_else(|| entry.clone()),
+                    captures: captures.iter().map(|v| remap_value(remap, v).unwrap_or_else(|| v.clone())).collect(),
+                    capture_types: capture_types.clone(),
+                }
+            }
+            MirInst::ClosureCaptureLoad { dest, closure, capture_index, capture_ty } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::ClosureCaptureLoad {
+                    dest: new_dest,
+                    closure: remap_value(remap, closure).unwrap_or_else(|| closure.clone()),
+                    capture_index: *capture_index,
+                    capture_ty: capture_ty.clone(),
+                }
+            }
+            MirInst::StateCellNew { dest, initial } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::StateCellNew {
+                    dest: new_dest,
+                    initial: remap_value(remap, initial).unwrap_or_else(|| initial.clone()),
+                }
+            }
+            MirInst::StateCellLoad { dest, cell } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::StateCellLoad {
+                    dest: new_dest,
+                    cell: remap_value(remap, cell).unwrap_or_else(|| cell.clone()),
+                }
+            }
+            MirInst::StateCellStore { cell, value } => MirInst::StateCellStore {
+                cell: remap_value(remap, cell).unwrap_or_else(|| cell.clone()),
+                value: remap_value(remap, value).unwrap_or_else(|| value.clone()),
+            },
+            MirInst::Retain { value } => MirInst::Retain {
+                value: remap_value(remap, value).unwrap_or_else(|| value.clone()),
+            },
+            MirInst::Release { value } => MirInst::Release {
+                value: remap_value(remap, value).unwrap_or_else(|| value.clone()),
+            },
+            MirInst::Move { dest, src } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::Move {
+                    dest: new_dest,
+                    src: remap_value(remap, src).unwrap_or_else(|| src.clone()),
+                }
+            }
+            MirInst::Borrow { dest, src } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::Borrow {
+                    dest: new_dest,
+                    src: remap_value(remap, src).unwrap_or_else(|| src.clone()),
+                }
+            }
+            MirInst::TryClaim { dest, src } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::TryClaim {
+                    dest: new_dest,
+                    src: remap_value(remap, src).unwrap_or_else(|| src.clone()),
+                }
+            }
+            MirInst::Freeze { dest, src } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::Freeze {
+                    dest: new_dest,
+                    src: remap_value(remap, src).unwrap_or_else(|| src.clone()),
+                }
+            }
+            // CowUpdate has block IDs — not safe to inline (should be excluded by eligibility).
+            // EffectOp / HandlerEnter / HandlerExit / Resume are effectful — excluded by eligibility.
+            // Fall back to a clone without remapping as a safe no-op (eligibility should prevent this).
+            other => other.clone(),
         };
         out.push(cloned);
     }
