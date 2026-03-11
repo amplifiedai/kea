@@ -1,0 +1,249 @@
+doc
+  UTF-8 byte sequence validation.
+
+  UTF-8 is a variable-width encoding using 1–4 bytes per codepoint. Each
+  sequence must conform to the following rules:
+
+  ## Byte categories
+
+  - `0x00–0x7F`  — 1-byte sequence (ASCII). Valid as-is.
+  - `0xC2–0xDF`  — 2-byte sequence lead. Followed by one continuation byte.
+                   (0xC0–0xC1 are overlong and invalid.)
+  - `0xE0–0xEF`  — 3-byte sequence lead. Followed by two continuation bytes.
+                   After 0xE0, the second byte must be 0xA0–0xBF (overlong check).
+                   After 0xED, the second byte must be 0x80–0x9F (surrogate check).
+  - `0xF0–0xF4`  — 4-byte sequence lead. Followed by three continuation bytes.
+                   After 0xF0, the second byte must be 0x90–0xBF (overlong check).
+                   After 0xF4, the second byte must be 0x80–0x8F (> U+10FFFF check).
+  - `0x80–0xBF`  — continuation byte. Valid only inside a multi-byte sequence.
+  - `0xF5–0xFF`  — always invalid.
+
+  ## Complexity
+
+  O(n) time, O(1) space (streaming, single pass).
+
+  ## Cross-language notes
+
+  The algorithm is identical to the one in WHATWG's Encoding specification
+  and Rust's `std::str::from_utf8`. The only Kea-specific detail is using
+  `Text.bytes()` to get the byte list and a tail-recursive scan.
+
+use List
+use Text
+use Test
+
+-- -----------------------------------------------------------------------
+-- Core validator
+-- -----------------------------------------------------------------------
+
+-- Validate a list of raw bytes as UTF-8.
+-- Returns true iff the byte sequence is well-formed UTF-8.
+fn validate_bytes(bs: List Int) -> Bool
+  validate_step(bs)
+
+-- Scan bytes in sequence, consuming full multi-byte sequences at each step.
+fn validate_step(bs: List Int) -> Bool
+  case bs
+    Nil -> true
+    Cons(b, rest) ->
+      cond
+        b < 128 ->
+          -- 1-byte ASCII: 0x00–0x7F
+          validate_step(rest)
+        b < 192 ->
+          -- Bare continuation byte (0x80–0xBF): invalid at sequence start
+          false
+        b < 194 ->
+          -- 0xC0–0xC1: overlong two-byte sequence, always invalid
+          false
+        b < 224 ->
+          -- 0xC2–0xDF: two-byte sequence
+          validate_cont2(rest)
+        b < 240 ->
+          -- 0xE0–0xEF: three-byte sequence
+          validate_cont3_first(rest, b)
+        b < 245 ->
+          -- 0xF0–0xF4: four-byte sequence
+          validate_cont4_first(rest, b)
+        _ ->
+          -- 0xF5–0xFF: always invalid
+          false
+
+-- Consume one continuation byte (for 2-byte sequences).
+fn validate_cont2(bs: List Int) -> Bool
+  case bs
+    Nil -> false  -- truncated
+    Cons(b, rest) ->
+      if b >= 128 and b < 192
+        validate_step(rest)
+      else
+        false
+
+-- Consume the first continuation byte of a 3-byte sequence, applying
+-- extra checks for 0xE0 (overlong) and 0xED (surrogates).
+fn validate_cont3_first(bs: List Int, lead: Int) -> Bool
+  case bs
+    Nil -> false
+    Cons(b, rest) ->
+      let ok = cond
+        lead == 0xE0 -> b >= 0xA0 and b < 0xC0   -- overlong: second byte must be >= 0xA0
+        lead == 0xED -> b >= 0x80 and b < 0xA0   -- surrogates: second byte must be < 0xA0
+        _ -> b >= 0x80 and b < 0xC0
+      if ok
+        validate_cont3_second(rest)
+      else
+        false
+
+-- Consume the second continuation byte of a 3-byte sequence.
+fn validate_cont3_second(bs: List Int) -> Bool
+  case bs
+    Nil -> false
+    Cons(b, rest) ->
+      if b >= 128 and b < 192
+        validate_step(rest)
+      else
+        false
+
+-- Consume the first continuation byte of a 4-byte sequence, applying
+-- extra checks for 0xF0 (overlong) and 0xF4 (> U+10FFFF).
+fn validate_cont4_first(bs: List Int, lead: Int) -> Bool
+  case bs
+    Nil -> false
+    Cons(b, rest) ->
+      let ok = cond
+        lead == 0xF0 -> b >= 0x90 and b < 0xC0   -- overlong: second byte must be >= 0x90
+        lead == 0xF4 -> b >= 0x80 and b < 0x90   -- > U+10FFFF: second byte must be < 0x90
+        _ -> b >= 0x80 and b < 0xC0
+      if ok
+        validate_cont4_second(rest)
+      else
+        false
+
+-- Consume the second and third continuation bytes of a 4-byte sequence.
+fn validate_cont4_second(bs: List Int) -> Bool
+  case bs
+    Nil -> false
+    Cons(b, rest) ->
+      if b >= 128 and b < 192
+        validate_cont4_third(rest)
+      else
+        false
+
+fn validate_cont4_third(bs: List Int) -> Bool
+  case bs
+    Nil -> false
+    Cons(b, rest) ->
+      if b >= 128 and b < 192
+        validate_step(rest)
+      else
+        false
+
+-- -----------------------------------------------------------------------
+-- Public API
+-- -----------------------------------------------------------------------
+
+doc
+  Return true iff `s` is a valid UTF-8 encoded string.
+
+  Kea strings are already UTF-8 by construction, so this function is most
+  useful for validating external byte sequences (e.g. network payloads)
+  expressed as lists of raw byte integers (0–255).
+
+    is_valid_utf8([104, 101, 108, 108, 111])   -- "hello", => true
+    is_valid_utf8([0xFF])                       -- invalid lead byte, => false
+    is_valid_utf8([0xC3, 0xA9])                 -- "é", => true
+fn is_valid_utf8(bs: List Int) -> Bool
+  validate_bytes(bs)
+
+doc
+  Return true iff the string `s` is well-formed UTF-8.
+  (Kea strings are UTF-8 by construction; this validates the byte sequence.)
+fn is_valid_string(s: String) -> Bool
+  validate_bytes(Text.bytes(s))
+
+-- -----------------------------------------------------------------------
+-- Tests
+-- -----------------------------------------------------------------------
+
+test "empty sequence is valid"
+  Test.assert(is_valid_utf8([]))
+
+test "ASCII bytes are valid"
+  -- 'h' 'e' 'l' 'l' 'o'
+  Test.assert(is_valid_utf8([104, 101, 108, 108, 111]))
+
+test "all ASCII: 0x00 through 0x7F"
+  Test.assert(is_valid_utf8([0, 32, 65, 90, 97, 122, 127]))
+
+test "valid 2-byte sequence: U+00E9 (é)"
+  -- 0xC3 0xA9
+  Test.assert(is_valid_utf8([0xC3, 0xA9]))
+
+test "valid 2-byte sequence: U+00C9 (É)"
+  -- 0xC3 0x89
+  Test.assert(is_valid_utf8([0xC3, 0x89]))
+
+test "valid 3-byte sequence: U+20AC (€)"
+  -- 0xE2 0x82 0xAC
+  Test.assert(is_valid_utf8([0xE2, 0x82, 0xAC]))
+
+test "valid 4-byte sequence: U+1F600 (😀)"
+  -- 0xF0 0x9F 0x98 0x80
+  Test.assert(is_valid_utf8([0xF0, 0x9F, 0x98, 0x80]))
+
+test "bare continuation byte is invalid"
+  Test.assert(not is_valid_utf8([0x80]))
+  Test.assert(not is_valid_utf8([0xBF]))
+
+test "overlong 2-byte sequence (0xC0 0x80) is invalid"
+  Test.assert(not is_valid_utf8([0xC0, 0x80]))
+
+test "overlong 2-byte sequence (0xC1 0xBF) is invalid"
+  Test.assert(not is_valid_utf8([0xC1, 0xBF]))
+
+test "truncated 2-byte sequence is invalid"
+  Test.assert(not is_valid_utf8([0xC3]))
+
+test "truncated 3-byte sequence is invalid"
+  Test.assert(not is_valid_utf8([0xE2, 0x82]))
+
+test "truncated 4-byte sequence is invalid"
+  Test.assert(not is_valid_utf8([0xF0, 0x9F, 0x98]))
+
+test "surrogate half (U+D800) is invalid"
+  -- U+D800: 0xED 0xA0 0x80 — second byte 0xA0 is in surrogate range
+  Test.assert(not is_valid_utf8([0xED, 0xA0, 0x80]))
+
+test "surrogate half (U+DFFF) is invalid"
+  -- U+DFFF: 0xED 0xBF 0xBF — second byte 0xBF is in surrogate range
+  Test.assert(not is_valid_utf8([0xED, 0xBF, 0xBF]))
+
+test "invalid lead byte 0xFF is rejected"
+  Test.assert(not is_valid_utf8([0xFF]))
+
+test "invalid lead byte 0xFE is rejected"
+  Test.assert(not is_valid_utf8([0xFE]))
+
+test "continuation byte after continuation byte is invalid"
+  Test.assert(not is_valid_utf8([0xC3, 0xA9, 0x80]))
+
+test "mixed ASCII and multi-byte sequence"
+  -- "héllo": h=0x68, é=0xC3 0xA9, l=0x6C, l=0x6C, o=0x6F
+  Test.assert(is_valid_utf8([0x68, 0xC3, 0xA9, 0x6C, 0x6C, 0x6F]))
+
+test "overlong 3-byte sequence (0xE0 0x9F ...) is invalid"
+  -- After 0xE0, second byte must be >= 0xA0
+  Test.assert(not is_valid_utf8([0xE0, 0x9F, 0x80]))
+
+test "maximum valid 4-byte codepoint U+10FFFF"
+  -- 0xF4 0x8F 0xBF 0xBF
+  Test.assert(is_valid_utf8([0xF4, 0x8F, 0xBF, 0xBF]))
+
+test "one past U+10FFFF is invalid"
+  -- U+110000 would need 0xF4 0x90 ..., but 0x90 > 0x8F
+  Test.assert(not is_valid_utf8([0xF4, 0x90, 0x80, 0x80]))
+
+test "is_valid_string on Kea string literals"
+  Test.assert(is_valid_string(""))
+  Test.assert(is_valid_string("hello"))
+  Test.assert(is_valid_string("kea"))

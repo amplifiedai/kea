@@ -1,0 +1,241 @@
+doc
+  Teaching hash table — open addressing with linear probing.
+
+  This implementation demonstrates the core ideas behind hash-based associative
+  data structures: hash computation, power-of-two bucket selection, and collision
+  resolution via linear probing.
+
+  The production Map in Kea's stdlib uses the same power-of-two idea for bucket
+  selection — `hash & (cap - 1)` — but organises entries in a CHAMP (Compressed
+  Hash Array Mapped Prefix Trie) for efficient path-copying persistence. This
+  simpler version makes the bucket-selection primitives visible.
+
+  ## Structure
+
+  Two parallel `Vector Int` arrays of length `cap`:
+
+  - `keys`   — the stored key, or -1 for an empty slot
+  - `vals`   — the stored value (valid only when the corresponding key slot is occupied)
+
+  Insertion uses linear probing: if slot `h = key & (cap - 1)` is occupied,
+  try `(h + 1) & (cap - 1)`, `(h + 2) & (cap - 1)`, etc.
+
+  ## Complexity
+
+  - get:   O(1) average, O(n) worst case
+  - put:   O(1) average, O(n) worst case
+  - Space: O(cap)
+
+  This implementation uses a fixed capacity and does not resize.
+  Load factor should be kept below 0.7 for good average performance.
+
+  ## Cross-language notes
+
+  Power-of-two sizing lets bucket selection use a single `bit_and` instead
+  of a modulo: `key.bit_and(cap - 1)`. This is correct for non-negative keys.
+  For negative keys the two's-complement result is still in `[0, cap - 1]`.
+
+use Vector
+use Test
+
+-- -----------------------------------------------------------------------
+-- Sentinel value indicating an empty slot.
+-- We reserve -1 as "no key". Keys equal to -1 are silently rejected.
+-- -----------------------------------------------------------------------
+
+fn empty_sentinel() -> Int
+  -1
+
+-- -----------------------------------------------------------------------
+-- Types
+-- -----------------------------------------------------------------------
+
+doc
+  A fixed-capacity open-addressing hash table.
+  Keys and values are both `Int`. Key -1 is reserved as the empty sentinel.
+struct HashTable
+  keys: Vector Int
+  vals: Vector Int
+  len:  Int
+  cap:  Int
+
+-- -----------------------------------------------------------------------
+-- Construction / destruction
+-- -----------------------------------------------------------------------
+
+-- Fill a vector with `n` copies of `val`.
+fn fill_n(vec: Vector Int, val: Int, n: Int) -> Vector Int
+  if n <= 0
+    vec
+  else
+    fill_n(Vector.push(vec, val), val, n - 1)
+
+doc
+  Create an empty hash table with the given capacity.
+  `cap` should be a power of two for correct bucket selection.
+
+    let t = create(8)   -- 8 empty slots
+fn create(cap: Int) -> HashTable
+  let c = if cap <= 0 then 1 else cap
+  let ks = fill_n(Vector.new(), empty_sentinel(), c)
+  let vs = fill_n(Vector.new(), 0, c)
+  HashTable { keys: ks, vals: vs, len: 0, cap: c }
+
+doc
+  Release the backing storage.
+  Call exactly once when the table is no longer needed.
+fn free(t: HashTable) -> Unit
+  Vector.free(t.keys)
+  Vector.free(t.vals)
+
+-- -----------------------------------------------------------------------
+-- Internal helpers
+-- -----------------------------------------------------------------------
+
+-- Initial bucket index for `key` in a table of capacity `cap`.
+fn bucket(key: Int, cap: Int) -> Int
+  key.bit_and(cap - 1)
+
+-- Next slot with wrap-around.
+fn next_slot(slot: Int, cap: Int) -> Int
+  (slot + 1).bit_and(cap - 1)
+
+-- Linear-probe lookup: find the slot for `key` or the first empty slot.
+fn probe(t: HashTable, key: Int, slot: Int, seen: Int) -> Int
+  if seen >= t.cap
+    slot
+  else
+    case Vector.get(t.keys, slot)
+      None -> slot
+      Some(k) ->
+        if k == empty_sentinel() or k == key
+          slot
+        else
+          probe(t, key, next_slot(slot, t.cap), seen + 1)
+
+-- -----------------------------------------------------------------------
+-- Public API
+-- -----------------------------------------------------------------------
+
+doc
+  Look up `key` in the table.
+  Returns `Some(val)` if found, `None` if absent.
+  Key -1 is reserved and always returns `None`.
+
+    let t = put(new(8), 42, 100)
+    get(t, 42)   -- => Some(100)
+    get(t, 99)   -- => None
+fn get(t: HashTable, key: Int) -> Option Int
+  if key == empty_sentinel()
+    None
+  else
+    let s = probe(t, key, bucket(key, t.cap), 0)
+    case Vector.get(t.keys, s)
+      None -> None
+      Some(k) ->
+        if k == key
+          case Vector.get(t.vals, s)
+            None -> None
+            Some(v) -> Some(v)
+        else
+          None
+
+doc
+  Insert or update `key -> val`.
+  Returns the updated table (old table should be discarded).
+  Key -1 is reserved and silently ignored.
+
+    let t0 = create(8)
+    let t1 = put(t0, 1, 10)
+    let t2 = put(t1, 1, 99)   -- overwrite
+    get(t2, 1)   -- => Some(99)
+fn put(t: HashTable, key: Int, val: Int) -> HashTable
+  if key == empty_sentinel()
+    t
+  else
+    let s = probe(t, key, bucket(key, t.cap), 0)
+    case Vector.get(t.keys, s)
+      None -> t
+      Some(k) ->
+        let was_update = k == key
+        let new_keys = Vector.set(t.keys, s, key)
+        let new_vals = Vector.set(t.vals, s, val)
+        let new_len = if was_update then t.len else t.len + 1
+        HashTable { keys: new_keys, vals: new_vals, len: new_len, cap: t.cap }
+
+doc
+  Return the number of key-value pairs stored.
+
+    let t = put(put(create(8), 1, 10), 2, 20)
+    size(t)   -- => 2
+fn size(t: HashTable) -> Int
+  t.len
+
+-- -----------------------------------------------------------------------
+-- Tests
+-- -----------------------------------------------------------------------
+
+test "get on empty table returns None"
+  let t = create(8)
+  Test.assert(get(t, 0) == None)
+  Test.assert(get(t, 42) == None)
+  free(t)
+
+test "put and get round-trip"
+  let t0 = create(8)
+  let t1 = put(t0, 1, 10)
+  let t2 = put(t1, 2, 20)
+  let t3 = put(t2, 3, 30)
+  Test.assert(get(t3, 1) == Some(10))
+  Test.assert(get(t3, 2) == Some(20))
+  Test.assert(get(t3, 3) == Some(30))
+  Test.assert(get(t3, 4) == None)
+  free(t3)
+
+test "put overwrites existing key"
+  let t0 = create(8)
+  let t1 = put(t0, 7, 100)
+  let t2 = put(t1, 7, 200)
+  Test.assert(get(t2, 7) == Some(200))
+  Test.assert(size(t2) == 1)
+  free(t2)
+
+test "size tracks insertions"
+  let t0 = create(8)
+  let t1 = put(t0, 10, 1)
+  let t2 = put(t1, 20, 2)
+  let t3 = put(t2, 30, 3)
+  Test.assert(size(t3) == 3)
+  -- Updating does not increase size
+  let t4 = put(t3, 10, 99)
+  Test.assert(size(t4) == 3)
+  free(t4)
+
+test "linear probing resolves collisions"
+  -- With cap=4, keys 0 and 4 both hash to slot 0. Linear probing puts 4 at slot 1.
+  let t0 = create(4)
+  let t1 = put(t0, 0, 100)
+  let t2 = put(t1, 4, 400)
+  Test.assert(get(t2, 0) == Some(100))
+  Test.assert(get(t2, 4) == Some(400))
+  Test.assert(size(t2) == 2)
+  free(t2)
+
+test "sentinel key -1 is rejected"
+  let t0 = create(8)
+  let t1 = put(t0, -1, 99)   -- silently ignored
+  Test.assert(size(t1) == 0)
+  Test.assert(get(t1, -1) == None)
+  free(t1)
+
+test "many entries with collisions"
+  -- Insert 10 distinct entries into a table of capacity 16.
+  let t0 = create(16)
+  let t1 = put(put(put(put(put(t0, 0,0), 1,1), 2,2), 3,3), 4,4)
+  let t2 = put(put(put(put(put(t1, 5,5), 6,6), 7,7), 8,8), 9,9)
+  Test.assert(size(t2) == 10)
+  Test.assert(get(t2, 0) == Some(0))
+  Test.assert(get(t2, 5) == Some(5))
+  Test.assert(get(t2, 9) == Some(9))
+  Test.assert(get(t2, 10) == None)
+  free(t2)

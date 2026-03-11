@@ -1,0 +1,153 @@
+doc
+  Sieve of Eratosthenes — find all primes up to a given limit.
+
+  The sieve works by iteratively marking multiples of each prime as
+  composite. Starting from 2, every unmarked number is prime; its
+  multiples (p², p²+p, p²+2p, …) are composite.
+
+  Complexity: O(n log log n) time, O(n) space.
+
+  ## Algorithm
+
+  1. Allocate a boolean array `is_prime[0..n]`, all `true`.
+  2. Mark `is_prime[0]` and `is_prime[1]` as `false`.
+  3. For each `p` from 2 to √n:
+       if `is_prime[p]`, mark `is_prime[p*p], is_prime[p*p+p], …` as `false`.
+  4. The remaining `true` entries are the primes.
+
+  ## Cross-language notes
+
+  This implementation uses a Vector of Bool and tail-recursive
+  helper functions in place of imperative loops. The algorithm is
+  identical to the classic C/Rust version; performance differences
+  reflect the compiler's current optimization level rather than
+  algorithmic choices.
+
+  Reference Rust prime counts (for comparison):
+    π(10)       =  4
+    π(100)      = 25
+    π(1000)     = 168
+    π(10000)    = 1229
+    π(100000)   = 9592
+    π(1000000)  = 78498
+
+use Vector
+use Test
+
+-- -----------------------------------------------------------------------
+-- Initialisation
+-- -----------------------------------------------------------------------
+
+-- Fill a vector with `n` copies of `true`.
+fn fill_true(v: Vector Bool, n: Int) -> Vector Bool
+  if n <= 0
+    v
+  else
+    fill_true(Vector.push(v, true), n - 1)
+
+-- Allocate and initialise the sieve array: all true, then mark 0 and 1.
+fn init_sieve(limit: Int) -> Vector Bool
+  let v = fill_true(Vector.new(), limit + 1)
+  let v2 = Vector.set(v, 0, false)
+  if limit >= 1
+    Vector.set(v2, 1, false)
+  else
+    v2
+
+-- -----------------------------------------------------------------------
+-- Sieve passes
+-- -----------------------------------------------------------------------
+
+-- Mark all multiples of `p` starting at `start` as composite.
+fn mark_multiples(v: Vector Bool, p: Int, cur: Int, limit: Int) -> Vector Bool
+  if cur > limit
+    v
+  else
+    mark_multiples(Vector.set(v, cur, false), p, cur + p, limit)
+
+-- Advance through candidates; for each prime p, mark its multiples.
+fn sieve_step(v: Vector Bool, p: Int, limit: Int) -> Vector Bool
+  if p * p > limit
+    v
+  else
+    let v2 = case Vector.get(v, p)
+      Some(true) -> mark_multiples(v, p, p * p, limit)
+      _          -> v
+    sieve_step(v2, p + 1, limit)
+
+-- Run the full sieve up to `limit` (inclusive).
+-- Returns a Vector Bool where index `i` is `true` iff `i` is prime.
+fn sieve(limit: Int) -> Vector Bool
+  sieve_step(init_sieve(limit), 2, limit)
+
+-- -----------------------------------------------------------------------
+-- Queries
+-- -----------------------------------------------------------------------
+
+-- Count the number of primes in the sieve result.
+fn count_primes(v: Vector Bool, i: Int, acc: Int, limit: Int) -> Int
+  if i > limit
+    acc
+  else
+    let next = case Vector.get(v, i)
+      Some(true) -> acc + 1
+      _          -> acc
+    count_primes(v, i + 1, next, limit)
+
+-- True if `n` is prime according to the sieve.
+fn is_prime_in(v: Vector Bool, n: Int) -> Bool
+  case Vector.get(v, n)
+    Some(true) -> true
+    _          -> false
+
+-- -----------------------------------------------------------------------
+-- Tests
+-- -----------------------------------------------------------------------
+
+test "sieve up to 10 finds 4 primes"
+  let v = sieve(10)
+  Test.assert(count_primes(v, 0, 0, 10) == 4)
+  -- Primes: 2, 3, 5, 7
+  Test.assert(is_prime_in(v, 2))
+  Test.assert(is_prime_in(v, 3))
+  Test.assert(is_prime_in(v, 5))
+  Test.assert(is_prime_in(v, 7))
+  Test.assert(not is_prime_in(v, 0))
+  Test.assert(not is_prime_in(v, 1))
+  Test.assert(not is_prime_in(v, 4))
+  Test.assert(not is_prime_in(v, 6))
+  Test.assert(not is_prime_in(v, 8))
+  Test.assert(not is_prime_in(v, 9))
+  Vector.free(v)
+
+test "sieve up to 100 finds 25 primes"
+  let v = sieve(100)
+  Test.assert(count_primes(v, 0, 0, 100) == 25)
+  Vector.free(v)
+
+test "sieve up to 1000 finds 168 primes"
+  let v = sieve(1000)
+  Test.assert(count_primes(v, 0, 0, 1000) == 168)
+  Vector.free(v)
+
+test "sieve up to 10000 finds 1229 primes"
+  let v = sieve(10000)
+  Test.assert(count_primes(v, 0, 0, 10000) == 1229)
+  Vector.free(v)
+
+test "sieve marks known composites correctly"
+  let v = sieve(30)
+  -- Composites in 20-30: 20,21,22,24,25,26,27,28
+  Test.assert(not is_prime_in(v, 20))
+  Test.assert(not is_prime_in(v, 25))
+  Test.assert(not is_prime_in(v, 27))
+  -- Primes in 20-30: 23, 29
+  Test.assert(is_prime_in(v, 23))
+  Test.assert(is_prime_in(v, 29))
+  Vector.free(v)
+
+test "sieve limit 2 finds one prime"
+  let v = sieve(2)
+  Test.assert(count_primes(v, 0, 0, 2) == 1)
+  Test.assert(is_prime_in(v, 2))
+  Vector.free(v)

@@ -813,18 +813,73 @@ fn run_algorithm_gallery_matrix_multiply() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
+fn run_algorithm_gallery_champ() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/champ.kea");
+    let run = run_test_file(&path, &Default::default()).expect("champ.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "champ failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in champ.kea");
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn run_algorithm_gallery_utf8_validate() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/utf8_validate.kea");
+    let run = run_test_file(&path, &Default::default()).expect("utf8_validate.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "utf8_validate failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in utf8_validate.kea");
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn run_algorithm_gallery_string_find() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/string_find.kea");
+    let run = run_test_file(&path, &Default::default()).expect("string_find.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "string_find failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in string_find.kea");
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn run_algorithm_gallery_lru_cache() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/lru_cache.kea");
+    let run = run_test_file(&path, &Default::default()).expect("lru_cache.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "lru_cache failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in lru_cache.kea");
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn run_algorithm_gallery_sieve() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/sieve.kea");
+    let run = run_test_file(&path, &Default::default()).expect("sieve.kea should run");
+    let failures: Vec<_> = run.cases.iter().filter(|c| !c.passed).collect();
+    assert!(failures.is_empty(), "sieve failures: {:?}", failures);
+    assert!(!run.cases.is_empty(), "no tests in sieve.kea");
+}
+
+#[test]
 fn run_algorithm_gallery_with_kea_test_runner() {
     let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms");
     let supported = [
         "binary_search.kea",
+        "champ.kea",
         "dot_product.kea",
         "fnv1a.kea",
         "insertion_sort.kea",
+        "lru_cache.kea",
         "matrix_multiply.kea",
         "merge_sort.kea",
         "quicksort.kea",
         "priority_queue.kea",
         "ring_buffer.kea",
+        "sieve.kea",
+        "string_find.kea",
+        "utf8_validate.kea",
         "welford.kea",
     ];
     let mut case_files = std::fs::read_dir(&cases_dir)

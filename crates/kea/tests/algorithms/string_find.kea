@@ -1,0 +1,249 @@
+doc
+  Substring search: naive O(nm) and Knuth–Morris–Pratt O(n+m).
+
+  Finding the first occurrence of a pattern `p` (length m) in a text `t`
+  (length n):
+
+  ## Naive search
+
+  At each text position `i`, compare `p[0..m-1]` against `t[i..i+m-1]`.
+  Worst case O(nm) — common on highly repetitive inputs (e.g. "aaa…a" and
+  pattern "aa…ab").
+
+  ## Knuth–Morris–Pratt (KMP)
+
+  Pre-computes a `failure` array (also called the "partial match" table) of
+  length m. `failure[j]` is the length of the longest proper prefix of
+  `p[0..j]` that is also a suffix. During search, when a mismatch occurs at
+  `p[j]`, we can skip ahead by restarting at `p[failure[j-1]]` instead of
+  backing up in the text. Total work: O(n+m).
+
+  ## Complexity
+
+  | Algorithm | Time    | Space |
+  |-----------|---------|-------|
+  | Naive     | O(nm)   | O(1)  |
+  | KMP       | O(n+m)  | O(m)  |
+
+  ## Cross-language notes
+
+  The failure array construction and search loop are identical to the
+  standard C/Java/Rust textbook implementations. Kea's version replaces
+  mutable arrays with Vector.set for the failure table, and uses
+  Text.byte_at for O(1) character access on both text and pattern.
+
+use Vector
+use Text
+use Test
+
+-- -----------------------------------------------------------------------
+-- Helpers
+-- -----------------------------------------------------------------------
+
+-- Safe byte access: -1 for out-of-bounds.
+fn byte(s: String, i: Int) -> Int
+  case Text.byte_at(s, i)
+    Some(b) -> b
+    None    -> -1
+
+-- -----------------------------------------------------------------------
+-- Naive search
+-- -----------------------------------------------------------------------
+
+doc
+  Return the byte offset of the first occurrence of `pattern` in `text`,
+  or `None` if not found.
+
+  Uses naive O(nm) comparison: at each text position, check every byte of
+  the pattern. Simple and correct; fast in practice for short patterns.
+
+    naive_find("hello world", "world")   -- => Some(6)
+    naive_find("hello", "xyz")           -- => None
+    naive_find("hello", "")             -- => Some(0)
+fn naive_find(text: String, pattern: String) -> Option Int
+  let n = Text.length(text)
+  let m = Text.length(pattern)
+  if m == 0
+    Some(0)
+  else if m > n
+    None
+  else
+    naive_search(text, pattern, 0, n, m)
+
+fn naive_search(text: String, pattern: String, i: Int, n: Int, m: Int) -> Option Int
+  if i > n - m
+    None
+  else if naive_match(text, pattern, i, 0, m)
+    Some(i)
+  else
+    naive_search(text, pattern, i + 1, n, m)
+
+fn naive_match(text: String, pattern: String, ti: Int, pi: Int, m: Int) -> Bool
+  if pi >= m
+    true
+  else if byte(text, ti) == byte(pattern, pi)
+    naive_match(text, pattern, ti + 1, pi + 1, m)
+  else
+    false
+
+-- -----------------------------------------------------------------------
+-- KMP: failure function
+-- -----------------------------------------------------------------------
+
+-- Build the KMP failure (partial-match) table for `pattern`.
+-- failure[j] = length of longest proper prefix of pattern[0..j] that is
+-- also a suffix.
+--
+-- Example: pattern = "abcabd"
+--   failure = [0, 0, 0, 1, 2, 0]
+fn build_failure(pattern: String, m: Int) -> Vector Int
+  let ftbl = Vector.push(Vector.new(), 0)   -- failure[0] = 0
+  build_failure_step(pattern, ftbl, 1, 0, m)
+
+fn build_failure_step(pattern: String, ftbl: Vector Int, i: Int, j: Int, m: Int) -> Vector Int
+  if i >= m
+    ftbl
+  else
+    let pi = byte(pattern, i)
+    let pj = byte(pattern, j)
+    if pi == pj
+      -- Match: failure[i] = j + 1
+      let ftbl2 = Vector.push(ftbl, j + 1)
+      build_failure_step(pattern, ftbl2, i + 1, j + 1, m)
+    else if j > 0
+      -- Mismatch after some match: fall back using the table.
+      -- Don't increment i — recompute with new j.
+      let j2 = case Vector.get(ftbl, j - 1)
+        Some(x) -> x
+        None    -> 0
+      build_failure_step(pattern, ftbl, i, j2, m)
+    else
+      -- Mismatch at start: failure[i] = 0
+      let ftbl2 = Vector.push(ftbl, 0)
+      build_failure_step(pattern, ftbl2, i + 1, 0, m)
+
+-- -----------------------------------------------------------------------
+-- KMP: search
+-- -----------------------------------------------------------------------
+
+doc
+  Return the byte offset of the first occurrence of `pattern` in `text`,
+  or `None` if not found.
+
+  Uses the Knuth–Morris–Pratt algorithm: O(n+m) time, O(m) space for the
+  failure table. Never backs up in the text.
+
+    kmp_find("abcabcabd", "abcabd")   -- => Some(3)
+    kmp_find("hello", "")            -- => Some(0)
+    kmp_find("aaa", "b")             -- => None
+fn kmp_find(text: String, pattern: String) -> Option Int
+  let n = Text.length(text)
+  let m = Text.length(pattern)
+  if m == 0
+    Some(0)
+  else if m > n
+    None
+  else
+    let ftbl = build_failure(pattern, m)
+    let result = kmp_search(text, pattern, ftbl, 0, 0, n, m)
+    Vector.free(ftbl)
+    result
+
+fn kmp_search(text: String, pattern: String, ftbl: Vector Int, ti: Int, pi: Int, n: Int, m: Int) -> Option Int
+  if ti >= n
+    None
+  else
+    let t = byte(text, ti)
+    let p = byte(pattern, pi)
+    if t == p
+      -- Characters match.
+      if pi + 1 == m
+        -- Full pattern matched; return start offset.
+        Some(ti - m + 1)
+      else
+        kmp_search(text, pattern, ftbl, ti + 1, pi + 1, n, m)
+    else if pi > 0
+      -- Mismatch after partial match: reuse failure table, don't advance ti.
+      let pi2 = case Vector.get(ftbl, pi - 1)
+        Some(x) -> x
+        None    -> 0
+      kmp_search(text, pattern, ftbl, ti, pi2, n, m)
+    else
+      -- Mismatch at start of pattern: advance text.
+      kmp_search(text, pattern, ftbl, ti + 1, 0, n, m)
+
+-- -----------------------------------------------------------------------
+-- Tests
+-- -----------------------------------------------------------------------
+
+test "naive: empty pattern matches at 0"
+  Test.assert(naive_find("hello", "") == Some(0))
+
+test "naive: pattern longer than text returns None"
+  Test.assert(naive_find("hi", "hello") == None)
+
+test "naive: simple match"
+  Test.assert(naive_find("hello world", "world") == Some(6))
+
+test "naive: match at start"
+  Test.assert(naive_find("hello", "hel") == Some(0))
+
+test "naive: match at end"
+  Test.assert(naive_find("hello", "llo") == Some(2))
+
+test "naive: no match"
+  Test.assert(naive_find("hello", "xyz") == None)
+
+test "naive: single character found"
+  Test.assert(naive_find("hello", "l") == Some(2))
+
+test "naive: single character not found"
+  Test.assert(naive_find("hello", "z") == None)
+
+test "naive: repeated pattern picks first occurrence"
+  Test.assert(naive_find("abcabc", "abc") == Some(0))
+
+test "naive: worst-case repetitive input"
+  -- "aaaaab" pattern in "aaaaaaaaab" — naive does many comparisons
+  Test.assert(naive_find("aaaaaaaaab", "aaaaab") == Some(4))
+
+test "kmp: empty pattern matches at 0"
+  Test.assert(kmp_find("hello", "") == Some(0))
+
+test "kmp: pattern longer than text returns None"
+  Test.assert(kmp_find("hi", "hello") == None)
+
+test "kmp: simple match"
+  Test.assert(kmp_find("hello world", "world") == Some(6))
+
+test "kmp: match at start"
+  Test.assert(kmp_find("hello", "hel") == Some(0))
+
+test "kmp: match at end"
+  Test.assert(kmp_find("hello", "llo") == Some(2))
+
+test "kmp: no match"
+  Test.assert(kmp_find("hello", "xyz") == None)
+
+test "kmp: repetitive input (KMP strength)"
+  -- KMP shines here: "abcabd" in "abcabcabd"
+  Test.assert(kmp_find("abcabcabd", "abcabd") == Some(3))
+
+test "kmp: worst-case repetitive input"
+  Test.assert(kmp_find("aaaaaaaaab", "aaaaab") == Some(4))
+
+test "naive and kmp agree on the same inputs"
+  let texts = ["", "a", "hello", "abcabcabd", "aaaaaaaaab", "kea language"]
+  let patterns = ["", "a", "xyz", "abcabd", "aaaaab", "lang"]
+  let t0 = naive_find("", "") == kmp_find("", "")
+  let t1 = naive_find("a", "a") == kmp_find("a", "a")
+  let t2 = naive_find("hello", "xyz") == kmp_find("hello", "xyz")
+  let t3 = naive_find("abcabcabd", "abcabd") == kmp_find("abcabcabd", "abcabd")
+  let t4 = naive_find("aaaaaaaaab", "aaaaab") == kmp_find("aaaaaaaaab", "aaaaab")
+  let t5 = naive_find("kea language", "lang") == kmp_find("kea language", "lang")
+  Test.assert(t0)
+  Test.assert(t1)
+  Test.assert(t2)
+  Test.assert(t3)
+  Test.assert(t4)
+  Test.assert(t5)
