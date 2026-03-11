@@ -218,6 +218,24 @@ int64_t __kea_clock_monotonic(void) {
 #endif
 }
 
+// Test assertion stubs: used when Test module is imported by library code
+// (e.g. stdlib/vector.kea imports Test) but the compiled binary is not a
+// test runner.  A failing assertion aborts the process; passing ones are
+// silent.
+void __kea_test_check(int8_t passed) {
+  if (!passed) {
+    fputs("assertion failed\n", stderr);
+    abort();
+  }
+}
+
+void __kea_test_check_with_message(int8_t passed, const char *msg) {
+  if (!passed) {
+    fprintf(stderr, "assertion failed: %s\n", msg ? msg : "(null)");
+    abort();
+  }
+}
+
 // TLS fail-propagation slot: out-of-band channel for Fail payloads that
 // cannot propagate through the pure handler callback ABI.
 static __thread const uint8_t *__kea_fail_payload_slot = NULL;

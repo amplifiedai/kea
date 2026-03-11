@@ -1,0 +1,54 @@
+-- Sieve of Eratosthenes: π(1_000_000) = 78498
+-- Whole-program benchmark: measures JIT init + sieve + count.
+
+use Vector
+
+fn fill_true(v: Vector Bool, n: Int) -> Vector Bool
+  if n <= 0
+    v
+  else
+    fill_true(Vector.push(v, true), n - 1)
+
+fn init_sieve(limit: Int) -> Vector Bool
+  let v = fill_true(Vector.new(), limit + 1)
+  let v2 = Vector.set(v, 0, false)
+  if limit >= 1
+    Vector.set(v2, 1, false)
+  else
+    v2
+
+fn mark_multiples(v: Vector Bool, p: Int, cur: Int, limit: Int) -> Vector Bool
+  if cur > limit
+    v
+  else
+    mark_multiples(Vector.set(v, cur, false), p, cur + p, limit)
+
+fn sieve_step(v: Vector Bool, p: Int, limit: Int) -> Vector Bool
+  if p * p > limit
+    v
+  else
+    let v2 = case Vector.get(v, p)
+      Some(true) -> mark_multiples(v, p, p * p, limit)
+      _          -> v
+    sieve_step(v2, p + 1, limit)
+
+fn sieve(limit: Int) -> Vector Bool
+  sieve_step(init_sieve(limit), 2, limit)
+
+fn count_primes(v: Vector Bool, i: Int, acc: Int, limit: Int) -> Int
+  if i > limit
+    acc
+  else
+    let next = case Vector.get(v, i)
+      Some(true) -> acc + 1
+      _          -> acc
+    count_primes(v, i + 1, next, limit)
+
+fn main() -> Int
+  let v = sieve(1000000)
+  let n = count_primes(v, 0, 0, 1000000)
+  Vector.free(v)
+  if n == 78498
+    0
+  else
+    1
