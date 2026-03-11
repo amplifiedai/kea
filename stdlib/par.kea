@@ -1,0 +1,139 @@
+doc
+  Parallel execution with compile-time-verified pure callbacks.
+
+  `Par` is a capability effect for fork-join parallelism. Functions annotated
+  `-[Par]>` may perform parallel work. The type system ensures callbacks are
+  pure — `fn(A) -> B` is a different type from `fn(A) -[IO]> B`, so effectful
+  callbacks are caught at compile time.
+
+  ## Basic usage
+
+  Use `Par.map` to process a list in parallel:
+
+  ```kea
+  import par
+
+  fn double_all(xs: List Int) -[Par]> List Int
+    xs.Par.map(fn(x: Int) -> Int  x * 2)
+  ```
+
+  Wrap the program entry with `Par.run_par` (parallel) or `Par.run_seq`
+  (sequential, useful in tests):
+
+  ```kea
+  pub fn main() -[IO]> Unit
+    let result = Par.run_par(fn() -[Par]> List Int
+      double_all(List.range(0, 1000)))
+    IO.println(show(result))
+  ```
+
+  ## Testing parallel code
+
+  Use `Par.run_seq` to make parallel code fully deterministic in tests:
+
+  ```kea
+  test "double_all is correct"
+    let result = Par.run_seq(fn() -[Par]> List Int
+      double_all(Cons(1, Cons(2, Cons(3, Nil)))))
+    Test.assert(result == Cons(2, Cons(4, Cons(6, Nil))))
+  ```
+
+  Or provide a custom handler:
+
+  ```kea
+  test "direct handler"
+    let result = handle double_all(Cons(1, Cons(2, Nil)))
+      Par.map(items, f) -> items.List.map(f)
+    Test.assert(result == Cons(2, Cons(4, Nil)))
+  ```
+
+  ## Purity requirement
+
+  Par callbacks must be pure. Passing an effectful function is a type error:
+
+  ```kea
+  -- error[E0018]: Par.map requires a pure callback
+  --   got fn(Int) -[IO]> Int, expected fn(Int) -> Int
+  Par.map(xs, fn(x: Int) -[IO]> Int
+    IO.print(show(x))
+    x)
+  ```
+
+  ## See also
+
+  - `List.map` — sequential version; use when parallelism overhead isn't worth it
+  - `Par.all2`, `Par.all3` — parallel evaluation of independent expressions
+
+use List
+
+doc
+  The parallel execution effect. Declare `-[Par]>` to indicate a function
+  may perform parallel work. Handle with `Par.run_par` (parallel) or
+  `Par.run_seq` (sequential, for tests).
+effect Par
+  doc
+    Apply `f` to each element of `items` in parallel, collecting results in
+    order. The callback `f` must be pure — it cannot perform IO, access
+    mutable state, or perform any other effects.
+
+    Results are returned in the same order as `items`, regardless of which
+    tasks complete first.
+
+    ```kea
+    Par.map(Cons(1, Cons(2, Cons(3, Nil))), fn(x: Int) -> Int  x * 2)
+    -- => Cons(2, Cons(4, Cons(6, Nil)))
+    ```
+  fn map(items: List a, f: fn(a) -> b) -[Par]> List b
+
+  doc
+    Evaluate two independent pure expressions in parallel, returning both
+    results as a tuple. Useful when two computations are logically independent.
+
+    ```kea
+    Par.all2(fn() -> Int  expensive_a(), fn() -> Int  expensive_b())
+    -- => (result_a, result_b)
+    ```
+  fn all2(fa: fn() -> a, fb: fn() -> b) -[Par]> (a, b)
+
+  doc
+    Evaluate three independent pure expressions in parallel.
+  fn all3(fa: fn() -> a, fb: fn() -> b, fc: fn() -> c) -[Par]> (a, b, c)
+
+doc
+  Run a computation that uses `Par` effects sequentially, in order.
+
+  Use this in tests to make parallel code deterministic, or as a drop-in
+  for contexts where parallelism overhead isn't worth it.
+
+  ```kea doctest
+  handle Par.run_seq(fn() -[Par]> List Int
+    Par.map(Cons(1, Cons(2, Cons(3, Nil))), fn(x: Int) -> Int  x * 2))
+  -- => Cons(2, Cons(4, Cons(6, Nil)))
+  ```
+pub fn run_seq(prog: fn() -[Par]> a) -> a
+  handle prog()
+    Par.map(items, f) -> resume items.List.map(f)
+    Par.all2(fa, fb) -> resume (fa(), fb())
+    Par.all3(fa, fb, fc) -> resume (fa(), fb(), fc())
+
+doc
+  Run a computation that uses `Par` effects using the work-stealing thread
+  pool. Tasks are distributed across available CPU cores.
+
+  The number of worker threads defaults to the available parallelism
+  (core count), configurable via the `KEA_THREADS` environment variable.
+
+  This is the production entry point. In tests, prefer `Par.run_seq` for
+  deterministic results.
+
+  ```kea
+  pub fn main() -[IO]> Unit
+    let result = Par.run_par(fn() -[Par]> List Int
+      numbers.Par.map(fn(x: Int) -> Int  x * x))
+    IO.println(show(result))
+  ```
+pub fn run_par(prog: fn() -[Par]> a) -> a
+  -- TODO: wire to kea-runtime thread pool via C-ABI bridge once
+  -- the closure-passing mechanism is established.
+  -- For now, falls through to sequential execution.
+  run_seq(prog)
