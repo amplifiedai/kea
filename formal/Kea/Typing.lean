@@ -9830,6 +9830,52 @@ theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route
       clauseSem mismatchSem bodyStep h_core)
 
 /--
+Integrated local stutter-route capstone: one object carrying the generic local
+`step ∧ preserves` contract, its packaged assumption-route surface, the
+derived local consequence suite, and the direct strict-top discipline route on
+the canonical stutter core relation.
+-/
+structure NativeHandlerStutterLocalContractCapstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop where
+  localExistsAndPreserves :
+    native_handler_step_ext_with_mismatch_local_exists_and_preserves_prop
+      clauseSem mismatchSem native_core_stutter_step
+  localExistsAndPreservesAssumptionRoutes :
+    native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_prop
+      clauseSem mismatchSem native_core_stutter_step
+  localConsequenceAssumptionRouteSuite :
+    native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
+      clauseSem mismatchSem native_core_stutter_step
+  strictTopHandleSoundness :
+    native_handler_step_ext_with_mismatch_stutter_strict_top_handle_soundness_prop
+      clauseSem mismatchSem
+
+/--
+Canonical integrated local stutter-route contract capstone.
+-/
+theorem native_handler_stutter_local_contract_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerStutterLocalContractCapstone clauseSem mismatchSem := by
+  refine {
+    localExistsAndPreserves :=
+      native_handler_step_ext_with_mismatch_local_exists_and_preserves_of_stutter_core_soundness
+        clauseSem mismatchSem
+    localExistsAndPreservesAssumptionRoutes :=
+      native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_stutter_core_soundness
+        clauseSem mismatchSem
+    localConsequenceAssumptionRouteSuite := ?_
+    strictTopHandleSoundness :=
+      native_handler_step_ext_with_mismatch_stutter_strict_top_handle_soundness
+        clauseSem mismatchSem
+  }
+  exact native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_local_exists_and_preserves_assumption_routes
+    clauseSem mismatchSem native_core_stutter_step
+    (native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_stutter_core_soundness
+      clauseSem mismatchSem)
+
+/--
 Current boundary witness: the combined local consequence route suite is
 derivable for any `bodyStep` via the vacuous global route suite.
 -/

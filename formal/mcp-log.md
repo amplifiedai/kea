@@ -24309,6 +24309,47 @@ Lean typing model and MCP typing behavior disagree on whether double-resume clau
 **Impact**:
 - No Lean↔MCP divergence at this checkpoint.
 
+### 2026-03-12: integrated local stutter contract capstone
+
+**Context**: Added a single capstone witness for the local stutter-route handler layer in `formal/Kea/Typing.lean`:
+- `NativeHandlerStutterLocalContractCapstone`
+- `native_handler_stutter_local_contract_capstone`
+
+This packages four pieces that had previously been spread across separate theorem surfaces:
+1. the generic local mismatch `step ∧ preserves` contract at `native_core_stutter_step`,
+2. its packaged assumption-route surface,
+3. the derived local consequence route suite,
+4. the direct strict-top stutter handle soundness route.
+
+**MCP tools used**: `type_check` (direct `kea` MCP probes).
+
+**Predict (Lean side)**:
+1. Zero-resume and non-tail single-resume handlers accepted.
+2. Lambda-captured `resume` rejected.
+3. Double-resume rejected.
+4. Out-of-handler `resume` rejected.
+
+**Probe (Rust side via MCP)**:
+1. `probe_zero_resume_20260312b` -> `ok`.
+2. `probe_non_tail_single_20260312b` -> `ok`.
+3. `probe_lambda_capture_20260312b` -> `error`, `E0012`, `` `resume` cannot be captured in a lambda ``.
+4. `probe_double_resume_20260312b` -> `error`, `E0012`, `handler clause may resume at most once`.
+5. `probe_outside_resume_20260312b` -> `error`, `E0012`, `` `resume` is only valid inside a matching handler clause ``.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Added one-name capstone packaging for the local stutter-route contract layer, so downstream consumers can cite a single theorem object rather than assembling the local stutter route from several contract/route theorems.
+
+**Traceability**:
+- Lean file: `formal/Kea/Typing.lean`.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- No Lean↔MCP divergence at this checkpoint.
+
 ### 2026-03-12: generic local mismatch stutter contracts specialized to canonical core soundness
 
 **Context**: Added generic contract-level stutter specializations in `formal/Kea/Typing.lean`:
