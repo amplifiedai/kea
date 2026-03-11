@@ -74,15 +74,19 @@ _kea_fiber_trampoline:
     add  x22, x22, x10            // x22 = stack top (one-past-end of buffer)
     and  x22, x22, #~15           // align down to 16
 
-    // ── Switch to fiber stack and call fn_ptr(arg) ──
+    // ── Clear done flag then switch to fiber stack and call fn_ptr(arg) ──
+    bl   _kea_fiber_clear_done     // clears FIBER_IS_DONE before fiber starts
     mov  sp,  x22
     mov  x0,  x21
     blr  x20                      // fiber runs; returns here on NORMAL exit
     // x0 = fiber return value; x19 = prompt (callee-saved, restored by fn_ptr)
 
     // ── Normal fiber exit path ──
-    // Save return value in x21 (callee-saved, survives the bl below).
+    // Save return value in x21 (callee-saved, survives the bl's below).
     mov  x21, x0
+
+    // Mark fiber as done (before restoring handler context)
+    bl   _kea_fiber_mark_done      // sets FIBER_IS_DONE = true; x19/x21 intact
 
     // Clear ACTIVE_PROMPT (still on fiber stack — safe, has plenty of space)
     mov  x0,  #0

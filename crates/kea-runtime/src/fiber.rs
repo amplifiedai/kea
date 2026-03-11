@@ -52,6 +52,9 @@ unsafe impl Send for Prompt {}
 thread_local! {
     static ACTIVE_PROMPT: Cell<*mut Prompt> = const { Cell::new(ptr::null_mut()) };
     static SEGMENT_POOL: RefCell<Vec<StackSegment>> = const { RefCell::new(Vec::new()) };
+    /// Set to `true` by the trampoline epilogue when the fiber exits normally.
+    /// `kea_fiber_resume` callers should check this after the call returns.
+    static FIBER_IS_DONE: Cell<bool> = const { Cell::new(false) };
 }
 
 // ── TLS helpers (called from assembly) ───────────────────────────────────────
@@ -68,6 +71,60 @@ pub unsafe extern "C" fn kea_active_prompt_get() -> *mut Prompt {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn kea_active_prompt_set(ptr: *mut Prompt) {
     ACTIVE_PROMPT.with(|c| c.set(ptr));
+}
+
+/// Called by the trampoline BEFORE the fiber starts.  Clears the done flag.
+/// # Safety
+/// Must only be called from the trampoline assembly stub.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kea_fiber_clear_done() {
+    FIBER_IS_DONE.with(|c| c.set(false));
+}
+
+/// Called by the trampoline epilogue AFTER the fiber's fn_ptr returns normally.
+/// # Safety
+/// Must only be called from the trampoline assembly stub.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kea_fiber_mark_done() {
+    FIBER_IS_DONE.with(|c| c.set(true));
+}
+
+/// Returns `true` if the most recent `kea_fiber_trampoline` or `kea_fiber_resume`
+/// call returned because the fiber completed normally (rather than suspending).
+///
+/// Call this immediately after `kea_fiber_trampoline` / `kea_fiber_resume` returns.
+pub fn fiber_is_done() -> bool {
+    FIBER_IS_DONE.with(|c| c.get())
+}
+
+/// Heap-allocate a `Prompt` paired with `segment`.
+///
+/// Returns a raw pointer valid until `kea_free_prompt` is called.
+/// Using a heap Prompt avoids the "must not move" constraint, at the cost of
+/// one extra allocation per fiber invocation.
+///
+/// # Safety
+/// The caller must call `kea_free_prompt` exactly once when done.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kea_alloc_prompt(segment: *mut StackSegment) -> *mut Prompt {
+    let mut p = Box::new(Prompt {
+        handler_sp: 0,
+        handler_regs: [0u64; 12],
+        segment,
+    });
+    let ptr = p.as_mut() as *mut Prompt;
+    std::mem::forget(p); // caller owns it
+    ptr
+}
+
+/// Free a heap-allocated `Prompt`.
+/// # Safety
+/// `prompt` must have been produced by `kea_alloc_prompt`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kea_free_prompt(prompt: *mut Prompt) {
+    if !prompt.is_null() {
+        drop(unsafe { Box::from_raw(prompt) });
+    }
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -144,13 +201,23 @@ pub unsafe extern "C" fn kea_prompt_init(prompt: *mut Prompt, segment: *mut Stac
 
 #[allow(improper_ctypes)]
 unsafe extern "C" {
-    /// Run `fn_ptr(arg)` on the fiber stack.  Returns when fiber exits or
-    /// calls `kea_fiber_suspend`.
+    /// Run `fn_ptr(arg)` on the fiber stack.
+    ///
+    /// Returns the first suspend value (from `kea_fiber_suspend`), or the
+    /// fiber's return value if it never suspends.  Check `fiber_is_done()`
+    /// after this call to distinguish normal exit from suspension.
     pub fn kea_fiber_trampoline(prompt: *mut Prompt, fn_ptr: usize, arg: i64) -> i64;
-    /// Suspend the fiber; returns when handler calls `kea_fiber_resume`.
+
+    /// Suspend the current fiber, returning `value` to the handler.
+    ///
+    /// Returns the resume value provided by `kea_fiber_resume`.
     pub fn kea_fiber_suspend(value: i64) -> i64;
+
     /// Resume a suspended fiber with `value`.
-    pub fn kea_fiber_resume(prompt: *mut Prompt, value: i64);
+    ///
+    /// Returns the next suspend value, or the fiber's return value if the fiber
+    /// completes.  Check `fiber_is_done()` after this call to tell them apart.
+    pub fn kea_fiber_resume(prompt: *mut Prompt, value: i64) -> i64;
 }
 
 // ── Offset constants (for assembly verification) ──────────────────────────────
@@ -229,11 +296,11 @@ mod tests {
     fn fiber_no_suspend_returns_value() {
         unsafe {
             let seg = kea_alloc_segment(DEFAULT_STACK_SIZE);
-            let mut prompt = std::mem::zeroed::<Prompt>();
-            kea_prompt_init(&mut prompt, seg);
+            let prompt = kea_alloc_prompt(seg);
             let result =
-                kea_fiber_trampoline(&mut prompt, fiber_immediate_return as *const () as usize, 0);
+                kea_fiber_trampoline(prompt, fiber_immediate_return as *const () as usize, 0);
             assert_eq!(result, 42);
+            kea_free_prompt(prompt);
             kea_free_segment(seg);
         }
     }
@@ -250,34 +317,20 @@ mod tests {
     fn fiber_single_suspend_resume() {
         unsafe {
             let seg = kea_alloc_segment(DEFAULT_STACK_SIZE);
-            let mut prompt = std::mem::zeroed::<Prompt>();
-            kea_prompt_init(&mut prompt, seg);
+            let prompt = kea_alloc_prompt(seg);
 
             // First call: fiber suspends, trampoline returns 7.
             let suspend_val =
-                kea_fiber_trampoline(&mut prompt, fiber_suspend_once as *const () as usize, 0);
+                kea_fiber_trampoline(prompt, fiber_suspend_once as *const () as usize, 0);
             assert_eq!(suspend_val, 7);
+            assert!(!fiber_is_done());
 
             // Resume with 99; fiber finishes and returns 1000.
-            // kea_fiber_resume transfers control to the fiber.  The fiber runs
-            // to completion and restores handler context, so we return here.
-            // But kea_fiber_resume is declared -> (); on normal exit the fiber
-            // restores handler context from the Prompt and rets to OUR return
-            // address — but then where does 1000 go?
-            //
-            // In the current design: normal fiber exit (fn_ptr returns) goes
-            // back to the TRAMPOLINE's addr_B epilogue, which restores handler
-            // context from Prompt (updated by kea_fiber_resume) and rets to
-            // kea_fiber_resume's caller.  The trampoline returns 1000 via rax/x0.
-            // kea_fiber_resume's caller sees this as its "return value", but
-            // kea_fiber_resume is declared `-> ()` in Rust, so the value is
-            // discarded.  To observe it we'd need a different API.
-            //
-            // For now, just verify the call doesn't crash and that resume_val
-            // was correctly delivered to the fiber (checked inside fiber_suspend_once).
-            kea_fiber_resume(&mut prompt, 99);
-            // If we reach here without panicking, the fiber completed correctly.
+            let final_val = kea_fiber_resume(prompt, 99);
+            assert_eq!(final_val, 1000);
+            assert!(fiber_is_done());
 
+            kea_free_prompt(prompt);
             kea_free_segment(seg);
         }
     }
@@ -285,28 +338,47 @@ mod tests {
     /// Fiber that suspends twice.
     unsafe extern "C" fn fiber_suspend_twice(_arg: i64) -> i64 {
         let r1 = unsafe { kea_fiber_suspend(10) };
-        assert_eq!(r1, 20);
         let r2 = unsafe { kea_fiber_suspend(30) };
-        assert_eq!(r2, 40);
-        50
+        // Return r1 + r2 as final value so we can observe it
+        r1 + r2
     }
 
     #[test]
     fn fiber_two_suspends() {
         unsafe {
             let seg = kea_alloc_segment(DEFAULT_STACK_SIZE);
-            let mut prompt = std::mem::zeroed::<Prompt>();
-            kea_prompt_init(&mut prompt, seg);
+            let prompt = kea_alloc_prompt(seg);
 
-            let v1 = kea_fiber_trampoline(&mut prompt, fiber_suspend_twice as *const () as usize, 0);
+            // First suspend: value = 10
+            let v1 = kea_fiber_trampoline(prompt, fiber_suspend_twice as *const () as usize, 0);
             assert_eq!(v1, 10);
+            assert!(!fiber_is_done());
 
-            kea_fiber_resume(&mut prompt, 20); // fiber suspends again with 30
-            // After this call, Prompt holds kea_fiber_resume's context.
-            // The fiber suspended again, restoring handler context → we return here.
-            // But kea_fiber_resume -> () so we can't observe v2 directly.
-            // The assertions inside fiber_suspend_twice verify correctness.
+            // Resume with 20; fiber suspends again with 30
+            let v2 = kea_fiber_resume(prompt, 20);
+            assert_eq!(v2, 30);
+            assert!(!fiber_is_done());
 
+            // Resume with 40; fiber completes, returns 20 + 40 = 60
+            let final_val = kea_fiber_resume(prompt, 40);
+            assert_eq!(final_val, 60);
+            assert!(fiber_is_done());
+
+            kea_free_prompt(prompt);
+            kea_free_segment(seg);
+        }
+    }
+
+    #[test]
+    fn fiber_no_suspend_done_flag() {
+        unsafe {
+            let seg = kea_alloc_segment(DEFAULT_STACK_SIZE);
+            let prompt = kea_alloc_prompt(seg);
+            let result =
+                kea_fiber_trampoline(prompt, fiber_immediate_return as *const () as usize, 0);
+            assert_eq!(result, 42);
+            assert!(fiber_is_done());
+            kea_free_prompt(prompt);
             kea_free_segment(seg);
         }
     }

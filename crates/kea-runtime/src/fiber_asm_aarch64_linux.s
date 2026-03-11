@@ -28,11 +28,13 @@ kea_fiber_trampoline:
     add  x22, x22, x10
     and  x22, x22, #~15
 
+    bl   kea_fiber_clear_done
     mov  sp,  x22
     mov  x0,  x21
     blr  x20
 
     mov  x21, x0
+    bl   kea_fiber_mark_done
     mov  x0,  #0
     bl   kea_active_prompt_set
 

@@ -60,7 +60,8 @@ kea_fiber_trampoline:
     add  112(%rax), %r15          // r15 = stack_ptr + stack_len
     and  $-16, %r15               // align down to 16
 
-    // Switch to fiber stack, call fn_ptr(arg)
+    // Clear done flag, then switch to fiber stack and call fn_ptr(arg)
+    call kea_fiber_clear_done     // clears FIBER_IS_DONE; r12-r15 intact
     mov  %r15, %rsp
     mov  %r14, %rdi               // arg
     call *%r13                    // fn_ptr(arg)
@@ -68,6 +69,9 @@ kea_fiber_trampoline:
 
     // ── Normal fiber exit ──
     mov  %rax, %r14               // stash return value in r14 (callee-saved)
+
+    // Mark fiber as done
+    call kea_fiber_mark_done      // sets FIBER_IS_DONE=true; r12, r14 intact
 
     // Clear ACTIVE_PROMPT (still on fiber stack)
     xor  %rdi, %rdi
