@@ -1,3 +1,5 @@
+pub mod fiber;
+
 use crossbeam_deque::{Injector, Steal, Stealer, Worker};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock};
