@@ -1197,6 +1197,14 @@ fn compile_into_module<M: Module>(
         define_retain_functions(module, layout_plan, &retain_func_ids)?;
     }
 
+    // Build callee param type map used for RC inference of Dynamic-typed call results.
+    // See infer_mir_value_types for details on why this is needed.
+    let callee_param_types: BTreeMap<String, Vec<Type>> = mir
+        .functions
+        .iter()
+        .map(|f| (f.name.clone(), f.signature.params.clone()))
+        .collect();
+
     let mut builder_context = FunctionBuilderContext::new();
 
     for function in &mir.functions {
@@ -1246,7 +1254,7 @@ fn compile_into_module<M: Module>(
                     function: function.name.clone(),
                 }
             })?;
-            let value_types = infer_mir_value_types(function, layout_plan);
+            let value_types = infer_mir_value_types(function, layout_plan, &callee_param_types);
             let stack_unboxed_record_inits =
                 collect_stack_eligible_unboxed_record_inits(function, layout_plan);
             let stack_record_release_elision_values =
@@ -2129,6 +2137,7 @@ fn mangle_drop_symbol(prefix: &str, name: &str) -> String {
 fn infer_mir_value_types(
     function: &MirFunction,
     layout_plan: &BackendLayoutPlan,
+    callee_param_types: &BTreeMap<String, Vec<Type>>,
 ) -> BTreeMap<MirValueId, Type> {
     let mut value_types = BTreeMap::new();
 
@@ -2312,6 +2321,39 @@ fn infer_mir_value_types(
                 | MirInst::EffectOp { result: None, .. }
                 | MirInst::Unsupported { .. }
                 | MirInst::Nop => {}
+            }
+        }
+    }
+
+    // Reverse propagation: when a Dynamic-typed call result is passed to a
+    // function with a known concrete parameter type, infer the value's type.
+    // This fixes RC tracking for values that cross polymorphic function boundaries
+    // (e.g. `xs = run_poly(...)` returns Dynamic, but `List.nth(xs, i)` tells us
+    // xs is a List). Without this, Retain/Release emitted by the MIR optimizer
+    // would silently do nothing because is_managed_heap_type(Dynamic) = false.
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                let MirInst::Call { callee: MirCallee::Local(name), args, .. } = inst else {
+                    continue;
+                };
+                let Some(param_types) = callee_param_types.get(name) else {
+                    continue;
+                };
+                for (arg, param_ty) in args.iter().zip(param_types.iter()) {
+                    if value_types
+                        .get(arg)
+                        .is_some_and(|t| !matches!(t, Type::Dynamic | Type::Var(_)))
+                    {
+                        continue; // already has a concrete type
+                    }
+                    if is_managed_heap_type(param_ty, layout_plan) {
+                        value_types.insert(arg.clone(), param_ty.clone());
+                        changed = true;
+                    }
+                }
             }
         }
     }
@@ -11034,7 +11076,7 @@ mod tests {
         };
         let plan = plan_layout_catalog(&module).expect("layout planning should succeed");
         let function = &module.functions[0];
-        let value_types = infer_mir_value_types(function, &plan);
+        let value_types = infer_mir_value_types(function, &plan, &BTreeMap::new());
 
         assert_eq!(
             value_types.get(&MirValueId(0)),

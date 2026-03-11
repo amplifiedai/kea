@@ -532,8 +532,17 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
         }
     }
 
+    // Build callee param type map for RC tracking of polymorphic call results.
+    // When a Dynamic-typed call result is later passed to a function with concrete
+    // parameter types (e.g. List.nth expects List a), we infer the layout key and
+    // insert Retain/Release correctly.
+    let callee_param_types: BTreeMap<String, Vec<Type>> = functions
+        .iter()
+        .map(|f| (f.name.clone(), f.signature.params.clone()))
+        .collect();
+
     for function in &mut functions {
-        insert_retains_for_reused_call_args(function, &layouts);
+        insert_retains_for_reused_call_args(function, &layouts, &callee_param_types);
         insert_releases_for_dead_params(function, &layouts);
         rewrite_trmc_descending_sum_chain(function);
         emit_reuse_tokens_for_trailing_release_alloc(function, &layouts);
@@ -2822,8 +2831,13 @@ fn find_release_idx_for_value(block: &MirBlock, value: &MirValueId) -> Option<us
 /// retain the value if it continues to use it after the call returns.  Without
 /// this pass, a second use of the same value after a callee-side release would
 /// be a use-after-free.
-fn insert_retains_for_reused_call_args(function: &mut MirFunction, _layouts: &MirLayoutCatalog) {
-    let heap_value_layouts = infer_heap_layout_keys(function);
+fn insert_retains_for_reused_call_args(
+    function: &mut MirFunction,
+    _layouts: &MirLayoutCatalog,
+    callee_param_types: &BTreeMap<String, Vec<Type>>,
+) {
+    let heap_value_layouts =
+        infer_heap_layout_keys_with_callee_params(function, callee_param_types);
     if heap_value_layouts.is_empty() {
         return;
     }
@@ -3657,6 +3671,47 @@ fn infer_heap_layout_keys(function: &MirFunction) -> BTreeMap<MirValueId, String
     keys
 }
 
+/// Extended version of `infer_heap_layout_keys` that propagates layout keys
+/// from callee parameter types to Dynamic-typed call arguments.
+///
+/// When a function `f(xs: List a, ...)` is called with a Dynamic-typed argument,
+/// we know the argument must be a List. This lets the RC analysis correctly insert
+/// Retain/Release for values that crossed a polymorphic function boundary (where
+/// the return type was Dynamic) but are later passed to functions with concrete
+/// parameter types.
+fn infer_heap_layout_keys_with_callee_params(
+    function: &MirFunction,
+    callee_param_types: &BTreeMap<String, Vec<Type>>,
+) -> BTreeMap<MirValueId, String> {
+    let mut keys = infer_heap_layout_keys(function);
+
+    // Reverse propagation from callee param types: fixpoint until stable.
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                let MirInst::Call { callee: MirCallee::Local(name), args, .. } = inst else {
+                    continue;
+                };
+                let Some(param_types) = callee_param_types.get(name) else {
+                    continue;
+                };
+                for (arg, param_ty) in args.iter().zip(param_types.iter()) {
+                    if keys.contains_key(arg) {
+                        continue;
+                    }
+                    if let Some(key) = type_layout_key(param_ty) {
+                        keys.insert(arg.clone(), key);
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    keys
+}
 
 fn type_layout_key(ty: &Type) -> Option<String> {
     match ty {
@@ -17534,7 +17589,7 @@ mod tests {
                 terminator: MirTerminator::Return { value: Some(v2.clone()) },
             }],
         };
-        insert_retains_for_reused_call_args(&mut function, &layouts);
+        insert_retains_for_reused_call_args(&mut function, &layouts, &BTreeMap::new());
         // Retain(v0) should appear before the Call.
         let insts = &function.blocks[0].instructions;
         assert!(
@@ -17575,7 +17630,7 @@ mod tests {
                 terminator: MirTerminator::Return { value: Some(v1.clone()) },
             }],
         };
-        insert_retains_for_reused_call_args(&mut function, &layouts);
+        insert_retains_for_reused_call_args(&mut function, &layouts, &BTreeMap::new());
         let has_retain = function.blocks[0]
             .instructions
             .iter()
