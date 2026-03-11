@@ -10092,6 +10092,7 @@ fn type_contains_inference_var(ty: &Type) -> bool {
         Type::Constructor { fixed_args, .. } => {
             fixed_args.iter().any(|(_, ty)| type_contains_inference_var(ty))
         }
+        Type::Continuation(inner) => type_contains_inference_var(inner),
         Type::Int
         | Type::IntN(_, _)
         | Type::Float
@@ -12205,6 +12206,7 @@ mod tests {
                     span: Span::synthetic(),
                 },
                 doc: None,
+                is_deferred: false,
                 span: Span::synthetic(),
             }],
         }));

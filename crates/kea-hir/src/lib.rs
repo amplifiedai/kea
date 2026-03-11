@@ -60,6 +60,8 @@ pub struct HirHandleClause {
     pub args: Vec<HirPattern>,
     pub arg_types: Vec<Type>,
     pub return_type: Type,
+    /// Continuation name from `with k` syntax. Present only for `@deferred` operations.
+    pub continuation: Option<String>,
     pub body: HirExpr,
     pub span: Span,
 }
@@ -2164,6 +2166,7 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
                         args: clause.args.iter().map(lower_pattern).collect(),
                         arg_types,
                         return_type,
+                        continuation: clause.continuation.as_ref().map(|s| s.node.clone()),
                         body: lower_expr(&clause.body, None, ctx),
                         span: clause.span,
                     }

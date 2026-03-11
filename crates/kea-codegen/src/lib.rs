@@ -12367,6 +12367,7 @@ mod tests {
                     span: Span::synthetic(),
                 },
                 doc: None,
+                is_deferred: false,
                 span: Span::synthetic(),
             }],
         }))

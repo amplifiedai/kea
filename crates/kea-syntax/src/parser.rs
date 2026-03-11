@@ -1170,6 +1170,20 @@ impl Parser {
         while !self.at_block_end(delimiter) && !self.at_eof() {
             let op_start = self.current_span();
             let op_doc = self.consume_doc_comment_block();
+            // Optional `@deferred` annotation before `fn`
+            let mut is_deferred = false;
+            if self.check(&TokenKind::At) {
+                let ann = self.parse_annotation()?;
+                if ann.name.node == "deferred" {
+                    is_deferred = true;
+                } else {
+                    self.error_at_current(&format!(
+                        "unknown effect operation annotation '@{}'; only '@deferred' is supported",
+                        ann.name.node
+                    ));
+                }
+                self.skip_newlines();
+            }
             self.expect(&TokenKind::Fn, "expected 'fn' in effect declaration")?;
             let op_name = self.expect_ident("expected effect operation name")?;
             self.expect(
@@ -1203,6 +1217,7 @@ impl Parser {
                 params,
                 return_annotation,
                 doc: op_doc,
+                is_deferred,
                 span: op_start.merge(op_end),
             });
             self.skip_newlines();
@@ -3346,6 +3361,13 @@ impl Parser {
             &TokenKind::RParen,
             "expected ')' after handler clause arguments",
         )?;
+        // Optional `with k` continuation binding (for @deferred operations)
+        let continuation = if self.match_token(&TokenKind::With) {
+            let k = self.expect_ident("expected continuation name after 'with'")?;
+            Some(k)
+        } else {
+            None
+        };
         self.expect(&TokenKind::Arrow, "expected '->' after handler clause head")?;
         self.skip_newlines();
         let body = if self.check(&TokenKind::Indent) {
@@ -3358,6 +3380,7 @@ impl Parser {
             effect,
             operation,
             args,
+            continuation,
             body,
             span,
         })
@@ -3429,6 +3452,7 @@ impl Parser {
             effect: Spanned::new("Fail".to_string(), start),
             operation: Spanned::new("fail".to_string(), start),
             args: vec![error_pat],
+            continuation: None,
             body: err_body,
             span: start.merge(target_span),
         };

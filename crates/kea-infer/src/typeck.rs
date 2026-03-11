@@ -4842,6 +4842,9 @@ fn instantiate_impl_type(
                 .collect(),
             rest: row.rest,
         }),
+        Type::Continuation(inner) => {
+            Type::Continuation(Box::new(instantiate_impl_type(inner, type_params, bindings)))
+        }
         Type::Int
         | Type::IntN(_, _)
         | Type::Float
@@ -6784,6 +6787,9 @@ fn rename_type(
                 .collect(),
             arity: *arity,
         },
+        Type::Continuation(inner) => {
+            Type::Continuation(Box::new(rename_type(inner, type_map, row_map, dim_map)))
+        }
         Type::Int
         | Type::IntN(_, _)
         | Type::Float
@@ -10970,43 +10976,80 @@ fn infer_handle_expr_type(
             );
         }
 
-        let mut resume_count = 0usize;
-        let mut usage_diags = Vec::new();
-        collect_resume_usage(
-            &clause.body,
-            false,
-            false,
-            &mut resume_count,
-            &mut usage_diags,
-        );
-        if resume_count > 1 {
-            usage_diags.push(
-                Diagnostic::error(
-                    Category::TypeError,
-                    "handler clause may resume at most once",
-                )
-                .at(span_to_loc(clause.span)),
+        // `with k` fiber continuation binding
+        if let Some(k_name) = &clause.continuation {
+            // Validate: bare `resume(val)` is not allowed in `with k` clauses.
+            let mut resume_count = 0usize;
+            let mut usage_diags = Vec::new();
+            collect_resume_usage(&clause.body, false, false, &mut resume_count, &mut usage_diags);
+            if resume_count > 0 {
+                unifier.push_error(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!(
+                            "`with k` handler clause must use `{}.resume(val)` instead of bare `resume(val)`",
+                            k_name.node
+                        ),
+                    )
+                    .at(span_to_loc(clause.span))
+                    .with_help(format!(
+                        "replace `resume(val)` with `{}.resume(val)`",
+                        k_name.node
+                    )),
+                );
+            }
+            // Bind `k: Continuation<op_fn.ret>` in the clause body.
+            let cont_ty = Type::Continuation(op_fn.ret.clone());
+            clause_env.bind(k_name.node.clone(), TypeScheme::mono(cont_ty.clone()));
+            // Register `resume: (Continuation ret, ret) -> result_ty` so that
+            // `k.resume(v)` desugars via UMS to `resume(k, v)` and typechecks.
+            // This 2-arg form shadows any outer resume context (which is correct —
+            // bare `resume(v)` in `with k` clauses is rejected separately above).
+            let resume_fn_ty = Type::Function(FunctionType {
+                params: vec![cont_ty, (*op_fn.ret).clone()],
+                ret: Box::new(result_ty.clone()),
+                effects: EffectRow::pure(),
+            });
+            clause_env.bind("resume".to_string(), TypeScheme::mono(resume_fn_ty));
+            // No resume_context push for fiber clauses.
+        } else {
+            let mut resume_count = 0usize;
+            let mut usage_diags = Vec::new();
+            collect_resume_usage(
+                &clause.body,
+                false,
+                false,
+                &mut resume_count,
+                &mut usage_diags,
             );
+            if resume_count > 1 {
+                usage_diags.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        "handler clause may resume at most once",
+                    )
+                    .at(span_to_loc(clause.span)),
+                );
+            }
+            // `Never`-returning operations don't yield a value back to the caller,
+            // so the handler clause must not call `resume` (there's nothing to resume to).
+            if *op_fn.ret == Type::Never && resume_count > 0 {
+                usage_diags.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!(
+                            "`{target_effect}.{}` returns `Never` — handler clause must not call `resume`",
+                            clause.operation.node,
+                        ),
+                    )
+                    .at(span_to_loc(clause.span)),
+                );
+            }
+            for diag in usage_diags {
+                unifier.push_error(diag);
+            }
+            clause_env.push_resume_context((*op_fn.ret).clone(), result_ty.clone());
         }
-        // `Never`-returning operations don't yield a value back to the caller,
-        // so the handler clause must not call `resume` (there's nothing to resume to).
-        if *op_fn.ret == Type::Never && resume_count > 0 {
-            usage_diags.push(
-                Diagnostic::error(
-                    Category::TypeError,
-                    format!(
-                        "`{target_effect}.{}` returns `Never` — handler clause must not call `resume`",
-                        clause.operation.node,
-                    ),
-                )
-                .at(span_to_loc(clause.span)),
-            );
-        }
-        for diag in usage_diags {
-            unifier.push_error(diag);
-        }
-
-        clause_env.push_resume_context((*op_fn.ret).clone(), result_ty.clone());
         let clause_ty = infer_expr_bidir(
             &clause.body,
             &mut clause_env,

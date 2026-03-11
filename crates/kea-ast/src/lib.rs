@@ -413,6 +413,9 @@ pub struct HandleClause {
     pub effect: Spanned<String>,
     pub operation: Spanned<String>,
     pub args: Vec<Pattern>,
+    /// `with k` continuation binding. Present only for `@deferred` operations.
+    /// `k` is bound in the clause body as `Continuation<return_type>`.
+    pub continuation: Option<Spanned<String>>,
     pub body: Expr,
     pub span: Span,
 }
@@ -890,6 +893,9 @@ pub struct EffectOperation {
     pub params: Vec<Param>,
     pub return_annotation: Spanned<TypeAnnotation>,
     pub doc: Option<String>,
+    /// If `true`, this operation was annotated `@deferred`: its continuation may
+    /// be captured via `with k` in handler clauses and resumed later (fiber tier).
+    pub is_deferred: bool,
     pub span: Span,
 }
 

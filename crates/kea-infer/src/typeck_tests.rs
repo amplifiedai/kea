@@ -191,6 +191,7 @@ fn handle_clause(effect: &str, operation: &str, args: Vec<Pattern>, body: Expr) 
         effect: sp(effect.to_string()),
         operation: sp(operation.to_string()),
         args,
+        continuation: None,
         body,
         span: s(),
     }
@@ -5792,6 +5793,7 @@ fn make_effect_operation(name: &str, params: Vec<Param>, ret: TypeAnnotation) ->
         params,
         return_annotation: sp(ret),
         doc: None,
+        is_deferred: false,
         span: s(),
     }
 }

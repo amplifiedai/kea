@@ -572,6 +572,7 @@ impl<'a> MonoPass<'a> {
                             args: c.args.clone(),
                             arg_types: c.arg_types.clone(),
                             return_type: c.return_type.clone(),
+                            continuation: c.continuation.clone(),
                             body: self.rewrite_calls(&c.body, depth, current_fn, &clause_var_types),
                             span: c.span,
                         }
@@ -890,6 +891,7 @@ fn apply_subst_to_expr(expr: &HirExpr, subst: &Substitution) -> HirExpr {
                     args: c.args.clone(),
                     arg_types: c.arg_types.iter().map(|t| subst.apply(t)).collect(),
                     return_type: subst.apply(&c.return_type),
+                    continuation: c.continuation.clone(),
                     body: apply_subst_to_expr(&c.body, subst),
                     span: c.span,
                 })

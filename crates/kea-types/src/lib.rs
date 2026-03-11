@@ -196,6 +196,12 @@ pub enum Type {
 
     // -- Row as a type (for row-polymorphic positions) --
     Row(RowType),
+
+    // -- Fiber continuations --
+    /// Linear at-most-once continuation for fiber-based handlers.
+    /// `Continuation A` is the type of `k` in `Effect.op(args) with k -> body`.
+    /// At runtime: a raw pointer to the `Prompt` struct in the handler's frame.
+    Continuation(Box<Type>),
 }
 
 pub const BUILTIN_ERROR_TYPE_NAMES: [&str; 1] = ["IOError"];
@@ -669,6 +675,8 @@ impl fmt::Display for Type {
                 write_row_fields(f, row)?;
                 write!(f, ")")
             }
+
+            Type::Continuation(inner) => write!(f, "Continuation {inner}"),
         }
     }
 }
@@ -823,6 +831,9 @@ fn collect_free_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVarId>) {
                 collect_free_type_vars(arg, vars);
             }
         }
+        Type::Continuation(inner) => {
+            collect_free_type_vars(inner, vars);
+        }
         Type::Int
         | Type::IntN(_, _)
         | Type::Float
@@ -920,6 +931,9 @@ fn collect_free_row_vars(ty: &Type, vars: &mut BTreeSet<RowVarId>) {
             for (_, ty) in fixed_args {
                 collect_free_row_vars(ty, vars);
             }
+        }
+        Type::Continuation(inner) => {
+            collect_free_row_vars(inner, vars);
         }
         Type::Var(_)
         | Type::Int
@@ -1033,6 +1047,9 @@ fn collect_free_dim_vars(ty: &Type, vars: &mut BTreeSet<DimVarId>) {
             for (_, ty) in fixed_args {
                 collect_free_dim_vars(ty, vars);
             }
+        }
+        Type::Continuation(inner) => {
+            collect_free_dim_vars(inner, vars);
         }
         Type::Var(_)
         | Type::Int
@@ -1303,6 +1320,7 @@ pub fn type_constructor_for_trait(ty: &Type) -> Option<(String, Vec<Type>)> {
                 type_constructor_for_trait(&normalized)
             }
         }
+        Type::Continuation(inner) => Some(("Continuation".into(), vec![(**inner).clone()])),
         Type::Existential { .. }
         | Type::AnonRecord(_)
         | Type::Function(_)
@@ -1462,6 +1480,8 @@ pub fn is_sendable(ty: &Type) -> bool {
         Type::Var(_) => true,
         // Internal constructor terms should be normalized before sendability checks.
         Type::App(_, _) | Type::Constructor { .. } => false,
+        // Continuations are NOT Sendable (they contain a pointer to a handler's stack frame).
+        Type::Continuation(_) => false,
     }
 }
 
@@ -1616,6 +1636,17 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
                 reason: "unapplied type constructor is not Sendable".to_string(),
             })
         }
+        // Continuations are NOT Sendable.
+        Type::Continuation(_) => Some(SendableViolation {
+            path: if path.is_empty() {
+                "<value>".to_string()
+            } else {
+                path.to_string()
+            },
+            ty: ty.clone(),
+            reason: "continuations hold a pointer to a handler's stack frame and are not Sendable"
+                .to_string(),
+        }),
         // Explicitly list all Sendable types so adding a new Type variant
         // produces a compiler error here (forcing a Sendable decision).
         Type::Int
@@ -2029,6 +2060,7 @@ impl Substitution {
                 name: st.name.clone(),
                 type_args: st.type_args.iter().map(|t| self.apply(t)).collect(),
             }),
+            Type::Continuation(inner) => Type::Continuation(Box::new(self.apply(inner))),
             // Leaves: no substitution needed.
             Type::Int
             | Type::IntN(_, _)
