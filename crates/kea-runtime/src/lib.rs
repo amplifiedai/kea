@@ -1,6 +1,6 @@
 use crossbeam_deque::{Injector, Steal, Stealer, Worker};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Condvar, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -337,6 +337,131 @@ fn worker_loop(worker_id: usize, local: Worker<JobEnvelope>, inner: Arc<RuntimeI
             .cv
             .wait_timeout(guard, Duration::from_millis(2))
             .expect("park condvar poisoned");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Global runtime singleton
+// ---------------------------------------------------------------------------
+
+/// Lazily-initialised global work-stealing runtime.
+///
+/// Thread count defaults to available parallelism (core count). Override
+/// via the `KEA_THREADS` environment variable.
+pub fn global_runtime() -> &'static Runtime {
+    static RT: OnceLock<Runtime> = OnceLock::new();
+    RT.get_or_init(|| {
+        let threads = std::env::var("KEA_THREADS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4)
+            });
+        Runtime::new(threads)
+    })
+}
+
+// ---------------------------------------------------------------------------
+// C-ABI bridge for Par lowering
+// ---------------------------------------------------------------------------
+//
+// Kea closure heap block layout (pointer-sized fields):
+//   offset 0: fn_ptr  — the actual function pointer
+//   offset 8: cap_0   — first captured value
+//   offset 16: cap_1  — second captured value
+//   ...
+//
+// Calling convention for a `fn(A) -> B` closure:
+//   fn_ptr(env_ptr: *mut u8, arg: usize) -> usize
+// where `env_ptr` is the closure block pointer itself.
+//
+// Calling convention for a `fn() -> A` thunk closure:
+//   fn_ptr(env_ptr: *mut u8) -> usize
+
+/// Type-erased parallel map.
+///
+/// `items_ptr` points to an array of `count` pointer-sized values.
+/// `closure_ptr` points to a Kea closure block (fn_ptr at offset 0).
+/// `output_ptr` points to a pre-allocated array of `count` pointer-sized slots.
+///
+/// v1: sequential execution — result semantics identical to parallel, without
+/// the overhead. Swap the body to `parallel_map` once the closure-passing
+/// mechanism is verified end-to-end.
+///
+/// # Safety
+/// All pointers must be valid for the duration of the call. `count` must
+/// accurately reflect the length of both arrays.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn __kea_par_map_raw(
+    items_ptr: *mut usize,
+    count: i64,
+    closure_ptr: *mut u8,
+    output_ptr: *mut usize,
+) {
+    // SAFETY: caller guarantees all pointers are valid and count is correct.
+    unsafe {
+        // Load fn_ptr from offset 0 of the closure block.
+        let fn_ptr: unsafe extern "C" fn(*mut u8, usize) -> usize =
+            std::mem::transmute(*(closure_ptr as *const usize));
+        for i in 0..count as usize {
+            let item = *items_ptr.add(i);
+            *output_ptr.add(i) = fn_ptr(closure_ptr, item);
+        }
+    }
+}
+
+/// Evaluate two independent thunks sequentially, returning both results
+/// packed into a pair (a_result, b_result) via output pointers.
+///
+/// `a_ptr` and `b_ptr` are Kea closure blocks for `fn() -> A` and `fn() -> B`.
+/// `out_a` and `out_b` are caller-allocated slots for the results.
+///
+/// # Safety
+/// All pointers must be valid for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn __kea_par_all2_raw(
+    a_ptr: *mut u8,
+    b_ptr: *mut u8,
+    out_a: *mut usize,
+    out_b: *mut usize,
+) {
+    // SAFETY: caller guarantees all pointers are valid.
+    unsafe {
+        let fn_a: unsafe extern "C" fn(*mut u8) -> usize =
+            std::mem::transmute(*(a_ptr as *const usize));
+        let fn_b: unsafe extern "C" fn(*mut u8) -> usize =
+            std::mem::transmute(*(b_ptr as *const usize));
+        *out_a = fn_a(a_ptr);
+        *out_b = fn_b(b_ptr);
+    }
+}
+
+/// Evaluate three independent thunks sequentially.
+///
+/// # Safety
+/// All pointers must be valid for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn __kea_par_all3_raw(
+    a_ptr: *mut u8,
+    b_ptr: *mut u8,
+    c_ptr: *mut u8,
+    out_a: *mut usize,
+    out_b: *mut usize,
+    out_c: *mut usize,
+) {
+    // SAFETY: caller guarantees all pointers are valid.
+    unsafe {
+        let fn_a: unsafe extern "C" fn(*mut u8) -> usize =
+            std::mem::transmute(*(a_ptr as *const usize));
+        let fn_b: unsafe extern "C" fn(*mut u8) -> usize =
+            std::mem::transmute(*(b_ptr as *const usize));
+        let fn_c: unsafe extern "C" fn(*mut u8) -> usize =
+            std::mem::transmute(*(c_ptr as *const usize));
+        *out_a = fn_a(a_ptr);
+        *out_b = fn_b(b_ptr);
+        *out_c = fn_c(c_ptr);
     }
 }
 
