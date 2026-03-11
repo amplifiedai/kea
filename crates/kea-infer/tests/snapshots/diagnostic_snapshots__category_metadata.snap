@@ -1,5 +1,6 @@
 ---
 source: crates/kea-infer/tests/diagnostic_snapshots.rs
+assertion_line: 88
 expression: out
 ---
 E0001: type_mismatch — Expression type does not match expected type.
@@ -21,3 +22,4 @@ E0014: effect_row_mismatch — Function effect row does not match: body performs
 E0015: unhandled_effect — An effect is required by the function body but not declared in the signature.
 E0016: unused_handler — A handler clause covers an effect the expression does not perform.
 E0017: catch_type_mismatch — `catch` result type does not match the Fail error type.
+E0018: effectful_par_callback — A callback passed to a Par operation has a non-empty effect row. Par.map, Par.all2, and Par.all3 require pure callbacks (`fn(A) -> B`) because they may execute on separate threads.

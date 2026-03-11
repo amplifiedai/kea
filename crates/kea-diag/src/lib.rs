@@ -67,10 +67,12 @@ pub enum Category {
     UnusedHandler,
     /// `catch` result type does not match the Fail error type.
     CatchTypeMismatch,
+    /// Par callback has a non-empty effect row; Par requires pure callbacks.
+    EffectfulParCallback,
 }
 
 impl Category {
-    pub const ALL: [Category; 19] = [
+    pub const ALL: [Category; 20] = [
         Category::TypeMismatch,
         Category::MissingField,
         Category::DuplicateField,
@@ -90,6 +92,7 @@ impl Category {
         Category::UnhandledEffect,
         Category::UnusedHandler,
         Category::CatchTypeMismatch,
+        Category::EffectfulParCallback,
     ];
 
     pub fn all() -> &'static [Category] {
@@ -117,6 +120,7 @@ impl Category {
             Category::UnhandledEffect => "unhandled_effect",
             Category::UnusedHandler => "unused_handler",
             Category::CatchTypeMismatch => "catch_type_mismatch",
+            Category::EffectfulParCallback => "effectful_par_callback",
         }
     }
 
@@ -141,6 +145,7 @@ impl Category {
             Category::UnhandledEffect => "E0015",
             Category::UnusedHandler => "E0016",
             Category::CatchTypeMismatch => "E0017",
+            Category::EffectfulParCallback => "E0018",
         }
     }
 
@@ -178,6 +183,11 @@ impl Category {
             }
             Category::CatchTypeMismatch => {
                 "`catch` result type does not match the Fail error type."
+            }
+            Category::EffectfulParCallback => {
+                "A callback passed to a Par operation has a non-empty effect row. \
+                Par.map, Par.all2, and Par.all3 require pure callbacks (`fn(A) -> B`) \
+                because they may execute on separate threads."
             }
         }
     }
@@ -226,6 +236,9 @@ impl Category {
             }
             Category::CatchTypeMismatch => {
                 "Adjust the catch binding type to match the actual Fail error type."
+            }
+            Category::EffectfulParCallback => {
+                "Remove effects from the callback or extract the effectful code outside the Par.map call."
             }
         }
     }
@@ -277,7 +290,8 @@ impl ErrorRegistry {
     fn build() -> Self {
         let entries: &[&'static ErrorEntry] = &[
             &E0001, &E0002, &E0003, &E0004, &E0005, &E0006, &E0007, &E0008, &E0009,
-            &E0010, &E0011, &E0012, &E0013, &E0014, &E0015, &E0016, &E0017, &E0801, &W1001,
+            &E0010, &E0011, &E0012, &E0013, &E0014, &E0015, &E0016, &E0017, &E0018, &E0801,
+            &W1001,
         ];
         let mut by_code = BTreeMap::new();
         for &entry in entries {
@@ -554,6 +568,23 @@ static E0017: ErrorEntry = ErrorEntry {
     example: None,
     fix: "Adjust the catch binding type annotation to match the actual Fail error type.",
     related: &["E0014"],
+};
+
+static E0018: ErrorEntry = ErrorEntry {
+    code: "E0018",
+    category: Category::EffectfulParCallback,
+    severity: Severity::Error,
+    name: "effectful_par_callback",
+    title: "Par callback must be pure",
+    description: "A callback passed to `Par.map`, `Par.all2`, or `Par.all3` has a non-empty \
+        effect row. Par operations may run callbacks on separate threads, so callbacks must be \
+        pure (`fn(A) -> B`). An effectful callback (`fn(A) -[E]> B`) is a different type and \
+        is caught at compile time.",
+    example: Some(
+        "Par.map(xs, fn(x: Int) -[IO]> Int\n  IO.println(show(x))\n  x)\n-- error[E0018]: Par callback must be pure\n--   got fn(Int) -[IO]> Int, expected fn(Int) -> Int",
+    ),
+    fix: "Remove effects from the callback or extract the effectful code outside the Par.map call.",
+    related: &["E0014", "E0008"],
 };
 
 static E0801: ErrorEntry = ErrorEntry {
