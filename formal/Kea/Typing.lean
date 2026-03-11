@@ -9676,6 +9676,31 @@ theorem native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumpt
       clauseSem mismatchSem bodyStep h_core)
 
 /--
+Specialize the packaged local typed-handle `step` + preserved-typing contract
+to the canonical stutter core relation.
+-/
+theorem native_handler_step_ext_with_mismatch_local_exists_and_preserves_of_stutter_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_local_exists_and_preserves_prop
+      clauseSem mismatchSem native_core_stutter_step := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_stutter_core_soundness_via_ext
+    clauseSem mismatchSem h_typed
+
+/--
+Specialize the packaged local typed-handle assumption-route surface to the
+canonical stutter core relation.
+-/
+theorem native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_stutter_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_prop
+      clauseSem mismatchSem native_core_stutter_step := by
+  exact native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_core_soundness
+    clauseSem mismatchSem native_core_stutter_step native_core_soundness_stutter
+
+/--
 Packaged local `step`+preserves routes imply packaged local `step` routes by
 projection.
 -/
