@@ -8110,6 +8110,36 @@ pub fn register_effect_decl(
     let effect_payload_from_type_params = type_param_scope.values().next().cloned();
 
     for op in &effect_decl.operations {
+        // Collect per-operation type variables: lowercase annotation names that
+        // are not already in the effect-level type_param_scope and are not
+        // built-in types.  These are universally quantified at the operation
+        // level (e.g. `fn map(items: List a, f: fn(a) -> b) -[Par]> List b`).
+        let mut op_scope = type_param_scope.clone();
+        let mut op_type_vars = type_vars.clone();
+        let mut op_kinds = kinds.clone();
+        {
+            let mut all_ann_names = BTreeSet::new();
+            for param in &op.params {
+                if let Some(ann) = &param.annotation {
+                    collect_annotation_named_types(&ann.node, &mut all_ann_names);
+                }
+            }
+            collect_annotation_named_types(&op.return_annotation.node, &mut all_ann_names);
+            for name in all_ann_names {
+                if op_scope.contains_key(&name) {
+                    continue;
+                }
+                if !looks_like_type_var_name(&name) {
+                    continue;
+                }
+                let tv = TypeVarId(next_placeholder);
+                next_placeholder = next_placeholder.wrapping_sub(1);
+                op_scope.insert(name, Type::Var(tv));
+                op_type_vars.push(tv);
+                op_kinds.insert(tv, Kind::Star);
+            }
+        }
+
         let mut param_tys = Vec::with_capacity(op.params.len());
         let mut missing_param_annotations = Vec::new();
         for (idx, param) in op.params.iter().enumerate() {
@@ -8119,7 +8149,7 @@ pub fn register_effect_decl(
             };
             let Some(param_ty) = resolve_annotation_with_type_params(
                 &annotation.node,
-                &type_param_scope,
+                &op_scope,
                 records,
                 sum_types,
             ) else {
@@ -8162,7 +8192,7 @@ pub fn register_effect_decl(
 
         let Some(ret_ty) = resolve_annotation_with_type_params(
             &op.return_annotation.node,
-            &type_param_scope,
+            &op_scope,
             records,
             sum_types,
         ) else {
@@ -8199,12 +8229,12 @@ pub fn register_effect_decl(
             )]),
         });
         let op_scheme = TypeScheme {
-            type_vars: type_vars.clone(),
+            type_vars: op_type_vars,
             row_vars: Vec::new(),
             dim_vars: vec![],
             lacks: BTreeMap::new(),
             bounds: BTreeMap::new(),
-            kinds: kinds.clone(),
+            kinds: op_kinds,
             ty: op_ty,
         };
 
