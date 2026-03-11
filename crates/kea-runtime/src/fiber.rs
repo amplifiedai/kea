@@ -97,6 +97,16 @@ pub fn fiber_is_done() -> bool {
     FIBER_IS_DONE.with(|c| c.get())
 }
 
+/// C-callable version of `fiber_is_done()` for use from MIR-generated code.
+///
+/// Returns 1 if the most recent fiber call completed normally, 0 if it suspended.
+/// # Safety
+/// Must be called from the handler context (handler stack, not fiber stack).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kea_fiber_is_done() -> i64 {
+    if FIBER_IS_DONE.with(|c| c.get()) { 1 } else { 0 }
+}
+
 /// Heap-allocate a `Prompt` paired with `segment`.
 ///
 /// Returns a raw pointer valid until `kea_free_prompt` is called.

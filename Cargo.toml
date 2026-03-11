@@ -20,6 +20,7 @@ kea-types = { path = "crates/kea-types" }
 kea-infer = { path = "crates/kea-infer" }
 kea-hir = { path = "crates/kea-hir" }
 kea-mir = { path = "crates/kea-mir" }
+kea-runtime = { path = "crates/kea-runtime" }
 kea-codegen = { path = "crates/kea-codegen" }
 
 # Diagnostics

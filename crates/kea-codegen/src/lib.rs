@@ -522,6 +522,47 @@ fn runtime_import_signature(module: &impl Module, name: &str) -> cranelift_codeg
             sig.params.push(AbiParam::new(types::I8));
             sig.params.push(AbiParam::new(ptr));
         }
+        // Fiber runtime — stack-switching for @deferred effect handlers
+        "kea_alloc_segment" => {
+            // kea_alloc_segment(stack_size: i64) -> *mut StackSegment
+            sig.params.push(AbiParam::new(types::I64));
+            sig.returns.push(AbiParam::new(ptr));
+        }
+        "kea_free_segment" => {
+            // kea_free_segment(seg: *mut StackSegment)
+            sig.params.push(AbiParam::new(ptr));
+        }
+        "kea_alloc_prompt" => {
+            // kea_alloc_prompt(segment: *mut StackSegment) -> *mut Prompt
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(ptr));
+        }
+        "kea_free_prompt" => {
+            // kea_free_prompt(prompt: *mut Prompt)
+            sig.params.push(AbiParam::new(ptr));
+        }
+        "kea_fiber_trampoline" => {
+            // kea_fiber_trampoline(prompt: *mut Prompt, fn_ptr: usize, arg: i64) -> i64
+            sig.params.push(AbiParam::new(ptr));
+            sig.params.push(AbiParam::new(ptr));
+            sig.params.push(AbiParam::new(types::I64));
+            sig.returns.push(AbiParam::new(types::I64));
+        }
+        "kea_fiber_suspend" => {
+            // kea_fiber_suspend(value: i64) -> i64
+            sig.params.push(AbiParam::new(types::I64));
+            sig.returns.push(AbiParam::new(types::I64));
+        }
+        "kea_fiber_resume" => {
+            // kea_fiber_resume(prompt: *mut Prompt, value: i64) -> i64
+            sig.params.push(AbiParam::new(ptr));
+            sig.params.push(AbiParam::new(types::I64));
+            sig.returns.push(AbiParam::new(types::I64));
+        }
+        "kea_fiber_is_done" => {
+            // kea_fiber_is_done() -> i64  (1 = done, 0 = suspended)
+            sig.returns.push(AbiParam::new(types::I64));
+        }
         _ => panic!("unknown runtime import: {name}"),
     }
     sig
@@ -1078,6 +1119,39 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol(
         "__kea_test_check_with_message",
         kea_test_check_with_message_stub as *const u8,
+    );
+    // Fiber runtime — use kea-runtime's no_mangle functions directly
+    builder.symbol(
+        "kea_alloc_segment",
+        kea_runtime::fiber::kea_alloc_segment as *const u8,
+    );
+    builder.symbol(
+        "kea_free_segment",
+        kea_runtime::fiber::kea_free_segment as *const u8,
+    );
+    builder.symbol(
+        "kea_alloc_prompt",
+        kea_runtime::fiber::kea_alloc_prompt as *const u8,
+    );
+    builder.symbol(
+        "kea_free_prompt",
+        kea_runtime::fiber::kea_free_prompt as *const u8,
+    );
+    builder.symbol(
+        "kea_fiber_trampoline",
+        kea_runtime::fiber::kea_fiber_trampoline as *const u8,
+    );
+    builder.symbol(
+        "kea_fiber_suspend",
+        kea_runtime::fiber::kea_fiber_suspend as *const u8,
+    );
+    builder.symbol(
+        "kea_fiber_resume",
+        kea_runtime::fiber::kea_fiber_resume as *const u8,
+    );
+    builder.symbol(
+        "kea_fiber_is_done",
+        kea_runtime::fiber::kea_fiber_is_done as *const u8,
     );
 }
 

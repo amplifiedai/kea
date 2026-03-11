@@ -1,0 +1,90 @@
+doc
+  Cooperative generator effect for producing sequences of values.
+
+  `Yield A` is an algebraic effect. A function annotated `-[Yield A]>` can
+  produce values of type `A` by calling `Yield.yield_val`. The caller decides
+  how to consume those values — collecting them into a list, processing them
+  lazily, or discarding them.
+
+  ## Basic usage
+
+  ```kea
+  fn count_up_to(n: Int) -[Yield Int]> Unit
+    if n > 0
+      count_up_to(n - 1)
+      Yield.yield_val(n)
+    else
+      ()
+  ```
+
+  Collect all yielded values into a list with `Yield.collect`:
+
+  ```kea
+  Yield.collect(|| count_up_to(3))
+  -- => [1, 2, 3]
+  ```
+
+  ## How it works
+
+  `Yield A` uses a `@deferred` operation — when `yield_val(v)` is called,
+  the generator's execution is suspended on a separate fiber stack and
+  control returns to the handler. The handler clause receives the yielded
+  value `v` and a continuation `k`. Calling `k.resume(())` resumes the
+  generator from where it was suspended.
+
+  This is cooperative, not parallel — only one of the generator or the
+  handler runs at a time.
+
+  ## Custom handlers
+
+  You can write your own handler instead of using `Yield.collect`:
+
+  ```kea
+  -- Sum all yielded integers
+  fn sum_yielded(gen: fn() -[Yield Int]> Unit) -> Int
+    let ((), total) = State.with_state(0, sum_step(gen))
+    total
+
+  fn sum_step(gen: fn() -[Yield Int]> Unit) -[State Int]> Unit
+    handle gen()
+      Yield.yield_val(v) with k ->
+        State.put(State.get() + v)
+        k.resume(())
+  ```
+
+  ## See also
+
+  - `State` — mutable state within a scope, often used with `Yield` handlers
+  - `Iterator` — lazy sequences without algebraic effects
+
+use List
+use State
+
+doc
+  The cooperative generator effect. Operations annotated `-[Yield A]>` may
+  call `Yield.yield_val` to produce values of type `A`.
+effect Yield A
+  doc
+    Suspend the current generator and deliver value `v` to the handler.
+    The generator resumes when the handler calls `k.resume(())`.
+
+    This operation is `@deferred` — the continuation `k` may be captured
+    and called at any point before the next `yield_val` call.
+  @deferred fn yield_val(v: A) -> Unit
+
+-- Internal helper: drives the generator under a State (List A) accumulator.
+-- Handles Yield.yield_val by prepending to the state list and resuming.
+fn collect_into_state(gen: fn() -[Yield A]> Unit) -[State (List A)]> Unit
+  handle gen()
+    Yield.yield_val(v) with k ->
+      State.put(Cons(v, State.get()))
+      k.resume(())
+
+doc
+  Run the generator `gen` and collect all yielded values into a list,
+  in the order they were yielded.
+
+  The list is in yield order — the first value yielded is the first element.
+pub fn collect(gen: fn() -[Yield A]> Unit) -> List A
+  let result = State.with_state([], || collect_into_state(gen))
+  List.reverse(result.1)

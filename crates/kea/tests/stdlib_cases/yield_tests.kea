@@ -1,0 +1,42 @@
+use List
+use Test
+use Yield
+
+fn yield_one() -[Yield Int]> Unit
+  Yield.yield_val(42)
+
+fn count_up_to(n: Int) -[Yield Int]> Unit
+  if n > 0
+    count_up_to(n - 1)
+    Yield.yield_val(n)
+  else
+    ()
+
+fn yield_nothing() -[Yield Int]> Unit
+  ()
+
+fn unwrap_int(opt: Option Int, fallback: Int) -> Int
+  case opt
+    Some(x) -> x
+    None -> fallback
+
+test "Yield.collect single value"
+  let xs = Yield.collect(yield_one)
+  Test.assert(List.length(xs) == 1)
+  Test.assert(unwrap_int(List.head(xs), 0) == 42)
+
+test "Yield.collect empty generator"
+  let xs: List Int = Yield.collect(yield_nothing)
+  Test.assert(List.is_empty(xs))
+
+test "Yield.collect ordered sequence"
+  let xs = Yield.collect(|| count_up_to(3))
+  Test.assert(List.length(xs) == 3)
+  Test.assert(unwrap_int(List.nth(xs, 0), 0) == 1)
+  Test.assert(unwrap_int(List.nth(xs, 1), 0) == 2)
+  Test.assert(unwrap_int(List.nth(xs, 2), 0) == 3)
+
+test "Yield.collect larger sequence"
+  let xs = Yield.collect(|| count_up_to(5))
+  Test.assert(List.length(xs) == 5)
+  Test.assert(List.sum(xs) == 15)

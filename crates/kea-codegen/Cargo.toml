@@ -9,6 +9,7 @@ kea-mir.workspace = true
 kea-hir.workspace = true
 kea-ast.workspace = true
 kea-types.workspace = true
+kea-runtime.workspace = true
 cranelift.workspace = true
 cranelift-codegen.workspace = true
 cranelift-frontend.workspace = true

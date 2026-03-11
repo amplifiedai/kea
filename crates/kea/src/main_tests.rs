@@ -624,6 +624,36 @@ fn run_stdlib_vector_tests() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
+fn run_stdlib_yield_tests() {
+    let yield_tests_kea = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/stdlib_cases/yield_tests.kea");
+    let run = run_test_file(&yield_tests_kea, &Default::default())
+        .expect("yield_tests.kea should compile and run");
+    let failures: Vec<_> = run
+        .cases
+        .iter()
+        .filter(|c| !c.passed)
+        .map(|c| {
+            format!(
+                "{} ({})",
+                c.name,
+                c.error.as_deref().unwrap_or("unknown failure")
+            )
+        })
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "yield_tests.kea failures:\n{}",
+        failures.join("\n")
+    );
+    assert!(
+        !run.cases.is_empty(),
+        "yield_tests.kea: no test declarations found"
+    );
+}
+
+#[test]
 fn run_algorithm_gallery_binary_search() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/algorithms/binary_search.kea");
     let run = run_test_file(&path, &Default::default()).expect("binary_search.kea should run");

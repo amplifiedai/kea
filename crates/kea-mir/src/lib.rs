@@ -5640,6 +5640,14 @@ struct FunctionLoweringCtx {
     /// Set by `lower_handle_expr` when any clause handles a Never-returning op.
     /// Dispatch code jumps here after invoking a zero-resume callback.
     active_zero_resume_exit: Option<(MirBlockId, MirValueId)>,
+    /// When inside a fiber handler clause body, holds the MirValueId of the
+    /// Prompt pointer (= the `k` continuation value). Used to detect and lower
+    /// `k.resume(v)` calls as `kea_fiber_resume(prompt, v)`.
+    active_fiber_prompt: Option<MirValueId>,
+    /// When inside a fiber handler clause body, holds the MirValueId of the
+    /// StateCellNew that stores the current suspension / return value.
+    /// `k.resume(v)` stores the new value here before returning.
+    active_fiber_curr_val_cell: Option<MirValueId>,
 }
 
 #[derive(Debug, Clone)]
@@ -5778,6 +5786,8 @@ impl FunctionLoweringCtx {
             stacking_chains: BTreeMap::new(),
             sum_payload_load_dests: BTreeSet::new(),
             active_zero_resume_exit: None,
+            active_fiber_prompt: None,
+            active_fiber_curr_val_cell: None,
         }
     }
 
@@ -7947,6 +7957,443 @@ impl FunctionLoweringCtx {
         }
     }
 
+    /// Fiber-based handler lowering — selected when any clause uses `with k`.
+    ///
+    /// Allocates a stack segment and prompt, lifts the handled body to run on a
+    /// separate fiber stack, then loops: dispatch suspend values to the clause
+    /// body, resume via `kea_fiber_resume`, until the fiber completes.
+    fn lower_handle_expr_fiber(
+        &mut self,
+        handle_expr: &HirExpr,
+        handled: &HirExpr,
+        clauses: &[HirHandleClause],
+        _then_clause: Option<&HirExpr>,
+    ) -> Option<MirValueId> {
+        let target_effect = clauses.first()?.effect.clone();
+
+        // ── Step 1: Build fiber-suspend callback for each @deferred op ────────
+        // The suspend callback: (env: Dynamic, v: Dynamic) -> Dynamic
+        //   body: kea_fiber_suspend(v)
+        // This is used as the effect cell so `yield_val(v)` calls `kea_fiber_suspend(v)`.
+        let mut operation_suspend_cells: BTreeMap<String, MirValueId> = BTreeMap::new();
+        for clause in clauses.iter().filter(|c| c.continuation.is_some()) {
+            let op = clause.operation.clone();
+            let suspend_fn_name =
+                self.allocate_generated_closure_entry_name("fiber_suspend");
+            // MirValueId(0)=env (unused), MirValueId(1)=v, MirValueId(2)=resume_result
+            let suspend_fn = MirFunction {
+                name: suspend_fn_name.clone(),
+                signature: MirFunctionSignature {
+                    params: vec![Type::Dynamic, Type::Dynamic],
+                    ret: Type::Dynamic,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                is_fip: false,
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: Vec::new(),
+                    instructions: vec![MirInst::Call {
+                        callee: MirCallee::External("kea_fiber_suspend".to_string()),
+                        args: vec![MirValueId(1)],
+                        arg_types: vec![Type::Dynamic],
+                        result: Some(MirValueId(2)),
+                        ret_type: Type::Dynamic,
+                        callee_fail_result_abi: false,
+                        capture_fail_result: false,
+                        cc_manifest_id: "default".to_string(),
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(2)),
+                    },
+                }],
+            };
+            self.register_generated_function(suspend_fn);
+            let cell = self.emit_closure_value(suspend_fn_name, vec![])?;
+            operation_suspend_cells.insert(op, cell);
+        }
+
+        // ── Step 2: Allocate fiber resources ──────────────────────────────────
+        let stack_size = self.new_value();
+        self.emit_inst(MirInst::Const {
+            dest: stack_size.clone(),
+            literal: MirLiteral::Int(64 * 1024), // DEFAULT_STACK_SIZE
+        });
+        let segment = self.new_value();
+        self.emit_inst(MirInst::Call {
+            callee: MirCallee::External("kea_alloc_segment".to_string()),
+            args: vec![stack_size],
+            arg_types: vec![Type::Dynamic],
+            result: Some(segment.clone()),
+            ret_type: Type::Dynamic,
+            callee_fail_result_abi: false,
+            capture_fail_result: false,
+            cc_manifest_id: "default".to_string(),
+        });
+        let prompt = self.new_value();
+        self.emit_inst(MirInst::Call {
+            callee: MirCallee::External("kea_alloc_prompt".to_string()),
+            args: vec![segment.clone()],
+            arg_types: vec![Type::Dynamic],
+            result: Some(prompt.clone()),
+            ret_type: Type::Dynamic,
+            callee_fail_result_abi: false,
+            capture_fail_result: false,
+            cc_manifest_id: "default".to_string(),
+        });
+
+        // ── Step 3: Lift the handled body to a fiber body function ────────────
+        // The fiber body dispatches @deferred ops via kea_fiber_suspend (the
+        // suspend callbacks installed as hidden dispatch params).
+        let fiber_body_fn_name = format!(
+            "{}::fiber_body${}",
+            self.function_name, self.next_lifted_lambda_id
+        );
+        self.next_lifted_lambda_id = self.next_lifted_lambda_id.saturating_add(1);
+
+        // Collect variable captures from the handled body.
+        let mut var_refs = BTreeSet::new();
+        collect_hir_var_refs(handled, &mut var_refs);
+        let captures: Vec<(String, Type, MirValueId)> = var_refs
+            .into_iter()
+            .filter(|name| self.vars.contains_key(name))
+            .map(|name| {
+                let ty = self.var_types.get(&name).cloned().unwrap_or(Type::Dynamic);
+                let value = self
+                    .vars
+                    .get(&name)
+                    .cloned()
+                    .expect("captured variable must be in scope");
+                (name, ty, value)
+            })
+            .collect();
+
+        // Dispatch effects for the fiber body: the @deferred operations of this
+        // handler.  The suspend callbacks are bound as hidden dispatch params so
+        // callee functions (e.g. gen()) can dispatch yield_val via kea_fiber_suspend.
+        let dispatch_effects: Vec<String> = operation_suspend_cells
+            .keys()
+            .map(|op| format!("{target_effect}.{op}"))
+            .collect();
+
+        // Build and lower the HirFunction for the fiber body.
+        let fiber_body_effects =
+            EffectRow::closed(vec![(kea_types::Label::new(&target_effect), Type::Dynamic)]);
+        let lifted_params: Vec<kea_hir::HirParam> = captures
+            .iter()
+            .map(|(name, _, _)| kea_hir::HirParam {
+                name: Some(name.clone()),
+                span: handled.span,
+            })
+            .collect();
+        let lifted_fn_ty = FunctionType::with_effects(
+            captures.iter().map(|(_, ty, _)| ty.clone()).collect(),
+            handled.ty.clone(),
+            fiber_body_effects.clone(),
+        );
+        let fiber_body_hir = HirFunction {
+            name: fiber_body_fn_name.clone(),
+            params: lifted_params,
+            body: handled.clone(),
+            ty: Type::Function(lifted_fn_ty),
+            effects: fiber_body_effects,
+            span: handled.span,
+            is_fip: false,
+        };
+
+        let mut known = self.known_functions.clone();
+        known.insert(fiber_body_fn_name.clone());
+        let mut known_types = self.known_function_types.clone();
+        known_types.insert(fiber_body_fn_name.clone(), fiber_body_hir.ty.clone());
+        let mut known_dispatch = self.known_function_dispatch_effects.clone();
+        if !dispatch_effects.is_empty() {
+            known_dispatch.insert(fiber_body_fn_name.clone(), dispatch_effects.clone());
+        }
+
+        let lowered_fns = lower_hir_function(
+            &fiber_body_hir,
+            &self.layouts,
+            &known,
+            &known_types,
+            &self.known_function_alias_targets,
+            &self.known_const_exprs,
+            &self.intrinsic_symbols,
+            &self.effect_operations,
+            &known_dispatch,
+            &self.lambda_factories,
+            false,
+        );
+        for f in lowered_fns {
+            self.register_generated_function(f);
+        }
+
+        // ── Step 4: Build the fiber body entry wrapper ────────────────────────
+        // Wrapper signature: (env: Dynamic) -> Dynamic
+        //   Loads all captures + bound dispatch closures from env (closure struct),
+        //   calls fiber_body_fn, returns its result as i64 (Unit → 0).
+        let wrapper_name = self.allocate_generated_closure_entry_name("fiber_body_entry");
+
+        // Ordered list of suspend callbacks matching dispatch_effects order.
+        let bound_dispatch_cells: Vec<MirValueId> = dispatch_effects
+            .iter()
+            .filter_map(|eff_op| {
+                let op = eff_op.split('.').nth(1)?;
+                operation_suspend_cells.get(op).cloned()
+            })
+            .collect();
+
+        {
+            // Build wrapper instructions manually to handle Unit-return correctly.
+            let mut wrapper_insts: Vec<MirInst> = Vec::new();
+            let mut next_vid = 1u32; // param 0 = env (MirValueId(0))
+
+            // Load regular captures.
+            let mut call_args: Vec<MirValueId> = Vec::new();
+            let mut call_arg_types: Vec<Type> = Vec::new();
+            for (idx, (_, ty, _)) in captures.iter().enumerate() {
+                let dest = MirValueId(next_vid);
+                next_vid += 1;
+                wrapper_insts.push(MirInst::ClosureCaptureLoad {
+                    dest: dest.clone(),
+                    closure: MirValueId(0),
+                    capture_index: idx,
+                    capture_ty: ty.clone(),
+                });
+                call_args.push(dest);
+                call_arg_types.push(ty.clone());
+            }
+            // Load bound dispatch captures (suspend callbacks).
+            for idx in 0..bound_dispatch_cells.len() {
+                let dest = MirValueId(next_vid);
+                next_vid += 1;
+                wrapper_insts.push(MirInst::ClosureCaptureLoad {
+                    dest: dest.clone(),
+                    closure: MirValueId(0),
+                    capture_index: captures.len() + idx,
+                    capture_ty: Type::Dynamic,
+                });
+                call_args.push(dest);
+                call_arg_types.push(Type::Dynamic);
+            }
+
+            // Call fiber_body_fn.  If it returns Unit, we must still return a
+            // valid i64 (0) to the trampoline.
+            let (call_result_opt, return_value) = if handled.ty == Type::Unit {
+                wrapper_insts.push(MirInst::Call {
+                    callee: MirCallee::Local(fiber_body_fn_name.clone()),
+                    args: call_args,
+                    arg_types: call_arg_types,
+                    result: None,
+                    ret_type: Type::Unit,
+                    callee_fail_result_abi: false,
+                    capture_fail_result: false,
+                    cc_manifest_id: "default".to_string(),
+                });
+                let zero = MirValueId(next_vid);
+                let _ = next_vid; // last use of counter
+                wrapper_insts.push(MirInst::Const {
+                    dest: zero.clone(),
+                    literal: MirLiteral::Int(0),
+                });
+                (None::<MirValueId>, Some(zero))
+            } else {
+                let result = MirValueId(next_vid);
+                let _ = next_vid; // last use of counter
+                wrapper_insts.push(MirInst::Call {
+                    callee: MirCallee::Local(fiber_body_fn_name.clone()),
+                    args: call_args,
+                    arg_types: call_arg_types,
+                    result: Some(result.clone()),
+                    ret_type: handled.ty.clone(),
+                    callee_fail_result_abi: false,
+                    capture_fail_result: false,
+                    cc_manifest_id: "default".to_string(),
+                });
+                (Some(result.clone()), Some(result))
+            };
+            let _ = call_result_opt; // suppress unused warning
+
+            let wrapper_fn = MirFunction {
+                name: wrapper_name.clone(),
+                signature: MirFunctionSignature {
+                    params: vec![Type::Dynamic], // env = closure ptr
+                    ret: Type::Dynamic,          // i64 return
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                is_fip: false,
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: Vec::new(),
+                    instructions: wrapper_insts,
+                    terminator: MirTerminator::Return {
+                        value: return_value,
+                    },
+                }],
+            };
+            self.register_generated_function(wrapper_fn);
+        }
+
+        // ── Step 5: Create the fiber closure and start the fiber ──────────────
+        // closure = ClosureInit(wrapper_fn_ref, [cap0, ..., suspend_cb0, ...])
+        let mut all_closure_captures: Vec<(MirValueId, Type)> = captures
+            .iter()
+            .map(|(_, ty, val)| (val.clone(), ty.clone()))
+            .collect();
+        all_closure_captures.extend(
+            bound_dispatch_cells
+                .iter()
+                .map(|v| (v.clone(), Type::Dynamic)),
+        );
+
+        let fiber_closure = self.emit_closure_value(wrapper_name.clone(), all_closure_captures)?;
+
+        // fn_ptr = raw address of wrapper (separate FunctionRef for trampoline arg)
+        let fn_ptr = self.new_value();
+        self.emit_inst(MirInst::FunctionRef {
+            dest: fn_ptr.clone(),
+            function: wrapper_name,
+        });
+
+        // kea_fiber_trampoline(prompt, fn_ptr, fiber_closure) → first suspend/return val
+        let tramp_result = self.new_value();
+        self.emit_inst(MirInst::Call {
+            callee: MirCallee::External("kea_fiber_trampoline".to_string()),
+            args: vec![prompt.clone(), fn_ptr, fiber_closure],
+            arg_types: vec![Type::Dynamic, Type::Dynamic, Type::Dynamic],
+            result: Some(tramp_result.clone()),
+            ret_type: Type::Dynamic,
+            callee_fail_result_abi: false,
+            capture_fail_result: false,
+            cc_manifest_id: "default".to_string(),
+        });
+
+        // StateCellNew holds the "current value" (suspension or final result).
+        let curr_val_cell = self.new_value();
+        self.emit_inst(MirInst::StateCellNew {
+            dest: curr_val_cell.clone(),
+            initial: tramp_result,
+        });
+
+        // ── Step 6: Handler loop ──────────────────────────────────────────────
+        let loop_block = self.new_block();
+        let clause_block = self.new_block();
+        let exit_block = self.new_block();
+
+        self.ensure_jump_to(loop_block.clone(), vec![]);
+
+        // loop_block: check if fiber is done.
+        self.switch_to(loop_block.clone());
+        let done_val = self.new_value();
+        self.emit_inst(MirInst::Call {
+            callee: MirCallee::External("kea_fiber_is_done".to_string()),
+            args: vec![],
+            arg_types: vec![],
+            result: Some(done_val.clone()),
+            ret_type: Type::Dynamic,
+            callee_fail_result_abi: false,
+            capture_fail_result: false,
+            cc_manifest_id: "default".to_string(),
+        });
+        self.set_terminator(MirTerminator::Branch {
+            condition: done_val,
+            then_block: exit_block.clone(),
+            else_block: clause_block.clone(),
+        });
+
+        // clause_block: load current suspension value, run clause body.
+        self.switch_to(clause_block.clone());
+        let curr_val = self.new_value();
+        self.emit_inst(MirInst::StateCellLoad {
+            dest: curr_val.clone(),
+            cell: curr_val_cell.clone(),
+        });
+
+        // Lower the clause body inline.  For the simple single-op case, just
+        // handle the first clause with a continuation.
+        // TODO: multi-op effects need a tag to dispatch to the right clause.
+        let Some(clause) = clauses.iter().find(|c| c.continuation.is_some()) else {
+            self.emit_inst(MirInst::Unsupported {
+                detail: "fiber handler: no clause with continuation found".to_string(),
+            });
+            return None;
+        };
+
+        let incoming_clause_scope = self.snapshot_var_scope();
+
+        // Bind operation args from curr_val.
+        // Single-arg operations: first arg ← curr_val.
+        if let Some(HirPattern::Var(arg_name)) = clause.args.first() {
+            self.vars.insert(arg_name.clone(), curr_val.clone());
+            self.var_types.insert(
+                arg_name.clone(),
+                clause.arg_types.first().cloned().unwrap_or(Type::Dynamic),
+            );
+        }
+
+        // Bind k = prompt (the continuation is the prompt pointer as i64).
+        if let Some(k_name) = &clause.continuation {
+            self.vars.insert(k_name.clone(), prompt.clone());
+            self.var_types.insert(
+                k_name.clone(),
+                Type::Continuation(Box::new(clause.return_type.clone())),
+            );
+        }
+
+        // Activate fiber context so `resume(k, v)` calls are intercepted.
+        let prev_fiber_prompt = self.active_fiber_prompt.take();
+        let prev_fiber_curr_val_cell = self.active_fiber_curr_val_cell.take();
+        self.active_fiber_prompt = Some(prompt.clone());
+        self.active_fiber_curr_val_cell = Some(curr_val_cell.clone());
+
+        // Lower the clause body.
+        let _clause_result = self.lower_expr(&clause.body);
+
+        // Restore fiber context.
+        self.active_fiber_prompt = prev_fiber_prompt;
+        self.active_fiber_curr_val_cell = prev_fiber_curr_val_cell;
+        self.restore_var_scope(&incoming_clause_scope);
+
+        // After the clause body, loop back.
+        self.ensure_jump_to(loop_block.clone(), vec![]);
+
+        // ── exit_block: fiber completed ───────────────────────────────────────
+        self.switch_to(exit_block.clone());
+        let final_val = self.new_value();
+        self.emit_inst(MirInst::StateCellLoad {
+            dest: final_val.clone(),
+            cell: curr_val_cell.clone(),
+        });
+
+        // Free fiber resources.
+        self.emit_inst(MirInst::Call {
+            callee: MirCallee::External("kea_free_segment".to_string()),
+            args: vec![segment],
+            arg_types: vec![Type::Dynamic],
+            result: None,
+            ret_type: Type::Unit,
+            callee_fail_result_abi: false,
+            capture_fail_result: false,
+            cc_manifest_id: "default".to_string(),
+        });
+        self.emit_inst(MirInst::Call {
+            callee: MirCallee::External("kea_free_prompt".to_string()),
+            args: vec![prompt],
+            arg_types: vec![Type::Dynamic],
+            result: None,
+            ret_type: Type::Unit,
+            callee_fail_result_abi: false,
+            capture_fail_result: false,
+            cc_manifest_id: "default".to_string(),
+        });
+
+        if handle_expr.ty == Type::Unit {
+            None
+        } else {
+            Some(final_val)
+        }
+    }
+
     fn lower_handle_expr(
         &mut self,
         handle_expr: &HirExpr,
@@ -7954,6 +8401,12 @@ impl FunctionLoweringCtx {
         clauses: &[HirHandleClause],
         then_clause: Option<&HirExpr>,
     ) -> Option<MirValueId> {
+        // Fiber tier: selected when any clause uses `with k` (deferred continuation).
+        let has_deferred_clause = clauses.iter().any(|c| c.continuation.is_some());
+        if has_deferred_clause {
+            return self.lower_handle_expr_fiber(handle_expr, handled, clauses, then_clause);
+        }
+
         let target_effect = clauses.first()?.effect.clone();
         if clauses.iter().any(|clause| clause.effect != target_effect) {
             self.emit_inst(MirInst::Unsupported {
@@ -8642,6 +9095,55 @@ impl FunctionLoweringCtx {
                 detail: "__kea_internal_capture_store is an internal compiler function, not callable from user code".to_string(),
             });
             return None;
+        }
+        // Fiber continuation resume: `resume(k, v)` inside a `with k` clause body.
+        // UMS desugars `k.resume(v)` → `resume(k, v)`.  When we are inside a fiber
+        // handler clause, lower this as `kea_fiber_resume(prompt, v) → next_val`.
+        if let HirExprKind::Var(name) = &func.kind
+            && name == "resume"
+            && args.len() == 2
+            && let Some(prompt) = self.active_fiber_prompt.clone()
+            && let Some(curr_val_cell) = self.active_fiber_curr_val_cell.clone()
+        {
+            // Lower the resume value (args[1]); Unit → 0.
+            let resume_val = if args[1].ty == Type::Unit {
+                let zero = self.new_value();
+                self.emit_inst(MirInst::Const {
+                    dest: zero.clone(),
+                    literal: MirLiteral::Int(0),
+                });
+                zero
+            } else {
+                match self.lower_expr(&args[1]) {
+                    Some(v) => v,
+                    None => {
+                        let zero = self.new_value();
+                        self.emit_inst(MirInst::Const {
+                            dest: zero.clone(),
+                            literal: MirLiteral::Int(0),
+                        });
+                        zero
+                    }
+                }
+            };
+            let next_val = self.new_value();
+            self.emit_inst(MirInst::Call {
+                callee: MirCallee::External("kea_fiber_resume".to_string()),
+                args: vec![prompt, resume_val],
+                arg_types: vec![Type::Dynamic, Type::Dynamic],
+                result: Some(next_val.clone()),
+                ret_type: Type::Dynamic,
+                callee_fail_result_abi: false,
+                capture_fail_result: false,
+                cc_manifest_id: "default".to_string(),
+            });
+            // Store next_val in the curr_val state cell so the handler loop
+            // can find it on the next iteration.
+            self.emit_inst(MirInst::StateCellStore {
+                cell: curr_val_cell,
+                value: next_val.clone(),
+            });
+            return Some(next_val);
         }
         if let HirExprKind::Var(name) = &func.kind
             && !capture_fail_result
