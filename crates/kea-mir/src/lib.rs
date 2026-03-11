@@ -23,6 +23,11 @@ pub struct MirLoweringConfig {
     /// Override with `KEA_NO_FUNCTION_INLINE=1` (force off) or
     /// `KEA_FUNCTION_INLINE=1` (force on).
     pub function_inlining: bool,
+    /// Convert tail-recursive self-calls into explicit MIR loops (back-edge Jumps).
+    /// Enables loop-invariant load hoisting by making loop structure visible to Cranelift.
+    /// Default: false (JIT). AOT: true.
+    /// Override with `KEA_NO_TAIL_LOOP=1` (force off) or `KEA_TAIL_LOOP=1` (force on).
+    pub tail_loop_conversion: bool,
     /// Maximum total instruction count (across all blocks) for a callee to be
     /// eligible for inlining. Default: 12.
     /// Override with `KEA_INLINE_THRESHOLD=N`.
@@ -42,6 +47,7 @@ impl MirLoweringConfig {
             handler_inlining: true,
             function_inlining: true,
             inline_threshold: 20,
+            tail_loop_conversion: true,
         }
     }
 
@@ -51,6 +57,7 @@ impl MirLoweringConfig {
             handler_inlining: false,
             function_inlining: false,
             inline_threshold: 20,
+            tail_loop_conversion: false,
         }
     }
 }
@@ -548,6 +555,28 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
             eprintln!(
                 "[handler-inline] state_get={total_get} state_put={total_put} pure={total_pure}"
             );
+        }
+    }
+
+    // Tail-recursion-to-loop conversion: rewrite direct tail-recursive self-calls into
+    // explicit MIR back-edge Jumps so Cranelift sees a real loop and can apply LICM.
+    // Override: KEA_NO_TAIL_LOOP=1 (force off), KEA_TAIL_LOOP=1 (force on).
+    let tail_loop_enabled = if std::env::var("KEA_NO_TAIL_LOOP").as_deref() == Ok("1") {
+        false
+    } else if std::env::var("KEA_TAIL_LOOP").as_deref() == Ok("1") {
+        true
+    } else {
+        config.tail_loop_conversion
+    };
+    if tail_loop_enabled {
+        let mut total_converted = 0usize;
+        for function in &mut functions {
+            if convert_tail_recursive_to_loop(function) {
+                total_converted += 1;
+            }
+        }
+        if std::env::var("KEA_TAIL_LOOP_STATS").as_deref() == Ok("1") && total_converted > 0 {
+            eprintln!("[tail-loop] converted={total_converted}");
         }
     }
 
@@ -1239,6 +1268,300 @@ fn is_inlinable_callee(f: &MirFunction, threshold: usize) -> bool {
         }
     }
     true
+}
+
+/// Convert a directly tail-recursive function into an explicit MIR loop.
+///
+/// After conversion the block layout is:
+/// ```text
+///   stub_entry():                               -- new function entry, no params
+///     jump loop_header(%0, %1, ..., %N-1)      -- pass implicit params to header
+///   loop_header(%p0, %p1, ..., %pN-1):         -- block params = loop variables
+///     jump original_entry()                     -- dispatch to body
+///   original_entry (was entry):                 -- body; uses %p0..%pN-1 (remapped)
+///     ...body...
+///     jump loop_header(%new_a, %new_b, ...)     -- was tail self-call → back edge
+///     or return %base                           -- base case unchanged
+/// ```
+///
+/// Cranelift sees `loop_header` as a block with back-edges → enables LICM.
+/// Returns `true` if the function was modified.
+fn convert_tail_recursive_to_loop(function: &mut MirFunction) -> bool {
+    let nparams = function.signature.params.len();
+
+    // Collect all tail-self-call sites.
+    let tail_sites = collect_tail_self_call_sites(function);
+    if tail_sites.is_empty() {
+        return false;
+    }
+
+    // Skip functions with dispatch-effect hidden params (threaded as trailing args).
+    // Codegen handles those via Cranelift return_call. Pure + direct-capability effects only.
+    let has_dispatch_effects = function
+        .signature
+        .effects
+        .row
+        .fields
+        .iter()
+        .any(|(label, _)| {
+            let s = label.as_str();
+            s != "Fail" && !is_direct_capability_effect(s)
+        });
+    if has_dispatch_effects {
+        return false;
+    }
+
+    // Allocate fresh IDs.
+    // Block IDs: use current block count as base.
+    let nblocks_orig = function.blocks.len() as u32;
+    let loop_header_id = MirBlockId(nblocks_orig);
+    let stub_entry_id = MirBlockId(nblocks_orig + 1);
+
+    // Value IDs for loop_header block params.
+    let mut next_val = next_fresh_value_id(function);
+    let loop_param_ids: Vec<MirValueId> = (0..nparams)
+        .map(|_| {
+            let id = MirValueId(next_val);
+            next_val = next_val.saturating_add(1);
+            id
+        })
+        .collect();
+
+    // Remap implicit param IDs (%0..%N-1) → loop_header block param IDs in the body.
+    let param_remap: BTreeMap<MirValueId, MirValueId> = (0..nparams as u32)
+        .zip(loop_param_ids.iter().cloned())
+        .map(|(old, new)| (MirValueId(old), new))
+        .collect();
+
+    // Apply param remap to all existing blocks.
+    for block in &mut function.blocks {
+        for inst in &mut block.instructions {
+            remap_inst_values(inst, &param_remap);
+        }
+        remap_terminator_values(&mut block.terminator, &param_remap);
+    }
+
+    // Rewrite each tail-self-call: remove the Call, replace terminator with back-edge Jump.
+    // Sort in reverse so block indices stay stable during removal.
+    let mut sorted_sites = tail_sites;
+    sorted_sites.sort_by(|a, b| b.block_idx.cmp(&a.block_idx));
+    for site in &sorted_sites {
+        let block = &mut function.blocks[site.block_idx];
+        block.instructions.remove(site.call_inst_idx);
+        block.terminator = MirTerminator::Jump {
+            target: loop_header_id.clone(),
+            args: site.loop_args.clone(),
+        };
+    }
+
+    // Build loop_header block.
+    let loop_header_params: Vec<MirBlockParam> = loop_param_ids
+        .iter()
+        .zip(function.signature.params.iter())
+        .map(|(id, ty)| MirBlockParam { id: id.clone(), ty: ty.clone() })
+        .collect();
+    let original_entry_id = function.entry.clone();
+    let loop_header_block = MirBlock {
+        id: loop_header_id.clone(),
+        params: loop_header_params,
+        instructions: vec![],
+        terminator: MirTerminator::Jump {
+            target: original_entry_id,
+            args: vec![],
+        },
+    };
+
+    // Build stub entry block (thin entry that passes implicit params to loop_header).
+    let stub_entry_block = MirBlock {
+        id: stub_entry_id.clone(),
+        params: vec![], // MIR entry block always has empty params
+        instructions: vec![],
+        terminator: MirTerminator::Jump {
+            target: loop_header_id,
+            args: (0..nparams as u32).map(MirValueId).collect(),
+        },
+    };
+
+    // Insert new blocks at the FRONT of the block vector:
+    //   [stub_entry, loop_header, ...original body blocks...]
+    //
+    // Codegen processes blocks in vector order and accumulates values linearly.
+    // The loop_header block defines %p0..%pN-1 as block params; the body blocks
+    // reference those values. loop_header must come before the body in the vector
+    // so those values are defined by the time the body is processed.
+    // stub_entry just emits a jump and defines no values, so it can go first.
+    let mut new_blocks = Vec::with_capacity(function.blocks.len() + 2);
+    new_blocks.push(stub_entry_block);
+    new_blocks.push(loop_header_block);
+    new_blocks.append(&mut function.blocks);
+    function.blocks = new_blocks;
+
+    function.entry = stub_entry_id;
+    true
+}
+
+/// A detected tail-self-call site within a function.
+struct TailSelfCallSite {
+    block_idx: usize,
+    call_inst_idx: usize,
+    /// Arguments to pass to the loop header on the back-edge.
+    loop_args: Vec<MirValueId>,
+}
+
+/// Collect all tail-self-call sites in `function`.
+/// A site qualifies when:
+///   - The last non-Nop instruction in the block is a Call to `function.name`
+///   - The call result is immediately returned (or via a trivial jump-return block)
+fn collect_tail_self_call_sites(function: &MirFunction) -> Vec<TailSelfCallSite> {
+    let mut sites = Vec::new();
+    for (bi, block) in function.blocks.iter().enumerate() {
+        // Find last non-Nop instruction.
+        let Some((ii, inst)) = block
+            .instructions
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, i)| !matches!(i, MirInst::Nop))
+        else {
+            continue;
+        };
+
+        let MirInst::Call {
+            callee: MirCallee::Local(callee_name),
+            args,
+            result,
+            ..
+        } = inst
+        else {
+            continue;
+        };
+
+        if callee_name != &function.name {
+            continue;
+        }
+
+        let loop_args = args.clone();
+
+        // Check that the terminator is a return of the call result (or void).
+        let is_tail = match (&block.terminator, result) {
+            // `return %call_result` or `return` when no result
+            (MirTerminator::Return { value: Some(ret) }, Some(call_result)) => ret == call_result,
+            (MirTerminator::Return { value: None }, None) => true,
+            // Jump to a trivial block that just returns (passes result through block param).
+            (MirTerminator::Jump { target, args: jump_args }, _) => {
+                is_trivial_return_block(function, target, jump_args, result.as_ref())
+            }
+            _ => false,
+        };
+
+        if is_tail {
+            sites.push(TailSelfCallSite {
+                block_idx: bi,
+                call_inst_idx: ii,
+                loop_args,
+            });
+        }
+    }
+    sites
+}
+
+/// Returns true if `target` is a block that only returns its single block param
+/// (or returns void), used for tail-call detection through a trivial return stub.
+fn is_trivial_return_block(
+    function: &MirFunction,
+    target: &MirBlockId,
+    jump_args: &[MirValueId],
+    call_result: Option<&MirValueId>,
+) -> bool {
+    let Some(block) = function.blocks.iter().find(|b| &b.id == target) else {
+        return false;
+    };
+    if !block.instructions.iter().all(|i| matches!(i, MirInst::Nop)) {
+        return false;
+    }
+    match (&block.terminator, call_result) {
+        (MirTerminator::Return { value: None }, None) => true,
+        (MirTerminator::Return { value: Some(ret) }, Some(call_result)) => {
+            // ret must be a block param that's filled by jump_args[idx] == call_result
+            let Some(param_idx) = block.params.iter().position(|p| &p.id == ret) else {
+                return false;
+            };
+            jump_args.get(param_idx) == Some(call_result)
+        }
+        _ => false,
+    }
+}
+
+/// Remap value IDs in a MirInst in-place.
+fn remap_inst_values(inst: &mut MirInst, remap: &BTreeMap<MirValueId, MirValueId>) {
+    fn r(v: &mut MirValueId, remap: &BTreeMap<MirValueId, MirValueId>) {
+        if let Some(mapped) = remap.get(v) {
+            *v = mapped.clone();
+        }
+    }
+    match inst {
+        MirInst::Const { .. } | MirInst::FunctionRef { .. } | MirInst::HandlerEnter { .. } | MirInst::HandlerExit { .. } | MirInst::Nop | MirInst::Unsupported { .. } => {}
+        MirInst::Binary { left, right, .. } => { r(left, remap); r(right, remap); }
+        MirInst::Unary { operand, .. } => { r(operand, remap); }
+        MirInst::RecordInit { fields, .. } => { for (_, v) in fields { r(v, remap); } }
+        MirInst::RecordInitReuse { source, fields, .. } => {
+            r(source, remap);
+            for (_, v) in fields { r(v, remap); }
+        }
+        MirInst::ReuseToken { source, .. } => { r(source, remap); }
+        MirInst::RecordInitFromToken { token, fields, .. } => {
+            r(token, remap);
+            for (_, v) in fields { r(v, remap); }
+        }
+        MirInst::SumInit { fields, .. } => { for v in fields { r(v, remap); } }
+        MirInst::SumInitReuse { source, fields, .. } => {
+            r(source, remap);
+            for v in fields { r(v, remap); }
+        }
+        MirInst::SumInitFromToken { token, fields, .. } => {
+            r(token, remap);
+            for v in fields { r(v, remap); }
+        }
+        MirInst::SumTagLoad { sum, .. } => { r(sum, remap); }
+        MirInst::SumPayloadLoad { sum, .. } => { r(sum, remap); }
+        MirInst::RecordFieldLoad { record, .. } => { r(record, remap); }
+        MirInst::ClosureInit { entry, captures, .. } => {
+            r(entry, remap);
+            for c in captures { r(c, remap); }
+        }
+        MirInst::ClosureCaptureLoad { closure, .. } => { r(closure, remap); }
+        MirInst::StateCellNew { initial, .. } => { r(initial, remap); }
+        MirInst::StateCellLoad { cell, .. } => { r(cell, remap); }
+        MirInst::StateCellStore { cell, value } => { r(cell, remap); r(value, remap); }
+        MirInst::Retain { value } => { r(value, remap); }
+        MirInst::Release { value } => { r(value, remap); }
+        MirInst::Move { src, .. } => { r(src, remap); }
+        MirInst::Borrow { src, .. } => { r(src, remap); }
+        MirInst::TryClaim { src, .. } => { r(src, remap); }
+        MirInst::Freeze { src, .. } => { r(src, remap); }
+        MirInst::CowUpdate { target, updates, .. } => {
+            r(target, remap);
+            for u in updates { r(&mut u.value, remap); }
+        }
+        MirInst::EffectOp { args, .. } => { for a in args { r(a, remap); } }
+        MirInst::Resume { value } => { r(value, remap); }
+        MirInst::Call { args, .. } => { for a in args { r(a, remap); } }
+    }
+}
+
+/// Remap value IDs in a MirTerminator in-place.
+fn remap_terminator_values(term: &mut MirTerminator, remap: &BTreeMap<MirValueId, MirValueId>) {
+    fn r(v: &mut MirValueId, remap: &BTreeMap<MirValueId, MirValueId>) {
+        if let Some(mapped) = remap.get(v) {
+            *v = mapped.clone();
+        }
+    }
+    match term {
+        MirTerminator::Jump { args, .. } => { for a in args { r(a, remap); } }
+        MirTerminator::Branch { condition, .. } => { r(condition, remap); }
+        MirTerminator::Return { value: Some(v) } => { r(v, remap); }
+        MirTerminator::Return { value: None } | MirTerminator::Unreachable => {}
+    }
 }
 
 /// Inline all small pure callees across the module. Returns the number of
