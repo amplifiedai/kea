@@ -52,6 +52,10 @@ pub struct MirLoweringConfig {
     /// Default: false (JIT). AOT: true.
     /// Override with `KEA_BCE=1` / `KEA_NO_BCE=1`.
     pub bounds_check_elim: bool,
+    /// Replace `iv * invariant` with a running accumulator (iv_step * invariant per iteration).
+    /// Default: false (JIT). AOT: true.
+    /// Override with `KEA_STRENGTH_REDUCE=1` / `KEA_NO_STRENGTH_REDUCE=1`.
+    pub strength_reduction: bool,
 }
 
 impl Default for MirLoweringConfig {
@@ -72,6 +76,7 @@ impl MirLoweringConfig {
             sum_elision: true,
             licm: true,
             bounds_check_elim: true,
+            strength_reduction: true,
         }
     }
 
@@ -86,6 +91,7 @@ impl MirLoweringConfig {
             sum_elision: false,
             licm: false,
             bounds_check_elim: false,
+            strength_reduction: false,
         }
     }
 }
@@ -737,6 +743,25 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
         }
         if std::env::var("KEA_BCE_STATS").as_deref() == Ok("1") && total_eliminated > 0 {
             eprintln!("[bce] eliminated={total_eliminated}");
+        }
+    }
+
+    // Strength Reduction: replace iv * invariant with running accumulator.
+    let sr_enabled =
+        if std::env::var("KEA_NO_STRENGTH_REDUCE").as_deref() == Ok("1") {
+            false
+        } else if std::env::var("KEA_STRENGTH_REDUCE").as_deref() == Ok("1") {
+            true
+        } else {
+            config.strength_reduction
+        };
+    if sr_enabled {
+        let mut total_reduced = 0usize;
+        for function in &mut functions {
+            total_reduced += strength_reduce_induction_muls(function);
+        }
+        if std::env::var("KEA_STRENGTH_REDUCE_STATS").as_deref() == Ok("1") && total_reduced > 0 {
+            eprintln!("[strength-reduce] reduced={total_reduced}");
         }
     }
 
@@ -1637,11 +1662,12 @@ fn detect_loops(function: &MirFunction) -> Vec<LoopInfo> {
             continue;
         }
 
-        // Verify preheader is a simple forwarder: no meaningful instructions,
-        // terminator is Jump to this block (the header).
+        // Verify preheader terminates with a Jump to this block (the header).
+        // After LICM, the preheader may contain hoisted instructions (Binary,
+        // RecordFieldLoad, Const) — that's fine, we only need the terminator check.
         let preheader_block = &function.blocks[preheader];
-        let preheader_is_forwarder = preheader_block.instructions.iter().all(|i| matches!(i, MirInst::Nop | MirInst::Const { .. }))
-            && matches!(&preheader_block.terminator, MirTerminator::Jump { target, .. } if *target == block.id);
+        let preheader_is_forwarder =
+            matches!(&preheader_block.terminator, MirTerminator::Jump { target, .. } if *target == block.id);
         if !preheader_is_forwarder {
             continue;
         }
@@ -2873,6 +2899,450 @@ fn cleanup_dead_blocks_and_nops(function: &mut MirFunction) {
     // Strip Nop instructions.
     for block in &mut function.blocks {
         block.instructions.retain(|i| !matches!(i, MirInst::Nop));
+    }
+}
+
+// -----------------------------------------------------------------------
+// Strength Reduction
+// -----------------------------------------------------------------------
+
+/// Replace `induction_var * loop_invariant` with a running accumulator that
+/// adds `step * loop_invariant` each iteration.  Returns the number of
+/// multiplications reduced.
+fn strength_reduce_induction_muls(function: &mut MirFunction) -> usize {
+    let loops = detect_loops(function);
+    if loops.is_empty() {
+        return 0;
+    }
+
+    let mut total_reduced = 0;
+
+    for loop_info in &loops {
+        let header_block = &function.blocks[loop_info.header_block_idx];
+        let preheader_args: Vec<MirValueId> = if let MirTerminator::Jump { args, .. } =
+            &function.blocks[loop_info.preheader_block_idx].terminator
+        {
+            args.clone()
+        } else {
+            continue;
+        };
+
+        // Step 1: Identify induction variables.
+        // An induction variable at position k has back-edge arg = Binary(Add, param_k, step_const)
+        // where step_const is a Const defined in the loop body or preheader.
+        struct InductionVar {
+            #[allow(dead_code)]
+            header_param_idx: usize,
+            header_param_id: MirValueId,
+            initial_value: MirValueId,
+            step_value_id: MirValueId,
+            step_int: i64,
+        }
+
+        let mut induction_vars: Vec<InductionVar> = Vec::new();
+
+        for (k, param) in header_block.params.iter().enumerate() {
+            if loop_info.unchanged_params.contains(&k) {
+                continue;
+            }
+
+            // Check all back-edges: arg[k] must be defined as Binary(Add, param.id, step)
+            let mut step_info: Option<(MirValueId, i64)> = None;
+            let mut all_match = true;
+
+            for &be_idx in &loop_info.backedge_block_indices {
+                let be_arg = if let MirTerminator::Jump { args, .. } =
+                    &function.blocks[be_idx].terminator
+                {
+                    args.get(k).cloned()
+                } else {
+                    None
+                };
+
+                let be_arg = match be_arg {
+                    Some(v) => v,
+                    None => {
+                        all_match = false;
+                        break;
+                    }
+                };
+
+                // Find Binary(Add, param.id, step_const) producing be_arg in any body block
+                let mut found = false;
+                for &bi in &loop_info.body_block_indices {
+                    for inst in &function.blocks[bi].instructions {
+                        if let MirInst::Binary {
+                            dest,
+                            op: MirBinaryOp::Add,
+                            left,
+                            right,
+                        } = inst
+                        {
+                            if *dest != be_arg {
+                                continue;
+                            }
+                            // One side must be param.id, other must be a positive int constant
+                            let (is_iv, const_side) = if *left == param.id {
+                                (true, right)
+                            } else if *right == param.id {
+                                (true, left)
+                            } else {
+                                (false, left)
+                            };
+                            if !is_iv {
+                                continue;
+                            }
+
+                            // Find const_side as Const(Int) in body or preheader
+                            let const_val = find_int_const(function, loop_info, const_side);
+                            if let Some(n) = const_val {
+                                match &step_info {
+                                    None => {
+                                        step_info = Some((const_side.clone(), n));
+                                        found = true;
+                                    }
+                                    Some((_, prev_n)) if *prev_n == n => {
+                                        found = true;
+                                    }
+                                    _ => {
+                                        all_match = false;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    if found || !all_match {
+                        break;
+                    }
+                }
+
+                if !found {
+                    all_match = false;
+                }
+                if !all_match {
+                    break;
+                }
+            }
+
+            if all_match
+                && let Some((step_vid, step_n)) = step_info
+            {
+                induction_vars.push(InductionVar {
+                    header_param_idx: k,
+                    header_param_id: param.id.clone(),
+                    initial_value: preheader_args[k].clone(),
+                    step_value_id: step_vid,
+                    step_int: step_n,
+                });
+            }
+        }
+
+        if induction_vars.is_empty() {
+            continue;
+        }
+
+        // Step 2: For each induction variable, find Binary(Mul, iv_param, invariant)
+        // in the loop body where invariant is an unchanged header param.
+        // Collect (body_block_idx, inst_idx, mul_dest, invariant_param_idx, invariant_value)
+        struct MulTarget {
+            body_block_idx: usize,
+            inst_idx: usize,
+            mul_dest: MirValueId,
+            iv_idx: usize, // index into induction_vars
+            invariant_id: MirValueId,
+        }
+
+        let unchanged_param_ids: BTreeSet<MirValueId> = loop_info
+            .unchanged_params
+            .iter()
+            .map(|&k| header_block.params[k].id.clone())
+            .collect();
+
+        let mut mul_targets: Vec<MulTarget> = Vec::new();
+
+        for &bi in &loop_info.body_block_indices {
+            for (ii, inst) in function.blocks[bi].instructions.iter().enumerate() {
+                if let MirInst::Binary {
+                    dest,
+                    op: MirBinaryOp::Mul,
+                    left,
+                    right,
+                } = inst
+                {
+                    // Check: one side is an IV param, other is unchanged
+                    for (iv_i, iv) in induction_vars.iter().enumerate() {
+                        let (is_match, invariant) = if *left == iv.header_param_id
+                            && unchanged_param_ids.contains(right)
+                        {
+                            (true, right)
+                        } else if *right == iv.header_param_id
+                            && unchanged_param_ids.contains(left)
+                        {
+                            (true, left)
+                        } else {
+                            (false, left)
+                        };
+
+                        if is_match {
+                            mul_targets.push(MulTarget {
+                                body_block_idx: bi,
+                                inst_idx: ii,
+                                mul_dest: dest.clone(),
+                                iv_idx: iv_i,
+                                invariant_id: invariant.clone(),
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if mul_targets.is_empty() {
+            continue;
+        }
+
+        // Step 3: For each Mul target, create a running accumulator.
+        let mut next_val = next_fresh_value_id(function);
+
+        for target in &mul_targets {
+            let iv = &induction_vars[target.iv_idx];
+
+            // Allocate fresh IDs
+            let accum_param_id = MirValueId(next_val);
+            next_val += 1;
+            let init_mul_id = MirValueId(next_val);
+            next_val += 1;
+            let accum_next_id = MirValueId(next_val);
+            next_val += 1;
+            // For step * invariant product (if step != 1, we need an extra mul)
+            let step_product_id = if iv.step_int != 1 {
+                let id = MirValueId(next_val);
+                next_val += 1;
+                Some(id)
+            } else {
+                None
+            };
+
+            // a) Add initial value computation to preheader:
+            //    init_mul = iv.initial_value * invariant_preheader_arg
+            // We must use the preheader arg (not the header param) because the
+            // header param is only in scope inside the loop body.
+            let pre_idx = loop_info.preheader_block_idx;
+            let invariant_preheader_value = {
+                let header = &function.blocks[loop_info.header_block_idx];
+                let pos = header
+                    .params
+                    .iter()
+                    .position(|p| p.id == target.invariant_id);
+                match pos {
+                    Some(k) => preheader_args[k].clone(),
+                    None => target.invariant_id.clone(), // fallback
+                }
+            };
+            function.blocks[pre_idx].instructions.push(MirInst::Binary {
+                dest: init_mul_id.clone(),
+                op: MirBinaryOp::Mul,
+                left: iv.initial_value.clone(),
+                right: invariant_preheader_value,
+            });
+
+            // b) Add accumulator param to header block
+            function.blocks[loop_info.header_block_idx]
+                .params
+                .push(MirBlockParam {
+                    id: accum_param_id.clone(),
+                    ty: kea_types::Type::Int,
+                });
+
+            // c) Add init_mul to preheader Jump args
+            if let MirTerminator::Jump { args, .. } =
+                &mut function.blocks[pre_idx].terminator
+            {
+                args.push(init_mul_id);
+            }
+
+            // d) Compute step increment in back-edge blocks and add to Jump args.
+            //    accum_next = accum_param + (step * invariant)
+            //    If step == 1, just accum_param + invariant.
+            for &be_idx in &loop_info.backedge_block_indices {
+                let increment_id = if let Some(sp_id) = &step_product_id {
+                    // step_product = step_value * invariant (add to back-edge block)
+                    function.blocks[be_idx].instructions.push(MirInst::Binary {
+                        dest: sp_id.clone(),
+                        op: MirBinaryOp::Mul,
+                        left: iv.step_value_id.clone(),
+                        right: target.invariant_id.clone(),
+                    });
+                    sp_id.clone()
+                } else {
+                    // step == 1, so increment is just invariant
+                    target.invariant_id.clone()
+                };
+
+                // accum_next = accum_param + increment
+                function.blocks[be_idx]
+                    .instructions
+                    .push(MirInst::Binary {
+                        dest: accum_next_id.clone(),
+                        op: MirBinaryOp::Add,
+                        left: accum_param_id.clone(),
+                        right: increment_id,
+                    });
+
+                if let MirTerminator::Jump { args, .. } =
+                    &mut function.blocks[be_idx].terminator
+                {
+                    args.push(accum_next_id.clone());
+                }
+            }
+
+            // e) Replace the original Mul instruction with Nop, and redirect all
+            //    uses of mul_dest to accum_param_id.
+            function.blocks[target.body_block_idx].instructions[target.inst_idx] =
+                MirInst::Nop;
+
+            // Rewrite all uses of mul_dest -> accum_param_id in the entire function
+            rewrite_value_uses(function, &target.mul_dest, &accum_param_id);
+
+            total_reduced += 1;
+        }
+    }
+
+    total_reduced
+}
+
+/// Find the integer constant value for a given MirValueId, searching the loop body
+/// and preheader blocks.
+fn find_int_const(
+    function: &MirFunction,
+    loop_info: &LoopInfo,
+    value_id: &MirValueId,
+) -> Option<i64> {
+    // Search body blocks
+    for &bi in &loop_info.body_block_indices {
+        for inst in &function.blocks[bi].instructions {
+            if let MirInst::Const {
+                dest,
+                literal: MirLiteral::Int(n),
+            } = inst
+                && *dest == *value_id
+            {
+                return Some(*n);
+            }
+        }
+    }
+    // Search preheader
+    let pre_idx = loop_info.preheader_block_idx;
+    for inst in &function.blocks[pre_idx].instructions {
+        if let MirInst::Const {
+            dest,
+            literal: MirLiteral::Int(n),
+        } = inst
+            && *dest == *value_id
+        {
+            return Some(*n);
+        }
+    }
+    None
+}
+
+/// Rewrite all uses of `old_id` to `new_id` across all blocks of a function.
+fn rewrite_value_uses(function: &mut MirFunction, old_id: &MirValueId, new_id: &MirValueId) {
+    for block in &mut function.blocks {
+        for inst in &mut block.instructions {
+            rewrite_inst_uses(inst, old_id, new_id);
+        }
+        match &mut block.terminator {
+            MirTerminator::Jump { args, .. } => {
+                for arg in args.iter_mut() {
+                    if *arg == *old_id {
+                        *arg = new_id.clone();
+                    }
+                }
+            }
+            MirTerminator::Branch { condition, .. } => {
+                if *condition == *old_id {
+                    *condition = new_id.clone();
+                }
+            }
+            MirTerminator::Return { value } => {
+                if let Some(v) = value
+                    && *v == *old_id
+                {
+                    *v = new_id.clone();
+                }
+            }
+            MirTerminator::Unreachable => {}
+        }
+    }
+}
+
+/// Rewrite uses of old_id to new_id within a single instruction.
+/// Only rewrites operands (reads), not destinations (defs).
+fn rewrite_inst_uses(inst: &mut MirInst, old_id: &MirValueId, new_id: &MirValueId) {
+    // Helper closure: replace value in-place if it matches old_id.
+    macro_rules! r {
+        ($v:expr) => {
+            if *$v == *old_id { *$v = new_id.clone(); }
+        };
+    }
+    match inst {
+        MirInst::Binary { left, right, .. } => { r!(left); r!(right); }
+        MirInst::Unary { operand, .. } => { r!(operand); }
+        MirInst::Call { callee, args, .. } => {
+            if let MirCallee::Value(v) = callee { r!(v); }
+            for a in args.iter_mut() { r!(a); }
+        }
+        MirInst::RecordFieldLoad { record, .. } => { r!(record); }
+        MirInst::RecordInit { fields, .. } => {
+            for (_, v) in fields.iter_mut() { r!(v); }
+        }
+        MirInst::RecordInitReuse { source, fields, .. } => {
+            r!(source);
+            for (_, v) in fields.iter_mut() { r!(v); }
+        }
+        MirInst::RecordInitFromToken { token, fields, .. } => {
+            r!(token);
+            for (_, v) in fields.iter_mut() { r!(v); }
+        }
+        MirInst::SumInit { fields, .. } => {
+            for f in fields.iter_mut() { r!(f); }
+        }
+        MirInst::SumInitReuse { source, fields, .. } => {
+            r!(source);
+            for f in fields.iter_mut() { r!(f); }
+        }
+        MirInst::SumInitFromToken { token, fields, .. } => {
+            r!(token);
+            for f in fields.iter_mut() { r!(f); }
+        }
+        MirInst::SumTagLoad { sum, .. } | MirInst::SumPayloadLoad { sum, .. } => { r!(sum); }
+        MirInst::ReuseToken { source, .. } => { r!(source); }
+        MirInst::Retain { value } | MirInst::Release { value }
+        | MirInst::Resume { value } => { r!(value); }
+        MirInst::Move { src, .. } | MirInst::Borrow { src, .. }
+        | MirInst::TryClaim { src, .. } | MirInst::Freeze { src, .. } => { r!(src); }
+        MirInst::StateCellNew { initial, .. } => { r!(initial); }
+        MirInst::StateCellLoad { cell, .. } => { r!(cell); }
+        MirInst::StateCellStore { cell, value } => { r!(cell); r!(value); }
+        MirInst::ClosureInit { entry, captures, .. } => {
+            r!(entry);
+            for c in captures.iter_mut() { r!(c); }
+        }
+        MirInst::ClosureCaptureLoad { closure, .. } => { r!(closure); }
+        MirInst::CowUpdate { target, updates, .. } => {
+            r!(target);
+            for u in updates.iter_mut() { r!(&mut u.value); }
+        }
+        MirInst::EffectOp { args, result, .. } => {
+            for a in args.iter_mut() { r!(a); }
+            if let Some(rv) = result { r!(rv); }
+        }
+        MirInst::FunctionRef { .. } | MirInst::Const { .. }
+        | MirInst::HandlerEnter { .. } | MirInst::HandlerExit { .. }
+        | MirInst::Unsupported { .. } | MirInst::Nop => {}
     }
 }
 
