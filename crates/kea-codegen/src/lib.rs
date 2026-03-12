@@ -1680,6 +1680,22 @@ fn collect_external_call_signatures<M: Module>(
                     continue;
                 };
 
+                // Ptr intrinsics are lowered inline (emit Cranelift load/store/iadd etc.)
+                // and never produce real external call sites — skip them here.
+                if matches!(
+                    name.as_str(),
+                    "__kea_ptr_null"
+                        | "__kea_ptr_is_null"
+                        | "__kea_ptr_read_i64"
+                        | "__kea_ptr_write_i64"
+                        | "__kea_ptr_offset"
+                        | "__kea_ptr_cast"
+                        | "__kea_ptr_alloc"
+                        | "__kea_ptr_free"
+                ) {
+                    continue;
+                }
+
                 if arg_types.len() != args.len() {
                     return Err(CodegenError::UnsupportedMir {
                         function: function.name.clone(),
@@ -2023,6 +2039,9 @@ fn store_sum_init_payload(
                     spec.sum_type, spec.variant
                 ),
             })?;
+        // Sum field slots are always I64-sized. Widen smaller values (e.g. Bool→I8)
+        // before storing so the upper bytes are not left as malloc garbage.
+        let field_value = coerce_value_to_clif_type(builder, field_value, types::I64);
         builder
             .ins()
             .store(MemFlags::new(), field_value, base_ptr, field_offset);

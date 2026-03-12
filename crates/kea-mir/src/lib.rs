@@ -28,6 +28,13 @@ pub struct MirLoweringConfig {
     /// Default: false (JIT). AOT: true.
     /// Override with `KEA_NO_TAIL_LOOP=1` (force off) or `KEA_TAIL_LOOP=1` (force on).
     pub tail_loop_conversion: bool,
+    /// Specialize `Vector Bool` element operations to use 1-byte strides instead of
+    /// 8-byte (reduces memory 8x for Bool vectors).  Requires function inlining to be
+    /// enabled: the pass runs both before and after inlining so that `Vector.copy_range`
+    /// (a non-$Bool function inlined into push_grow$m..$Bool) is also re-specialized.
+    /// Without inlining, copy_range uses stride 8 while alloc/write use stride 1 → crash.
+    /// Default: false (JIT). AOT: true.
+    pub bool_element_specialization: bool,
     /// Maximum total instruction count (across all blocks) for a callee to be
     /// eligible for inlining. Default: 12.
     /// Override with `KEA_INLINE_THRESHOLD=N`.
@@ -48,6 +55,7 @@ impl MirLoweringConfig {
             function_inlining: true,
             inline_threshold: 20,
             tail_loop_conversion: true,
+            bool_element_specialization: true,
         }
     }
 
@@ -58,6 +66,7 @@ impl MirLoweringConfig {
             function_inlining: false,
             inline_threshold: 20,
             tail_loop_conversion: false,
+            bool_element_specialization: false,
         }
     }
 }
@@ -580,6 +589,18 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
         }
     }
 
+    // Bool element specialization (pre-inlining pass): specialize $Bool-monomorphized
+    // stdlib functions to use 1-byte strides/reads/writes instead of 8-byte.
+    // Running BEFORE inlining ensures callers that inline these functions get the
+    // already-specialized code (stride=1, I8 read/write) rather than the generic form.
+    // Requires inlining to be enabled (so the second post-inlining pass can fix up
+    // copy_range that gets inlined into push_grow$m..$Bool).
+    if config.bool_element_specialization {
+        for function in &mut functions {
+            specialize_bool_ptr_ops(function);
+        }
+    }
+
     // Function inlining: inline small pure callees at their MirCallee::Local call sites.
     // Enabled for AOT by default. Each round may expose new opportunities (chains),
     // so we run up to 3 rounds stopping early when nothing changed.
@@ -608,6 +629,17 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
         }
         if std::env::var("KEA_FUNCTION_INLINE_STATS").as_deref() == Ok("1") && total_inlined > 0 {
             eprintln!("[function-inline] inlined={total_inlined}");
+        }
+    }
+
+    // Second Bool element specialization pass (post-inlining): catches non-$Bool code
+    // inlined into $Bool functions. Specifically, Vector.copy_range (generic, stride 8)
+    // is inlined into push_grow$m...$Bool after the first pass, bringing in stride-8 copy
+    // code. The second pass detects ALL __kea_ptr_offset strides in $Bool functions and
+    // re-specializes them to stride 1 with I8 reads/writes.
+    if config.bool_element_specialization {
+        for function in &mut functions {
+            specialize_bool_ptr_ops(function);
         }
     }
 
@@ -1268,6 +1300,153 @@ fn is_inlinable_callee(f: &MirFunction, threshold: usize) -> bool {
         }
     }
     true
+}
+
+/// Fix Ptr intrinsic call sizes for Bool-typed elements.
+///
+/// When the element type of a `Vector a` (or any `Ptr a`) is statically Bool,
+/// the generic lowering emits stride-8 `Ptr.offset`, i64 `Ptr.read`, and i64 `Ptr.write`
+/// instead of the correct stride-1 / i8 variants.  After function inlining, Bool values
+/// flow directly into the Ptr operations and we can detect and fix them:
+///
+/// Pass 1 — build `bool_values: HashSet<MirValueId>`:
+///   • Every `Const { Bool(_) }` defines a Bool value.
+///   • Every function param whose type is `Bool` is a Bool value.
+///   • Every `__kea_ptr_read_i64` whose stride was already determined to be Bool (see Pass 2).
+///
+/// Pass 2 — def-use analysis (iterated):
+///   • For each `__kea_ptr_write_i64(ptr, val)` where `val ∈ bool_values`:
+///     - Mark this as a *Bool write* and trace `ptr` back to its defining `__kea_ptr_offset`.
+///     - Mark that offset's stride constant as a *Bool stride*.
+///     - If the offset was computed from a `__kea_ptr_read_i64` addr, mark that read as Bool.
+///   • For each `__kea_ptr_read_i64(ptr)` where the offset was a Bool stride:
+///     - Add the read result to `bool_values`.
+///   • Repeat until no new entries.
+///
+/// Additionally, for monomorphized `*$Bool` functions, ALL `Const Int(8)` are Bool strides.
+///
+/// Pass 3 — rewrite:
+///   • Bool-stride `Const { Int(8) }` → `Const { Int(1) }`.
+///   • Bool-write `arg_types[1]` → `Type::Bool`.
+///   • Bool-read `ret_type` → `Type::Bool`.
+///   • Bool-alloc `Const { Int(8) }` (the elem_size arg to `__kea_ptr_alloc`) → `Const { Int(1) }`.
+fn specialize_bool_ptr_ops(function: &mut MirFunction) {
+    // For monomorphized $Bool functions, ALL Ptr stride Int(8) should be 1.
+    // Seed: all `__kea_ptr_offset` strides and `__kea_ptr_alloc` elem_sizes are Bool strides.
+    let is_bool_specialized = function.name.contains("$Bool");
+
+    // Collect candidates for Ptr calls: (block_idx, inst_idx, role).
+    // Role: Write (write val idx), Read (read result), OffsetStride (stride val idx).
+    let mut bool_stride_consts: BTreeSet<MirValueId> = BTreeSet::new(); // Const values that are Bool strides
+    let mut bool_alloc_consts: BTreeSet<MirValueId> = BTreeSet::new(); // Const values that are Bool alloc strides
+
+    if is_bool_specialized {
+        // Seed all Ptr.offset strides and Ptr.alloc elem_sizes as Bool strides.
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Call { callee: MirCallee::External(name), args, .. } = inst {
+                    match name.as_str() {
+                        "__kea_ptr_offset" => {
+                            // arg[2] is the stride
+                            if let Some(stride_id) = args.get(2) {
+                                bool_stride_consts.insert(stride_id.clone());
+                            }
+                        }
+                        "__kea_ptr_alloc" => {
+                            // arg[1] is elem_size
+                            if let Some(stride_id) = args.get(1) {
+                                bool_alloc_consts.insert(stride_id.clone());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    // Pass 2: compute bool_ptrs — the result pointers of __kea_ptr_offset calls
+    // that use a Bool stride.  These are the pointers passed to reads/writes on
+    // Bool-element buffers.  We iterate to fixpoint because offset chains can be
+    // multi-hop (rare, but possible in copy_range-style expansions).
+    let mut bool_ptrs: BTreeSet<MirValueId> = BTreeSet::new();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                if let MirInst::Call {
+                    callee: MirCallee::External(name),
+                    args,
+                    result: Some(res),
+                    ..
+                } = inst
+                    && name == "__kea_ptr_offset"
+                    && let Some(stride_id) = args.get(2)
+                    && bool_stride_consts.contains(stride_id)
+                    && bool_ptrs.insert(res.clone())
+                {
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    // Pass 3a: collect (block_idx, inst_idx) of reads/writes that target Bool ptrs.
+    let mut bool_read_sites: BTreeSet<(usize, usize)> = BTreeSet::new();
+    let mut bool_write_sites: BTreeSet<(usize, usize)> = BTreeSet::new();
+    for (bi, block) in function.blocks.iter().enumerate() {
+        for (ii, inst) in block.instructions.iter().enumerate() {
+            let MirInst::Call { callee: MirCallee::External(name), args, .. } = inst else {
+                continue;
+            };
+            if name == "__kea_ptr_read_i64"
+                && let Some(ptr_id) = args.first()
+                && bool_ptrs.contains(ptr_id)
+            {
+                bool_read_sites.insert((bi, ii));
+            } else if name == "__kea_ptr_write_i64"
+                && let Some(ptr_id) = args.first()
+                && bool_ptrs.contains(ptr_id)
+            {
+                bool_write_sites.insert((bi, ii));
+            }
+        }
+    }
+
+    // Pass 3b: rewrite (mutable).
+    for (bi, block) in function.blocks.iter_mut().enumerate() {
+        for (ii, inst) in block.instructions.iter_mut().enumerate() {
+            match inst {
+                MirInst::Const { dest, literal: MirLiteral::Int(n) } if *n == 8 => {
+                    if bool_stride_consts.contains(dest) || bool_alloc_consts.contains(dest) {
+                        *n = 1;
+                    }
+                }
+                MirInst::Call {
+                    callee: MirCallee::External(name),
+                    arg_types,
+                    ..
+                } if name == "__kea_ptr_write_i64" => {
+                    if bool_write_sites.contains(&(bi, ii))
+                        && let Some(ty) = arg_types.get_mut(1)
+                    {
+                        *ty = Type::Bool;
+                    }
+                }
+                MirInst::Call {
+                    callee: MirCallee::External(name),
+                    ret_type,
+                    ..
+                } if name == "__kea_ptr_read_i64" => {
+                    if bool_read_sites.contains(&(bi, ii)) {
+                        *ret_type = Type::Bool;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Convert a directly tail-recursive function into an explicit MIR loop.
