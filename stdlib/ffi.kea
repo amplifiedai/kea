@@ -1,0 +1,53 @@
+-- C type aliases for FFI interop.
+--
+-- These map Kea types to their C ABI equivalents on LP64 platforms
+-- (Linux x86_64, macOS arm64/x86_64). Use these in @extern("c")
+-- function signatures for clarity and portability.
+--
+--   @extern("c")
+--   fn write(fd: CInt, buf: Ptr UInt8, count: CSize) -[IO]> CLong
+
+doc A C `int` (32-bit signed).
+pub type CInt = Int32
+
+doc A C `unsigned int` (32-bit unsigned).
+pub type CUInt = UInt32
+
+doc A C `long` (64-bit signed on LP64).
+pub type CLong = Int64
+
+doc A C `unsigned long` (64-bit unsigned on LP64).
+pub type CULong = UInt64
+
+doc A C `size_t` (64-bit unsigned on 64-bit platforms).
+pub type CSize = UInt64
+
+doc A C `ssize_t` (64-bit signed on 64-bit platforms).
+pub type CSSize = Int64
+
+doc A C `char` (unsigned 8-bit byte).
+pub type CChar = UInt8
+
+doc A C `int8_t`.
+pub type CInt8 = Int8
+
+doc A C `int16_t`.
+pub type CInt16 = Int16
+
+doc A C `int32_t`.
+pub type CInt32 = Int32
+
+doc A C `int64_t`.
+pub type CInt64 = Int64
+
+doc A C `uint8_t`.
+pub type CUInt8 = UInt8
+
+doc A C `uint16_t`.
+pub type CUInt16 = UInt16
+
+doc A C `uint32_t`.
+pub type CUInt32 = UInt32
+
+doc A C `uint64_t`.
+pub type CUInt64 = UInt64

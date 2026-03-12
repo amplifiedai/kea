@@ -171,6 +171,16 @@ const char *__kea_float_to_string(double f) {
   return buf;
 }
 
+const char *__kea_string_from_c_str(const char *ptr) {
+  if (ptr == NULL) return KEA_EMPTY_STRING;
+  size_t len = strlen(ptr);
+  char *buf = (char *)malloc(len + 1);
+  if (buf == NULL) return KEA_EMPTY_STRING;
+  memcpy(buf, ptr, len);
+  buf[len] = '\0';
+  return buf;
+}
+
 int64_t __kea_sys_malloc(int64_t size) {
   if (size <= 0) return 0;
   return (int64_t)malloc((size_t)size);

@@ -14437,6 +14437,78 @@ fn extern_c_function_calls_libc_labs_aot() {
     let _ = std::fs::remove_file(output_path);
 }
 
+#[test]
+fn text_as_ptr_and_strlen_ffi_roundtrip() {
+    // Use Text.as_ptr to get a raw pointer, pass to C strlen, verify length.
+    let source_path = write_temp_source(
+        concat!(
+            "use Text\n",
+            "\n",
+            "@extern(\"c\")\n",
+            "fn strlen(s: Ptr UInt8) -[IO]> Int\n",
+            "\n",
+            "pub fn main() -[IO]> Int\n",
+            "  let ptr = unsafe Text.as_ptr(\"hello\")\n",
+            "  let len = strlen(ptr)\n",
+            "  if len == 5\n",
+            "    0\n",
+            "  else\n",
+            "    1\n",
+        ),
+        "kea-cli-text-as-ptr-strlen",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("jit run should succeed");
+    assert_eq!(run.exit_code, 0, "strlen(as_ptr(\"hello\")) should be 5");
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn text_from_c_str_copies_string() {
+    // Use Text.as_ptr + Text.from_c_str to roundtrip a string through raw pointers.
+    let source_path = write_temp_source(
+        concat!(
+            "use Text\n",
+            "\n",
+            "pub fn main() -[IO]> Int\n",
+            "  let ptr = unsafe Text.as_ptr(\"world\")\n",
+            "  let s = Text.from_c_str(ptr)\n",
+            "  if s == \"world\"\n",
+            "    0\n",
+            "  else\n",
+            "    1\n",
+        ),
+        "kea-cli-text-from-c-str",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("jit run should succeed");
+    assert_eq!(run.exit_code, 0, "from_c_str(as_ptr(\"world\")) should equal \"world\"");
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn ffi_type_aliases_compile() {
+    // Verify that Ffi module type aliases resolve and work with @extern.
+    // CLong = Int64 on LP64; labs returns Int64, we just check it's nonzero.
+    let source_path = write_temp_source(
+        concat!(
+            "use Ffi\n",
+            "\n",
+            "@extern(\"c\")\n",
+            "fn labs(n: CLong) -[IO]> CLong\n",
+            "\n",
+            "pub fn main() -[IO]> Int\n",
+            "  let _result = labs(-42)\n",
+            "  0\n",
+        ),
+        "kea-cli-ffi-type-aliases",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("jit run should succeed");
+    assert_eq!(run.exit_code, 0, "labs with CLong alias should compile and run");
+    let _ = std::fs::remove_file(source_path);
+}
+
 fn temp_artifact_path(prefix: &str, extension: &str) -> PathBuf {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

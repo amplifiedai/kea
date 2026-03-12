@@ -13,6 +13,32 @@ use Option
 --   Text.slice("hello", 1, 4)          -- => "ell"
 --   Text.to_upper("hello")             -- => "HELLO"
 
+doc
+  Return a raw pointer to the string's null-terminated byte data.
+
+  The returned pointer is valid as long as the original string is live.
+  Binding the result to a variable that outlives the source string
+  produces a dangling pointer — use within a single expression:
+
+    let len = unsafe strlen(Text.as_ptr(s))
+
+  Requires `unsafe` context because the pointer may dangle.
+@unsafe
+@intrinsic("__kea_text_as_ptr")
+pub fn as_ptr(s: String) -> Ptr UInt8
+  unsafe Ptr.null()
+
+doc
+  Create a Kea string from a null-terminated C string pointer.
+
+  Copies the bytes into a new Kea-managed string. The original pointer
+  is not freed. Returns an empty string if the pointer is null.
+
+    let s = Text.from_c_str(ptr)
+@intrinsic("__kea_string_from_c_str")
+pub fn from_c_str(ptr: Ptr UInt8) -> String
+  ""
+
 -- Raw intrinsics used internally; prefer the public wrappers below.
 @intrinsic("__kea_text_index_of")
 fn raw_index_of(s: String, needle: String) -> Int

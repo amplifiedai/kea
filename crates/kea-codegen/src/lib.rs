@@ -497,6 +497,11 @@ fn runtime_import_signature(module: &impl Module, name: &str) -> cranelift_codeg
             sig.params.push(AbiParam::new(ptr));
             sig.returns.push(AbiParam::new(ptr));
         }
+        // Ptr UInt8 → String (copy into Kea-managed string)
+        "__kea_string_from_c_str" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(ptr));
+        }
         "memcpy" => {
             sig.params.push(AbiParam::new(ptr));
             sig.params.push(AbiParam::new(ptr));
@@ -863,6 +868,24 @@ unsafe extern "C" fn kea_ptr_free_stub(ptr: i64) -> i8 {
     0
 }
 
+/// Copy a C string into a fresh Kea-managed string (plain malloc, null-terminated).
+unsafe extern "C" fn kea_string_from_c_str_stub(ptr: i64) -> i64 {
+    if ptr == 0 {
+        return EMPTY_CSTR.as_ptr() as i64;
+    }
+    let c_str = unsafe { CStr::from_ptr(ptr as *const c_char) };
+    let bytes = c_str.to_bytes();
+    let buf = unsafe { malloc(bytes.len() + 1) } as *mut u8;
+    if buf.is_null() {
+        return EMPTY_CSTR.as_ptr() as i64;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len());
+        *buf.add(bytes.len()) = 0;
+    }
+    buf as i64
+}
+
 // Char ↔ Int conversion stubs.
 //
 // Char is represented as i64 at the Cranelift level (consistent with the
@@ -1100,6 +1123,10 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     );
     builder.symbol("__kea_text_replace", kea_text_replace_stub as *const u8);
     builder.symbol("__kea_text_repeat", kea_text_repeat_stub as *const u8);
+    builder.symbol(
+        "__kea_string_from_c_str",
+        kea_string_from_c_str_stub as *const u8,
+    );
     builder.symbol("__kea_float_exp", kea_float_exp_stub as *const u8);
     builder.symbol("__kea_float_log_e", kea_float_log_e_stub as *const u8);
     builder.symbol("__kea_float_pow", kea_float_pow_stub as *const u8);
@@ -1692,6 +1719,7 @@ fn collect_external_call_signatures<M: Module>(
                         | "__kea_ptr_cast"
                         | "__kea_ptr_alloc"
                         | "__kea_ptr_free"
+                        | "__kea_text_as_ptr"
                 ) {
                     continue;
                 }
@@ -5136,6 +5164,18 @@ fn lower_instruction<M: Module>(
                             } else {
                                 Some(coerce_value_to_type(builder, value, ret_type)?)
                             }
+                        }
+                        // String → Ptr UInt8 identity cast (strings are
+                        // already null-terminated byte pointers).
+                        "__kea_text_as_ptr" => {
+                            if lowered_args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_text_as_ptr expects one string argument"
+                                        .to_string(),
+                                });
+                            }
+                            Some(coerce_value_to_clif_type(builder, lowered_args[0], ptr_ty))
                         }
                         "__kea_ptr_alloc" => {
                             if lowered_args.len() != 2 {
