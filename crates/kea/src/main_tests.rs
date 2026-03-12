@@ -14489,7 +14489,7 @@ fn text_from_c_str_copies_string() {
 #[test]
 fn ffi_type_aliases_compile() {
     // Verify that Ffi module type aliases resolve and work with @extern.
-    // CLong = Int64 on LP64; labs returns Int64, we just check it's nonzero.
+    // CLong = Int64 on LP64; labs(-42) should return 42.
     let source_path = write_temp_source(
         concat!(
             "use Ffi\n",
@@ -14498,14 +14498,18 @@ fn ffi_type_aliases_compile() {
             "fn labs(n: CLong) -[IO]> CLong\n",
             "\n",
             "pub fn main() -[IO]> Int\n",
-            "  let _result = labs(-42)\n",
-            "  0\n",
+            "  let result = labs(-42)\n",
+            "  let expected: CLong = 42\n",
+            "  if result == expected\n",
+            "    0\n",
+            "  else\n",
+            "    1\n",
         ),
         "kea-cli-ffi-type-aliases",
         "kea",
     );
     let run = run_file(&source_path).expect("jit run should succeed");
-    assert_eq!(run.exit_code, 0, "labs with CLong alias should compile and run");
+    assert_eq!(run.exit_code, 0, "labs(-42) with CLong alias should return 42");
     let _ = std::fs::remove_file(source_path);
 }
 

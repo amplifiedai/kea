@@ -38,3 +38,35 @@ Char as Eq
 Float as Eq
   fn eq(x: Float, y: Float) -> Bool
     x == y
+
+Int8 as Eq
+  fn eq(x: Int8, y: Int8) -> Bool
+    x == y
+
+Int16 as Eq
+  fn eq(x: Int16, y: Int16) -> Bool
+    x == y
+
+Int32 as Eq
+  fn eq(x: Int32, y: Int32) -> Bool
+    x == y
+
+Int64 as Eq
+  fn eq(x: Int64, y: Int64) -> Bool
+    x == y
+
+UInt8 as Eq
+  fn eq(x: UInt8, y: UInt8) -> Bool
+    x == y
+
+UInt16 as Eq
+  fn eq(x: UInt16, y: UInt16) -> Bool
+    x == y
+
+UInt32 as Eq
+  fn eq(x: UInt32, y: UInt32) -> Bool
+    x == y
+
+UInt64 as Eq
+  fn eq(x: UInt64, y: UInt64) -> Bool
+    x == y
