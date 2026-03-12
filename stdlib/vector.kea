@@ -105,6 +105,17 @@ pub fn get(v: Vector a, i: Int) -> Option a
       Some(Ptr.read(Ptr.offset(v.ptr, i)))
 
 doc
+  Read element at index `i` without bounds checking.
+  Caller must guarantee `0 <= i < Vector.len(v)`.
+
+    let v = Vector.from_list([10, 20, 30])
+    Vector.get_unsafe(v, 1)   -- => 20
+    Vector.free(v)
+pub fn get_unsafe(v: Vector a, i: Int) -> a
+  unsafe
+    Ptr.read(Ptr.offset(v.ptr, i))
+
+doc
   Overwrite element at index `i` with `x`. Returns the updated vector.
   Out-of-bounds writes are silent no-ops.
 
@@ -119,6 +130,20 @@ pub fn set(v: Vector a, i: Int, x: a) -> Vector a
     unsafe
       Ptr.write(Ptr.offset(v.ptr, i), x)
       v
+
+doc
+  Overwrite element at index `i` with `x` without bounds checking.
+  Caller must guarantee `0 <= i < Vector.len(v)`.
+  Returns the updated vector.
+
+    let v  = Vector.from_list([1, 2, 3])
+    let v2 = Vector.set_unsafe(v, 1, 99)
+    Vector.get(v2, 1)   -- => Some(99)
+    Vector.free(v2)
+pub fn set_unsafe(v: Vector a, i: Int, x: a) -> Vector a
+  unsafe
+    Ptr.write(Ptr.offset(v.ptr, i), x)
+    v
 
 -- -----------------------------------------------------------------------
 -- Mutation

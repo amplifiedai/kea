@@ -595,7 +595,9 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
     // already-specialized code (stride=1, I8 read/write) rather than the generic form.
     // Requires inlining to be enabled (so the second post-inlining pass can fix up
     // copy_range that gets inlined into push_grow$m..$Bool).
-    if config.bool_element_specialization {
+    let bool_spec_enabled = config.bool_element_specialization
+        && std::env::var("KEA_NO_BOOL_SPEC").as_deref() != Ok("1");
+    if bool_spec_enabled {
         for function in &mut functions {
             specialize_bool_ptr_ops(function);
         }
@@ -637,7 +639,7 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
     // is inlined into push_grow$m...$Bool after the first pass, bringing in stride-8 copy
     // code. The second pass detects ALL __kea_ptr_offset strides in $Bool functions and
     // re-specializes them to stride 1 with I8 reads/writes.
-    if config.bool_element_specialization {
+    if bool_spec_enabled {
         for function in &mut functions {
             specialize_bool_ptr_ops(function);
         }
