@@ -1,0 +1,56 @@
+-- Quicksort (Lomuto) on a Vector Int — measures mutation + recursion.
+-- Sorts 100K elements (Fisher-Yates shuffled).
+
+use Vector
+
+fn qs(v: Vector Int, lo: Int, hi: Int) -> Vector Int
+  if lo >= hi
+    v
+  else
+    let result = partition(v, lo, hi)
+    let v2   = result.0
+    let pivot = result.1
+    let v3   = qs(v2, lo, pivot - 1)
+    qs(v3, pivot + 1, hi)
+
+fn partition(v: Vector Int, lo: Int, hi: Int) -> (Vector Int, Int)
+  let piv_val = Vector.get_unsafe(v, hi)
+  partition_scan(v, lo, hi, piv_val, lo - 1)
+
+fn partition_scan(v: Vector Int, j: Int, hi: Int, piv: Int, i: Int) -> (Vector Int, Int)
+  if j >= hi
+    let v2 = Vector.swap(v, i + 1, hi)
+    (v2, i + 1)
+  else
+    let elem = Vector.get_unsafe(v, j)
+    if elem <= piv
+      let v2 = Vector.swap(v, i + 1, j)
+      partition_scan(v2, j + 1, hi, piv, i + 1)
+    else
+      partition_scan(v, j + 1, hi, piv, i)
+
+fn fill_ascending(v: Vector Int, i: Int, n: Int) -> Vector Int
+  if i > n
+    v
+  else
+    fill_ascending(Vector.push(v, i), i + 1, n)
+
+fn shuffle(v: Vector Int, i: Int, seed: Int) -> Vector Int
+  if i <= 0
+    v
+  else
+    let next_seed = (seed * 1103515245 + 12345) % 2147483648
+    let j = next_seed % (i + 1)
+    let v2 = Vector.swap(v, i, j)
+    shuffle(v2, i - 1, next_seed)
+
+fn main() -> Int
+  let n = 100000
+  let v = shuffle(fill_ascending(Vector.with_capacity(n), 1, n), n - 1, 42)
+  let v2 = qs(v, 0, n - 1)
+  let ok = Vector.get_unsafe(v2, 0) == 1 and Vector.get_unsafe(v2, n - 1) == n
+  Vector.free(v2)
+  if ok
+    0
+  else
+    1

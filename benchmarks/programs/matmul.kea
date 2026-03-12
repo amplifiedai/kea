@@ -1,0 +1,68 @@
+-- Matrix multiply (200×200) — measures nested loops + array access.
+-- 200³ = 8M multiply-adds.
+
+use Vector
+use Int
+
+fn mat_get(m: Vector Float, cols: Int, r: Int, c: Int) -> Float
+  Vector.get_unsafe(m, r * cols + c)
+
+fn fill_value(v: Vector Float, val: Float, remaining: Int) -> Vector Float
+  if remaining <= 0
+    v
+  else
+    fill_value(Vector.push(v, val), val, remaining - 1)
+
+fn mat_zeros(n: Int) -> Vector Float
+  fill_value(Vector.with_capacity(n * n), 0.0, n * n)
+
+fn build_matrix(n: Int) -> Vector Float
+  build_matrix_step(Vector.with_capacity(n * n), n, 0, n * n)
+
+fn build_matrix_step(v: Vector Float, n: Int, i: Int, total: Int) -> Vector Float
+  if i >= total
+    v
+  else
+    let val = Int.to_float((i + 1) % 1000)
+    build_matrix_step(Vector.push(v, val), n, i + 1, total)
+
+fn mat_mul(a: Vector Float, b: Vector Float, n: Int) -> Vector Float
+  let c = mat_zeros(n)
+  mat_mul_rows(a, b, c, n, 0)
+
+fn mat_mul_rows(a: Vector Float, b: Vector Float, c: Vector Float, n: Int, r: Int) -> Vector Float
+  if r >= n
+    c
+  else
+    let c2 = mat_mul_cols(a, b, c, n, r, 0)
+    mat_mul_rows(a, b, c2, n, r + 1)
+
+fn mat_mul_cols(a: Vector Float, b: Vector Float, c: Vector Float, n: Int, r: Int, col: Int) -> Vector Float
+  if col >= n
+    c
+  else
+    let dot = inner_product(a, b, n, r, col, 0, 0.0)
+    let c2 = Vector.set_unsafe(c, r * n + col, dot)
+    mat_mul_cols(a, b, c2, n, r, col + 1)
+
+fn inner_product(a: Vector Float, b: Vector Float, n: Int, r: Int, col: Int, k: Int, acc: Float) -> Float
+  if k >= n
+    acc
+  else
+    let av = mat_get(a, n, r, k)
+    let bv = mat_get(b, n, k, col)
+    inner_product(a, b, n, r, col, k + 1, acc + av * bv)
+
+fn main() -> Int
+  let n = 200
+  let a = build_matrix(n)
+  let b = build_matrix(n)
+  let c = mat_mul(a, b, n)
+  let check = mat_get(c, n, 0, 0)
+  Vector.free(a)
+  Vector.free(b)
+  Vector.free(c)
+  if check > 0.0
+    0
+  else
+    1
