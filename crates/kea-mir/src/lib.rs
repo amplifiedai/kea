@@ -39,6 +39,19 @@ pub struct MirLoweringConfig {
     /// eligible for inlining. Default: 12.
     /// Override with `KEA_INLINE_THRESHOLD=N`.
     pub inline_threshold: usize,
+    /// Eliminate intermediate sum types (e.g. Option) when the constructor and
+    /// destructor are both visible in the same function (typically after inlining).
+    /// Default: false (JIT). AOT: true.
+    /// Override with `KEA_SUM_ELISION=1` / `KEA_NO_SUM_ELISION=1`.
+    pub sum_elision: bool,
+    /// Hoist loop-invariant instructions (RecordFieldLoad, Const) out of loops.
+    /// Default: false (JIT). AOT: true.
+    /// Override with `KEA_LICM=1` / `KEA_NO_LICM=1`.
+    pub licm: bool,
+    /// Eliminate redundant `i < 0` bounds checks on non-negative induction variables.
+    /// Default: false (JIT). AOT: true.
+    /// Override with `KEA_BCE=1` / `KEA_NO_BCE=1`.
+    pub bounds_check_elim: bool,
 }
 
 impl Default for MirLoweringConfig {
@@ -56,6 +69,9 @@ impl MirLoweringConfig {
             inline_threshold: 20,
             tail_loop_conversion: true,
             bool_element_specialization: true,
+            sum_elision: true,
+            licm: true,
+            bounds_check_elim: true,
         }
     }
 
@@ -67,6 +83,9 @@ impl MirLoweringConfig {
             inline_threshold: 20,
             tail_loop_conversion: false,
             bool_element_specialization: false,
+            sum_elision: false,
+            licm: false,
+            bounds_check_elim: false,
         }
     }
 }
@@ -642,6 +661,64 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
     if bool_spec_enabled {
         for function in &mut functions {
             specialize_bool_ptr_ops(function);
+        }
+    }
+
+    // Sum Elision: eliminate intermediate sum types (e.g. Option from Vector.get)
+    // when constructor and destructor are both visible after inlining.
+    let sum_elision_enabled =
+        if std::env::var("KEA_NO_SUM_ELISION").as_deref() == Ok("1") {
+            false
+        } else if std::env::var("KEA_SUM_ELISION").as_deref() == Ok("1") {
+            true
+        } else {
+            config.sum_elision
+        };
+    if sum_elision_enabled {
+        let mut total_elided = 0usize;
+        for function in &mut functions {
+            total_elided += elide_sum_types(function);
+        }
+        if std::env::var("KEA_SUM_ELISION_STATS").as_deref() == Ok("1") && total_elided > 0 {
+            eprintln!("[sum-elision] elided={total_elided}");
+        }
+    }
+
+    // LICM: hoist loop-invariant instructions (RecordFieldLoad, Const) to preheader.
+    let licm_enabled =
+        if std::env::var("KEA_NO_LICM").as_deref() == Ok("1") {
+            false
+        } else if std::env::var("KEA_LICM").as_deref() == Ok("1") {
+            true
+        } else {
+            config.licm
+        };
+    if licm_enabled {
+        let mut total_hoisted = 0usize;
+        for function in &mut functions {
+            total_hoisted += hoist_loop_invariants(function);
+        }
+        if std::env::var("KEA_LICM_STATS").as_deref() == Ok("1") && total_hoisted > 0 {
+            eprintln!("[licm] hoisted={total_hoisted}");
+        }
+    }
+
+    // Bounds-Check Elimination: remove `i < 0` checks on non-negative induction vars.
+    let bce_enabled =
+        if std::env::var("KEA_NO_BCE").as_deref() == Ok("1") {
+            false
+        } else if std::env::var("KEA_BCE").as_deref() == Ok("1") {
+            true
+        } else {
+            config.bounds_check_elim
+        };
+    if bce_enabled {
+        let mut total_eliminated = 0usize;
+        for function in &mut functions {
+            total_eliminated += eliminate_redundant_bounds_checks(function);
+        }
+        if std::env::var("KEA_BCE_STATS").as_deref() == Ok("1") && total_eliminated > 0 {
+            eprintln!("[bce] eliminated={total_eliminated}");
         }
     }
 
@@ -1449,6 +1526,1195 @@ fn specialize_bool_ptr_ops(function: &mut MirFunction) {
             }
         }
     }
+}
+
+// -----------------------------------------------------------------------
+// Loop detection infrastructure (shared by sum elision, LICM, BCE)
+// -----------------------------------------------------------------------
+
+/// Information about a detected loop in MIR (after tail-loop conversion).
+#[allow(dead_code)]
+struct LoopInfo {
+    /// Index of the loop header block in function.blocks
+    header_block_idx: usize,
+    /// Block ID of the loop header
+    header_block_id: MirBlockId,
+    /// Index of the preheader (stub_entry) block
+    preheader_block_idx: usize,
+    /// Indices of all blocks in the loop body (including header)
+    body_block_indices: BTreeSet<usize>,
+    /// Indices of blocks with back-edges to the header
+    backedge_block_indices: Vec<usize>,
+    /// Which header params are "unchanged" — same value ID passed back on ALL back-edges
+    unchanged_params: BTreeSet<usize>,
+}
+
+/// Detect loops in a MIR function.
+///
+/// After tail-loop conversion, loops have structure:
+///   stub_entry → Jump loop_header(args)
+///   loop_header(params) → Jump original_entry
+///   ... body ...
+///   back_edge → Jump loop_header(new_args)
+///
+/// A block is a loop header if it has params AND at least one predecessor with
+/// a higher block index (back-edge).
+fn detect_loops(function: &MirFunction) -> Vec<LoopInfo> {
+    let block_id_to_idx: BTreeMap<MirBlockId, usize> = function
+        .blocks
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.id.clone(), i))
+        .collect();
+
+    // Build predecessor map: block_idx → Vec<(pred_block_idx, args passed in Jump)>
+    let mut predecessors: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for (idx, block) in function.blocks.iter().enumerate() {
+        match &block.terminator {
+            MirTerminator::Jump { target, .. } => {
+                if let Some(&tgt_idx) = block_id_to_idx.get(target) {
+                    predecessors.entry(tgt_idx).or_default().push(idx);
+                }
+            }
+            MirTerminator::Branch { then_block, else_block, .. } => {
+                if let Some(&t) = block_id_to_idx.get(then_block) {
+                    predecessors.entry(t).or_default().push(idx);
+                }
+                if let Some(&e) = block_id_to_idx.get(else_block) {
+                    predecessors.entry(e).or_default().push(idx);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut loops = Vec::new();
+
+    for (block_idx, block) in function.blocks.iter().enumerate() {
+        if block.params.is_empty() {
+            continue;
+        }
+
+        let preds = match predecessors.get(&block_idx) {
+            Some(p) => p,
+            None => continue,
+        };
+
+        // Back-edges: predecessors with higher index
+        let backedges: Vec<usize> = preds.iter().copied().filter(|&p| p > block_idx).collect();
+        if backedges.is_empty() {
+            continue;
+        }
+
+        // Preheader: predecessor with lower index (should be exactly one)
+        let preheader = match preds.iter().copied().find(|&p| p < block_idx) {
+            Some(p) => p,
+            None => continue,
+        };
+
+        // Only detect loops created by tail-loop conversion: the preheader
+        // must be the function entry (block index 0) — that's where
+        // convert_tail_recursive_to_loop places the stub_entry.
+        if preheader != 0 {
+            continue;
+        }
+
+        // Verify preheader is a simple forwarder: no meaningful instructions,
+        // terminator is Jump to this block (the header).
+        let preheader_block = &function.blocks[preheader];
+        let preheader_is_forwarder = preheader_block.instructions.iter().all(|i| matches!(i, MirInst::Nop | MirInst::Const { .. }))
+            && matches!(&preheader_block.terminator, MirTerminator::Jump { target, .. } if *target == block.id);
+        if !preheader_is_forwarder {
+            continue;
+        }
+
+        // Header must just dispatch to the body (Jump, not Branch).
+        let header_is_dispatch = matches!(&block.terminator, MirTerminator::Jump { .. });
+        if !header_is_dispatch {
+            continue;
+        }
+
+        // Compute natural loop body: walk backwards from back-edge blocks to
+        // the header through predecessors. This correctly excludes exit paths.
+        let mut body = BTreeSet::new();
+        body.insert(block_idx);
+        let mut worklist: Vec<usize> = backedges.clone();
+        for &be in &worklist {
+            body.insert(be);
+        }
+
+        while let Some(bi) = worklist.pop() {
+            if bi == block_idx {
+                continue;
+            }
+            if let Some(preds_of_bi) = predecessors.get(&bi) {
+                for &pred in preds_of_bi {
+                    if body.insert(pred) {
+                        worklist.push(pred);
+                    }
+                }
+            }
+        }
+
+        // Detect unchanged params: for each header param at position k,
+        // check if ALL back-edge Jumps pass back the same value as the header param.
+        let mut unchanged = BTreeSet::new();
+        for (k, param) in block.params.iter().enumerate() {
+            let all_same = backedges.iter().all(|&be_idx| {
+                if let MirTerminator::Jump { args, .. } = &function.blocks[be_idx].terminator {
+                    args.get(k).is_some_and(|arg| *arg == param.id)
+                } else {
+                    false
+                }
+            });
+            if all_same {
+                unchanged.insert(k);
+            }
+        }
+
+        loops.push(LoopInfo {
+            header_block_idx: block_idx,
+            header_block_id: block.id.clone(),
+            preheader_block_idx: preheader,
+            body_block_indices: body,
+            backedge_block_indices: backedges,
+            unchanged_params: unchanged,
+        });
+    }
+
+    loops
+}
+
+// -----------------------------------------------------------------------
+// Opt A: Sum Elision
+// -----------------------------------------------------------------------
+
+/// Eliminate intermediate sum types when constructor and destructor are both
+/// visible in the same function (typically after inlining Vector.get → case).
+///
+/// Pattern:
+///   block_A: %some = SumInit("Option", "Some", tag=1, [%val]); Jump merge(%some)
+///   block_B: %none = SumInit("Option", "None", tag=0, []); Jump merge(%none)
+///   merge(%opt): %tag = SumTagLoad(%opt); %cmp = Binary(Eq, %tag, 1); Branch %cmp → some_arm, none_arm
+///   some_arm: %payload = SumPayloadLoad(%opt, "Some", 0); ... use %payload ...
+///   none_arm: ...
+///   later: Release(%opt)
+///
+/// Rewrite: redirect block_A → some_arm (passing %val as block param),
+/// redirect block_B → none_arm, eliminate SumInit/SumTagLoad/SumPayloadLoad/Release.
+fn elide_sum_types(function: &mut MirFunction) -> usize {
+    let mut elision_count = 0;
+
+    // We may need multiple rounds since one elision can enable another.
+    loop {
+        let did_elide = elide_sum_types_round(function);
+        if did_elide == 0 {
+            break;
+        }
+        elision_count += did_elide;
+    }
+
+    elision_count
+}
+
+fn elide_sum_types_round(function: &mut MirFunction) -> usize {
+    let block_id_to_idx: BTreeMap<MirBlockId, usize> = function
+        .blocks
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.id.clone(), i))
+        .collect();
+
+    // Find candidate merge blocks: blocks with a single param that is used
+    // by SumTagLoad, followed by Binary(Eq, tag, const), followed by Branch.
+    #[allow(dead_code)]
+    struct ElisionCandidate {
+        merge_block_idx: usize,
+        sum_param_pos: usize,
+        sum_value: MirValueId,
+        tag_load_dest: MirValueId,
+        tag_const_value: i64,
+        cmp_dest: MirValueId,
+        then_block_id: MirBlockId,
+        else_block_id: MirBlockId,
+        // For each predecessor: (pred_block_idx, variant, tag, fields)
+        pred_sum_inits: Vec<(usize, String, u32, Vec<MirValueId>)>,
+        // SumPayloadLoad sites in then/else arms: (block_idx, inst_idx, variant, field_index, dest)
+        payload_loads: Vec<(usize, usize, String, usize, MirValueId)>,
+        // Release sites for the sum value
+        release_sites: Vec<(usize, usize)>,
+    }
+
+    let mut candidates: Vec<ElisionCandidate> = Vec::new();
+
+    for (bi, block) in function.blocks.iter().enumerate() {
+        // Look for pattern: SumTagLoad → Binary(Eq) → Branch
+        // The sum value could be a block param or defined in a prior block.
+
+        // Find SumTagLoad in this block's instructions
+        for (ii, inst) in block.instructions.iter().enumerate() {
+            let (tag_dest, sum_val, _sum_type) = match inst {
+                MirInst::SumTagLoad { dest, sum, sum_type } => (dest.clone(), sum.clone(), sum_type.clone()),
+                _ => continue,
+            };
+
+            // The sum value should be a block param of this block
+            let sum_param_pos = match block.params.iter().position(|p| p.id == sum_val) {
+                Some(pos) => pos,
+                None => continue,
+            };
+
+            // Find Binary(Eq, tag_dest, Const) after the tag load
+            let mut cmp_info = None;
+            let mut tag_const_id = None;
+            for inst2 in &block.instructions[ii + 1..] {
+                if let MirInst::Binary { dest, op: MirBinaryOp::Eq, left, right } = inst2 {
+                    if *left == tag_dest {
+                        cmp_info = Some((dest.clone(), right.clone()));
+                        break;
+                    } else if *right == tag_dest {
+                        cmp_info = Some((dest.clone(), left.clone()));
+                        break;
+                    }
+                }
+            }
+            let (cmp_dest, const_id) = match cmp_info {
+                Some(c) => c,
+                None => continue,
+            };
+
+            // Find the Const value for the tag
+            let mut tag_const_val = None;
+            for inst2 in &block.instructions {
+                if let MirInst::Const { dest, literal: MirLiteral::Int(n) } = inst2
+                    && *dest == const_id
+                {
+                    tag_const_val = Some(*n);
+                    tag_const_id = Some(dest.clone());
+                    break;
+                }
+            }
+            let tag_const_val = match tag_const_val {
+                Some(v) => v,
+                None => continue,
+            };
+
+            // Terminator must be Branch on cmp_dest
+            let (then_id, else_id) = match &block.terminator {
+                MirTerminator::Branch { condition, then_block, else_block }
+                    if *condition == cmp_dest =>
+                {
+                    (then_block.clone(), else_block.clone())
+                }
+                _ => continue,
+            };
+
+            // Check predecessors: each must have a SumInit producing the value
+            // that is passed as the sum_param_pos-th arg in Jump to this block.
+            // Traces through forwarder chains via find_sum_origin.
+            let mut pred_inits = Vec::new();
+            let mut all_preds_ok = true;
+
+            for (pi, pred_block) in function.blocks.iter().enumerate() {
+                let args = match &pred_block.terminator {
+                    MirTerminator::Jump { target, args } if *target == block.id => args,
+                    _ => continue,
+                };
+
+                let passed_val = match args.get(sum_param_pos) {
+                    Some(v) => v,
+                    None => { all_preds_ok = false; break; }
+                };
+
+                // Walk through the predecessor's instructions and block params.
+                // If passed_val is a block param of pred_block, trace it further
+                // through predecessor chains.
+                let found_init = find_sum_origin(
+                    function, pi, passed_val, &mut pred_inits,
+                    &mut BTreeSet::new(),
+                );
+                if !found_init {
+                    all_preds_ok = false;
+                    break;
+                }
+            }
+
+            if !all_preds_ok || pred_inits.is_empty() {
+                continue;
+            }
+
+            // Escape check: the sum value must ONLY be used by SumTagLoad,
+            // SumPayloadLoad, Release, and Nop in this block and its successors.
+            // Also check that no other block params use it.
+            let mut sum_escapes = false;
+            // Check uses in the merge block itself (beyond SumTagLoad + Eq + Const)
+            for (ii2, inst2) in block.instructions.iter().enumerate() {
+                if ii2 == ii { continue; } // the SumTagLoad itself
+                if let Some(tag_c) = &tag_const_id
+                    && let MirInst::Const { dest, .. } = inst2
+                    && dest == tag_c
+                {
+                    continue;
+                }
+                if let MirInst::Binary { dest, .. } = inst2
+                    && *dest == cmp_dest
+                {
+                    continue;
+                }
+                if inst_uses_value(inst2, &sum_val) {
+                    sum_escapes = true;
+                    break;
+                }
+            }
+            if sum_escapes {
+                continue;
+            }
+
+            // Collect SumPayloadLoad and Release sites in successor blocks
+            let mut payload_loads = Vec::new();
+            let mut release_sites = Vec::new();
+
+            for (si, sblock) in function.blocks.iter().enumerate() {
+                for (sii, sinst) in sblock.instructions.iter().enumerate() {
+                    match sinst {
+                        MirInst::SumPayloadLoad { dest, sum, variant, field_index, .. }
+                            if *sum == sum_val =>
+                        {
+                            payload_loads.push((si, sii, variant.clone(), *field_index, dest.clone()));
+                        }
+                        MirInst::Release { value } if *value == sum_val => {
+                            release_sites.push((si, sii));
+                        }
+                        _ => {
+                            if sinst != &MirInst::Nop && si != bi && inst_uses_value(sinst, &sum_val) {
+                                sum_escapes = true;
+                            }
+                        }
+                    }
+                }
+                // Check terminator uses
+                if si != bi {
+                    match &sblock.terminator {
+                        MirTerminator::Jump { args, .. } => {
+                            if args.contains(&sum_val) {
+                                sum_escapes = true;
+                            }
+                        }
+                        MirTerminator::Branch { condition, .. } => {
+                            if *condition == sum_val {
+                                sum_escapes = true;
+                            }
+                        }
+                        MirTerminator::Return { value: Some(v) } => {
+                            if *v == sum_val {
+                                sum_escapes = true;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            if sum_escapes {
+                continue;
+            }
+
+            candidates.push(ElisionCandidate {
+                merge_block_idx: bi,
+                sum_param_pos,
+                sum_value: sum_val,
+                tag_load_dest: tag_dest,
+                tag_const_value: tag_const_val,
+                cmp_dest,
+                then_block_id: then_id,
+                else_block_id: else_id,
+                pred_sum_inits: pred_inits,
+                payload_loads,
+                release_sites,
+            });
+
+            break; // one candidate per block
+        }
+    }
+
+    if candidates.is_empty() {
+        return 0;
+    }
+
+    let mut next_val = next_fresh_value_id(function);
+    let mut elision_count = 0;
+
+    for candidate in &candidates {
+        // Determine which arm corresponds to which variant based on tag values.
+        // then_block = tag matches tag_const_value; else_block = doesn't match.
+
+        // For each payload load, add a block param to the target arm block.
+        // Group payload loads by block.
+        let mut arm_payload_params: BTreeMap<usize, Vec<(usize, MirValueId)>> = BTreeMap::new();
+        for &(pli_block, _, _, field_index, ref dest) in &candidate.payload_loads {
+            arm_payload_params.entry(pli_block).or_default().push((field_index, dest.clone()));
+        }
+
+        // For each predecessor, redirect to the correct arm.
+        for &(pred_idx, ref _variant, tag, ref fields) in &candidate.pred_sum_inits {
+            let matches_then = tag as i64 == candidate.tag_const_value;
+            let target_arm_id = if matches_then {
+                candidate.then_block_id.clone()
+            } else {
+                candidate.else_block_id.clone()
+            };
+
+            let target_arm_idx = block_id_to_idx[&target_arm_id];
+
+            // Build args for the redirect: existing block params of target + payload values
+            let mut new_args: Vec<MirValueId> = Vec::new();
+            // Pass existing params if the target block already had params
+            // (from other predecessors — typically none for pattern match arms)
+            // NOTE: arms from Branch don't take args, so existing_param_count starts at 0.
+            // We only add the new payload params.
+
+            // The payload loads for this arm
+            if let Some(loads) = arm_payload_params.get(&target_arm_idx) {
+                for (field_idx, _dest) in loads {
+                    if let Some(field_val) = fields.get(*field_idx) {
+                        new_args.push(field_val.clone());
+                    }
+                }
+            }
+
+            // Nop the SumInit in the predecessor
+            let pred_block = &mut function.blocks[pred_idx];
+            for inst in &mut pred_block.instructions {
+                if let MirInst::SumInit { .. } = inst
+                    && candidate.pred_sum_inits.iter().any(|(pi, _, _, _)| *pi == pred_idx)
+                {
+                    *inst = MirInst::Nop;
+                }
+            }
+
+            // Redirect predecessor to the target arm, passing payload fields
+            function.blocks[pred_idx].terminator = MirTerminator::Jump {
+                target: target_arm_id,
+                args: new_args,
+            };
+        }
+
+        // Add block params to arm blocks for payload values
+        for (&arm_block_idx, loads) in &arm_payload_params {
+            for (_, dest) in loads {
+                let param_id = MirValueId(next_val);
+                next_val += 1;
+
+                // Add block param
+                function.blocks[arm_block_idx].params.push(MirBlockParam {
+                    id: param_id.clone(),
+                    ty: Type::Dynamic, // conservative; codegen handles Dynamic
+                });
+
+                // Remap uses of the original SumPayloadLoad dest to this param
+                let old_dest = dest.clone();
+                remap_value_in_function(function, &old_dest, &param_id);
+            }
+        }
+
+        // Nop the SumTagLoad, Binary(Eq), Const(tag), and Branch in merge block
+        let merge_block = &mut function.blocks[candidate.merge_block_idx];
+        for inst in &mut merge_block.instructions {
+            match inst {
+                MirInst::SumTagLoad { dest, .. } if *dest == candidate.tag_load_dest => {
+                    *inst = MirInst::Nop;
+                }
+                MirInst::Binary { dest, .. } if *dest == candidate.cmp_dest => {
+                    *inst = MirInst::Nop;
+                }
+                MirInst::Const { literal: MirLiteral::Int(n), .. }
+                    if *n == candidate.tag_const_value =>
+                {
+                    *inst = MirInst::Nop;
+                }
+                _ => {}
+            }
+        }
+        // Replace Branch with Unreachable (merge block is now dead)
+        merge_block.terminator = MirTerminator::Unreachable;
+
+        // Nop SumPayloadLoad and Release sites
+        for &(pli_block, pli_inst, _, _, _) in &candidate.payload_loads {
+            function.blocks[pli_block].instructions[pli_inst] = MirInst::Nop;
+        }
+        for &(ri_block, ri_inst) in &candidate.release_sites {
+            function.blocks[ri_block].instructions[ri_inst] = MirInst::Nop;
+        }
+
+        elision_count += 1;
+    }
+
+    elision_count
+}
+
+/// Trace a value back through forwarder blocks to find its origin SumInit or Const.
+/// Returns true if a SumInit (or Const Int for field-less variants) was found.
+fn find_sum_origin(
+    function: &MirFunction,
+    block_idx: usize,
+    value_id: &MirValueId,
+    pred_inits: &mut Vec<(usize, String, u32, Vec<MirValueId>)>,
+    visited: &mut BTreeSet<usize>,
+) -> bool {
+    if !visited.insert(block_idx) {
+        return false; // cycle guard
+    }
+
+    let block = &function.blocks[block_idx];
+
+    // Check if value_id is defined by a SumInit or Const in this block
+    for inst in &block.instructions {
+        if let MirInst::SumInit { dest, variant, tag, fields, .. } = inst
+            && *dest == *value_id
+        {
+            pred_inits.push((block_idx, variant.clone(), *tag, fields.clone()));
+            return true;
+        }
+        if let MirInst::Const { dest, literal: MirLiteral::Int(n) } = inst
+            && *dest == *value_id
+        {
+            pred_inits.push((block_idx, String::new(), *n as u32, vec![]));
+            return true;
+        }
+    }
+
+    // If value_id is a block param, trace through all predecessors
+    let param_pos = match block.params.iter().position(|p| p.id == *value_id) {
+        Some(pos) => pos,
+        None => return false,
+    };
+
+    // Find all predecessors that Jump to this block
+    let mut all_found = true;
+    let mut any_pred = false;
+    for (pi, pred_block) in function.blocks.iter().enumerate() {
+        if let MirTerminator::Jump { target, args } = &pred_block.terminator
+            && *target == block.id
+        {
+            any_pred = true;
+            if let Some(arg) = args.get(param_pos) {
+                if !find_sum_origin(function, pi, arg, pred_inits, visited) {
+                    all_found = false;
+                    break;
+                }
+            } else {
+                all_found = false;
+                break;
+            }
+        }
+    }
+
+    any_pred && all_found
+}
+
+/// Check if an instruction uses a specific value ID (as an operand, not dest).
+fn inst_uses_value(inst: &MirInst, val: &MirValueId) -> bool {
+    match inst {
+        MirInst::Const { .. } => false,
+        MirInst::Binary { left, right, .. } => *left == *val || *right == *val,
+        MirInst::Unary { operand, .. } => *operand == *val,
+        MirInst::RecordInit { fields, .. } => fields.iter().any(|(_, v)| *v == *val),
+        MirInst::RecordInitReuse { source, fields, .. } => *source == *val || fields.iter().any(|(_, v)| *v == *val),
+        MirInst::ReuseToken { source, .. } => *source == *val,
+        MirInst::RecordInitFromToken { token, fields, .. } => *token == *val || fields.iter().any(|(_, v)| *v == *val),
+        MirInst::SumInit { fields, .. } => fields.contains(val),
+        MirInst::SumInitReuse { source, fields, .. } => *source == *val || fields.contains(val),
+        MirInst::SumInitFromToken { token, fields, .. } => *token == *val || fields.contains(val),
+        MirInst::SumTagLoad { sum, .. } => *sum == *val,
+        MirInst::SumPayloadLoad { sum, .. } => *sum == *val,
+        MirInst::RecordFieldLoad { record, .. } => *record == *val,
+        MirInst::FunctionRef { .. } => false,
+        MirInst::ClosureInit { entry, captures, .. } => *entry == *val || captures.contains(val),
+        MirInst::ClosureCaptureLoad { closure, .. } => *closure == *val,
+        MirInst::StateCellNew { initial, .. } => *initial == *val,
+        MirInst::StateCellLoad { cell, .. } => *cell == *val,
+        MirInst::StateCellStore { cell, value, .. } => *cell == *val || *value == *val,
+        MirInst::Retain { value } => *value == *val,
+        MirInst::Release { value } => *value == *val,
+        MirInst::Move { src, .. } => *src == *val,
+        MirInst::Borrow { src, .. } => *src == *val,
+        MirInst::TryClaim { src, .. } => *src == *val,
+        MirInst::Freeze { src, .. } => *src == *val,
+        MirInst::CowUpdate { target, updates, .. } => *target == *val || updates.iter().any(|u| u.value == *val),
+        MirInst::EffectOp { args, .. } => args.contains(val),
+        MirInst::HandlerEnter { .. } | MirInst::HandlerExit { .. } => false,
+        MirInst::Resume { value } => *value == *val,
+        MirInst::Call { args, .. } => args.contains(val),
+        MirInst::Unsupported { .. } | MirInst::Nop => false,
+    }
+}
+
+/// Remap all uses of old_val to new_val throughout the function.
+fn remap_value_in_function(function: &mut MirFunction, old_val: &MirValueId, new_val: &MirValueId) {
+    for block in &mut function.blocks {
+        for inst in &mut block.instructions {
+            remap_inst_value(inst, old_val, new_val);
+        }
+        match &mut block.terminator {
+            MirTerminator::Jump { args, .. } => {
+                for arg in args.iter_mut() {
+                    if *arg == *old_val {
+                        *arg = new_val.clone();
+                    }
+                }
+            }
+            MirTerminator::Branch { condition, .. } => {
+                if *condition == *old_val {
+                    *condition = new_val.clone();
+                }
+            }
+            MirTerminator::Return { value: Some(v) } => {
+                if *v == *old_val {
+                    *v = new_val.clone();
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Remap a single value in an instruction.
+fn remap_inst_value(inst: &mut MirInst, old_val: &MirValueId, new_val: &MirValueId) {
+    match inst {
+        MirInst::Binary { left, right, .. } => {
+            if *left == *old_val { *left = new_val.clone(); }
+            if *right == *old_val { *right = new_val.clone(); }
+        }
+        MirInst::Unary { operand, .. } => {
+            if *operand == *old_val { *operand = new_val.clone(); }
+        }
+        MirInst::RecordInit { fields, .. } => {
+            for (_, v) in fields.iter_mut() {
+                if *v == *old_val { *v = new_val.clone(); }
+            }
+        }
+        MirInst::RecordInitReuse { source, fields, .. } => {
+            if *source == *old_val { *source = new_val.clone(); }
+            for (_, v) in fields.iter_mut() {
+                if *v == *old_val { *v = new_val.clone(); }
+            }
+        }
+        MirInst::ReuseToken { source, .. } => {
+            if *source == *old_val { *source = new_val.clone(); }
+        }
+        MirInst::RecordInitFromToken { token, fields, .. } => {
+            if *token == *old_val { *token = new_val.clone(); }
+            for (_, v) in fields.iter_mut() {
+                if *v == *old_val { *v = new_val.clone(); }
+            }
+        }
+        MirInst::SumInit { fields, .. } => {
+            for f in fields.iter_mut() {
+                if *f == *old_val { *f = new_val.clone(); }
+            }
+        }
+        MirInst::SumInitReuse { source, fields, .. } => {
+            if *source == *old_val { *source = new_val.clone(); }
+            for f in fields.iter_mut() {
+                if *f == *old_val { *f = new_val.clone(); }
+            }
+        }
+        MirInst::SumInitFromToken { token, fields, .. } => {
+            if *token == *old_val { *token = new_val.clone(); }
+            for f in fields.iter_mut() {
+                if *f == *old_val { *f = new_val.clone(); }
+            }
+        }
+        MirInst::SumTagLoad { sum, .. } => {
+            if *sum == *old_val { *sum = new_val.clone(); }
+        }
+        MirInst::SumPayloadLoad { sum, .. } => {
+            if *sum == *old_val { *sum = new_val.clone(); }
+        }
+        MirInst::RecordFieldLoad { record, .. } => {
+            if *record == *old_val { *record = new_val.clone(); }
+        }
+        MirInst::ClosureInit { entry, captures, .. } => {
+            if *entry == *old_val { *entry = new_val.clone(); }
+            for c in captures.iter_mut() {
+                if *c == *old_val { *c = new_val.clone(); }
+            }
+        }
+        MirInst::ClosureCaptureLoad { closure, .. } => {
+            if *closure == *old_val { *closure = new_val.clone(); }
+        }
+        MirInst::StateCellNew { initial, .. } => {
+            if *initial == *old_val { *initial = new_val.clone(); }
+        }
+        MirInst::StateCellLoad { cell, .. } => {
+            if *cell == *old_val { *cell = new_val.clone(); }
+        }
+        MirInst::StateCellStore { cell, value } => {
+            if *cell == *old_val { *cell = new_val.clone(); }
+            if *value == *old_val { *value = new_val.clone(); }
+        }
+        MirInst::Retain { value } => {
+            if *value == *old_val { *value = new_val.clone(); }
+        }
+        MirInst::Release { value } => {
+            if *value == *old_val { *value = new_val.clone(); }
+        }
+        MirInst::Move { src, .. } => {
+            if *src == *old_val { *src = new_val.clone(); }
+        }
+        MirInst::Borrow { src, .. } => {
+            if *src == *old_val { *src = new_val.clone(); }
+        }
+        MirInst::TryClaim { src, .. } => {
+            if *src == *old_val { *src = new_val.clone(); }
+        }
+        MirInst::Freeze { src, .. } => {
+            if *src == *old_val { *src = new_val.clone(); }
+        }
+        MirInst::CowUpdate { target, updates, .. } => {
+            if *target == *old_val { *target = new_val.clone(); }
+            for u in updates.iter_mut() {
+                if u.value == *old_val { u.value = new_val.clone(); }
+            }
+        }
+        MirInst::EffectOp { args, .. } => {
+            for a in args.iter_mut() {
+                if *a == *old_val { *a = new_val.clone(); }
+            }
+        }
+        MirInst::Resume { value } => {
+            if *value == *old_val { *value = new_val.clone(); }
+        }
+        MirInst::Call { args, .. } => {
+            for a in args.iter_mut() {
+                if *a == *old_val { *a = new_val.clone(); }
+            }
+        }
+        MirInst::Const { .. }
+        | MirInst::FunctionRef { .. }
+        | MirInst::HandlerEnter { .. }
+        | MirInst::HandlerExit { .. }
+        | MirInst::Unsupported { .. }
+        | MirInst::Nop => {}
+    }
+}
+
+// -----------------------------------------------------------------------
+// Opt B: Loop-Invariant Code Motion (LICM)
+// -----------------------------------------------------------------------
+
+/// Hoist loop-invariant instructions to the preheader block.
+/// Returns the number of instructions hoisted.
+fn hoist_loop_invariants(function: &mut MirFunction) -> usize {
+    let loops = detect_loops(function);
+    if loops.is_empty() {
+        return 0;
+    }
+
+    let mut total_hoisted = 0;
+
+    for loop_info in &loops {
+        // Collect values defined in the loop body
+        let mut defined_in_loop: BTreeSet<MirValueId> = BTreeSet::new();
+        for &bi in &loop_info.body_block_indices {
+            let block = &function.blocks[bi];
+            for param in &block.params {
+                defined_in_loop.insert(param.id.clone());
+            }
+            for inst in &block.instructions {
+                if let Some(dest) = inst_defined_value(inst) {
+                    defined_in_loop.insert(dest.clone());
+                }
+            }
+        }
+
+        // Build set of header param values that are unchanged (loop-constant)
+        let header_block = &function.blocks[loop_info.header_block_idx];
+        let unchanged_values: BTreeSet<MirValueId> = loop_info
+            .unchanged_params
+            .iter()
+            .filter_map(|&k| header_block.params.get(k).map(|p| p.id.clone()))
+            .collect();
+
+        // Identify loop-invariant instructions
+        // An instruction is invariant if all its operands are either:
+        // - Not defined in the loop, OR
+        // - Unchanged loop-carried params, OR
+        // - Already identified as invariant (iterative)
+        let mut invariant_values: BTreeSet<MirValueId> = BTreeSet::new();
+        let mut invariant_insts: Vec<(usize, usize)> = Vec::new(); // (block_idx, inst_idx)
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for &bi in &loop_info.body_block_indices {
+                let block = &function.blocks[bi];
+                for (ii, inst) in block.instructions.iter().enumerate() {
+                    let dest = match inst_defined_value(inst) {
+                        Some(d) => d,
+                        None => continue,
+                    };
+                    if invariant_values.contains(dest) {
+                        continue;
+                    }
+
+                    let is_invariant = match inst {
+                        MirInst::Const { .. } => true,
+                        MirInst::RecordFieldLoad { record, .. } => {
+                            !defined_in_loop.contains(record)
+                                || unchanged_values.contains(record)
+                                || invariant_values.contains(record)
+                        }
+                        MirInst::Binary { left, right, .. } => {
+                            let left_inv = !defined_in_loop.contains(left)
+                                || unchanged_values.contains(left)
+                                || invariant_values.contains(left);
+                            let right_inv = !defined_in_loop.contains(right)
+                                || unchanged_values.contains(right)
+                                || invariant_values.contains(right);
+                            left_inv && right_inv
+                        }
+                        MirInst::Unary { operand, .. } => {
+                            !defined_in_loop.contains(operand)
+                                || unchanged_values.contains(operand)
+                                || invariant_values.contains(operand)
+                        }
+                        _ => false,
+                    };
+
+                    if is_invariant {
+                        invariant_values.insert(dest.clone());
+                        invariant_insts.push((bi, ii));
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if invariant_insts.is_empty() {
+            continue;
+        }
+
+        // Filter out invariant values that are used outside the loop body.
+        // Hoisting them would move the definition to the preheader, but uses
+        // outside the loop (e.g., in an enclosing loop's back-edge) would no
+        // longer be dominated by the definition.
+        let mut used_outside_loop: BTreeSet<MirValueId> = BTreeSet::new();
+        for (bi, block) in function.blocks.iter().enumerate() {
+            if loop_info.body_block_indices.contains(&bi)
+                || bi == loop_info.preheader_block_idx
+            {
+                continue;
+            }
+            for inst in &block.instructions {
+                for val in &invariant_values {
+                    if inst_uses_value(inst, val) {
+                        used_outside_loop.insert(val.clone());
+                    }
+                }
+            }
+            // Check terminator args
+            match &block.terminator {
+                MirTerminator::Jump { args, .. } => {
+                    for val in &invariant_values {
+                        if args.contains(val) {
+                            used_outside_loop.insert(val.clone());
+                        }
+                    }
+                }
+                MirTerminator::Branch { condition, .. } => {
+                    if invariant_values.contains(condition) {
+                        used_outside_loop.insert(condition.clone());
+                    }
+                }
+                MirTerminator::Return { value: Some(v) } => {
+                    if invariant_values.contains(v) {
+                        used_outside_loop.insert(v.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        invariant_insts.retain(|&(bi, ii)| {
+            if let Some(dest) = inst_defined_value(&function.blocks[bi].instructions[ii]) {
+                !used_outside_loop.contains(dest)
+            } else {
+                false
+            }
+        });
+
+        if invariant_insts.is_empty() {
+            continue;
+        }
+
+        // Hoist: move invariant instructions to the preheader.
+        //
+        // Since the preheader dominates the entire loop body in SSA, values
+        // defined in the preheader are directly available everywhere in the loop.
+        // No header block params or back-edge args are needed — the original
+        // value ID stays the same, it just moves to an earlier block.
+        let preheader_idx = loop_info.preheader_block_idx;
+        let header_idx = loop_info.header_block_idx;
+
+        // Collect instructions to hoist (clone before mutating)
+        let mut hoisted_insts: Vec<MirInst> = Vec::new();
+
+        for &(bi, ii) in &invariant_insts {
+            let mut inst = function.blocks[bi].instructions[ii].clone();
+
+            // Remap operands that reference header block params to the
+            // corresponding preheader Jump args (which are the initial values).
+            if let MirTerminator::Jump { args, .. } = &function.blocks[preheader_idx].terminator {
+                let header_params = &function.blocks[header_idx].params;
+                for (k, param) in header_params.iter().enumerate() {
+                    if let Some(arg) = args.get(k) {
+                        remap_inst_value(&mut inst, &param.id, arg);
+                    }
+                }
+            }
+
+            hoisted_insts.push(inst);
+            // Nop the original
+            function.blocks[bi].instructions[ii] = MirInst::Nop;
+        }
+
+        // Insert hoisted instructions in the preheader (before its Jump).
+        for inst in hoisted_insts {
+            function.blocks[preheader_idx].instructions.push(inst);
+            total_hoisted += 1;
+        }
+    }
+
+    total_hoisted
+}
+
+/// Get the result type of an instruction (best-effort; uses Dynamic as fallback).
+#[allow(dead_code)]
+fn inst_result_type(inst: &MirInst) -> Type {
+    match inst {
+        MirInst::Const { literal, .. } => match literal {
+            MirLiteral::Int(_) => Type::Int,
+            MirLiteral::Float(_) => Type::Float,
+            MirLiteral::Bool(_) => Type::Bool,
+            MirLiteral::Char(_) => Type::Char,
+            MirLiteral::String(_) => Type::String,
+            MirLiteral::Unit => Type::Unit,
+        },
+        MirInst::Binary { op, .. } => match op {
+            MirBinaryOp::Eq | MirBinaryOp::Neq | MirBinaryOp::Lt | MirBinaryOp::Lte
+            | MirBinaryOp::Gt | MirBinaryOp::Gte | MirBinaryOp::And | MirBinaryOp::Or
+            | MirBinaryOp::In | MirBinaryOp::NotIn => Type::Bool,
+            _ => Type::Int,
+        },
+        MirInst::RecordFieldLoad { field_ty, .. } => field_ty.clone(),
+        MirInst::SumPayloadLoad { field_ty, .. } => field_ty.clone(),
+        MirInst::Call { ret_type, .. } => ret_type.clone(),
+        _ => Type::Dynamic,
+    }
+}
+
+// -----------------------------------------------------------------------
+// Opt C: Bounds-Check Elimination
+// -----------------------------------------------------------------------
+
+/// Eliminate redundant `i < 0` checks on non-negative loop induction variables.
+/// Returns the number of checks eliminated.
+fn eliminate_redundant_bounds_checks(function: &mut MirFunction) -> usize {
+    let loops = detect_loops(function);
+    if loops.is_empty() {
+        return 0;
+    }
+
+    let mut eliminated = 0;
+
+    for loop_info in &loops {
+        let header_block = &function.blocks[loop_info.header_block_idx];
+
+        // Find induction variables: header params that start at Const(N) where N >= 0
+        // and are incremented by a positive constant on all back-edges.
+        let mut induction_vars: BTreeSet<MirValueId> = BTreeSet::new();
+
+        for (k, param) in header_block.params.iter().enumerate() {
+            // Check initial value from preheader
+            let initial_val = if let MirTerminator::Jump { args, .. } =
+                &function.blocks[loop_info.preheader_block_idx].terminator
+            {
+                args.get(k).cloned()
+            } else {
+                None
+            };
+
+            let initial_val = match initial_val {
+                Some(v) => v,
+                None => continue,
+            };
+
+            // Check if initial value is a non-negative constant
+            let is_non_negative_start = function.blocks[loop_info.preheader_block_idx]
+                .instructions
+                .iter()
+                .any(|inst| {
+                    if let MirInst::Const { dest, literal: MirLiteral::Int(n) } = inst {
+                        *dest == initial_val && *n >= 0
+                    } else {
+                        false
+                    }
+                });
+
+            if !is_non_negative_start {
+                continue;
+            }
+
+            // Check back-edges: the value passed at position k must be
+            // result of Binary(Add, param, positive_const)
+            let all_backedges_increment = loop_info.backedge_block_indices.iter().all(|&be_idx| {
+                let be_val = if let MirTerminator::Jump { args, .. } = &function.blocks[be_idx].terminator {
+                    args.get(k).cloned()
+                } else {
+                    None
+                };
+
+                let be_val = match be_val {
+                    Some(v) => v,
+                    None => return false,
+                };
+
+                // Find Binary(Add, param, const) in loop body producing be_val
+                loop_info.body_block_indices.iter().any(|&bi| {
+                    function.blocks[bi].instructions.iter().any(|inst| {
+                        if let MirInst::Binary { dest, op: MirBinaryOp::Add, left, right } = inst {
+                            if *dest == be_val {
+                                // Check if one side is the param, other is a positive const
+                                let (iv_side, const_side) = if *left == param.id {
+                                    (true, right)
+                                } else if *right == param.id {
+                                    (true, left)
+                                } else {
+                                    (false, left) // won't match
+                                };
+
+                                if !iv_side {
+                                    return false;
+                                }
+
+                                // Check const_side is a positive constant
+                                loop_info.body_block_indices.iter().any(|&bi2| {
+                                    function.blocks[bi2].instructions.iter().any(|inst2| {
+                                        if let MirInst::Const { dest, literal: MirLiteral::Int(n) } = inst2 {
+                                            *dest == *const_side && *n > 0
+                                        } else {
+                                            false
+                                        }
+                                    })
+                                })
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    })
+                })
+            });
+
+            if all_backedges_increment {
+                induction_vars.insert(param.id.clone());
+            }
+        }
+
+        if std::env::var("KEA_BCE_STATS").as_deref() == Ok("1") && !induction_vars.is_empty() {
+            eprintln!("[bce] fn={} loop_header=b{} induction_vars={}",
+                function.name, loop_info.header_block_idx, induction_vars.len());
+        }
+
+        if induction_vars.is_empty() {
+            continue;
+        }
+
+        // Find `Binary(Lt, %iv, Const(0))` in loop body and eliminate
+        for &bi in &loop_info.body_block_indices {
+            let block = &function.blocks[bi];
+            let mut to_eliminate: Vec<(usize, MirValueId)> = Vec::new(); // (inst_idx, cmp_dest)
+
+            for (ii, inst) in block.instructions.iter().enumerate() {
+                if let MirInst::Binary { dest, op: MirBinaryOp::Lt, left, right } = inst
+                    && induction_vars.contains(left)
+                {
+                        // Check if right is Const(0)
+                        let right_is_zero = block.instructions.iter().any(|inst2| {
+                            if let MirInst::Const { dest, literal: MirLiteral::Int(0) } = inst2 {
+                                *dest == *right
+                            } else {
+                                false
+                            }
+                        });
+                        // Also check other body blocks for the const
+                        let right_is_zero = right_is_zero || loop_info.body_block_indices.iter().any(|&bi2| {
+                            if bi2 == bi { return false; }
+                            function.blocks[bi2].instructions.iter().any(|inst2| {
+                                if let MirInst::Const { dest, literal: MirLiteral::Int(0) } = inst2 {
+                                    *dest == *right
+                                } else {
+                                    false
+                                }
+                            })
+                        });
+                        // Also check the preheader for the const (LICM may have hoisted it)
+                        let right_is_zero = right_is_zero || {
+                            let pre_idx = loop_info.preheader_block_idx;
+                            function.blocks[pre_idx].instructions.iter().any(|inst2| {
+                                if let MirInst::Const { dest, literal: MirLiteral::Int(0) } = inst2 {
+                                    *dest == *right
+                                } else {
+                                    false
+                                }
+                            })
+                        };
+                        // Also check header block params (LICM may have promoted it)
+                        let right_is_zero = right_is_zero || {
+                            // After LICM, a hoisted Const(0) might be a header param.
+                            // Check if any preheader instruction is Const(0) and the
+                            // corresponding header param maps to `right`.
+                            let header = &function.blocks[loop_info.header_block_idx];
+                            if let MirTerminator::Jump { args, .. } = &function.blocks[loop_info.preheader_block_idx].terminator {
+                                header.params.iter().zip(args.iter()).any(|(p, a)| {
+                                    p.id == *right && function.blocks[loop_info.preheader_block_idx].instructions.iter().any(|inst2| {
+                                        matches!(inst2, MirInst::Const { dest, literal: MirLiteral::Int(0) } if *dest == *a)
+                                    })
+                                })
+                            } else {
+                                false
+                            }
+                        };
+
+                        if right_is_zero {
+                            to_eliminate.push((ii, dest.clone()));
+                        }
+                }
+            }
+
+            // For each eliminated comparison, replace the Branch with Jump to else_block
+            for (ii, cmp_dest) in to_eliminate {
+                // The result is always false (iv >= 0 always)
+                // Find the Branch using cmp_dest
+                let block = &function.blocks[bi];
+                if let MirTerminator::Branch { condition, else_block, .. } = &block.terminator
+                    && *condition == cmp_dest
+                {
+                    let else_id = else_block.clone();
+                    function.blocks[bi].terminator = MirTerminator::Jump {
+                        target: else_id,
+                        args: vec![],
+                    };
+                    function.blocks[bi].instructions[ii] = MirInst::Nop;
+                    eliminated += 1;
+                }
+            }
+        }
+    }
+
+    eliminated
 }
 
 /// Convert a directly tail-recursive function into an explicit MIR loop.
