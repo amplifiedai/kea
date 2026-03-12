@@ -1874,7 +1874,20 @@ impl Parser {
         let return_annotation = Some(self.type_annotation()?);
         let where_clause = self.where_clause()?;
 
-        let body = self.parse_block_expr("expected function body block")?;
+        let has_extern = annotations.iter().any(|a| a.name.node == "extern");
+        let body = if has_extern {
+            // @extern functions have no body — use a sentinel Unit expression.
+            // Validate that the @extern annotation has a calling convention argument.
+            let extern_ann = annotations.iter().find(|a| a.name.node == "extern").unwrap();
+            if extern_ann.args.is_empty() {
+                self.error_at_current(
+                    "@extern requires a calling convention argument, e.g. @extern(\"c\")",
+                );
+            }
+            Spanned::new(ExprKind::Lit(Lit::Unit), start)
+        } else {
+            self.parse_block_expr("expected function body block")?
+        };
         let end = self.current_span();
 
         Some(Spanned::new(
@@ -6605,6 +6618,36 @@ mod tests {
             DeclKind::Function(def) => {
                 assert_eq!(def.annotations.len(), 1);
                 assert_eq!(def.annotations[0].name.node, "unsafe");
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_extern_c_function_no_body() {
+        let module = parse_mod("@extern(\"c\")\nfn strlen(s: Ptr UInt8) -> Int64");
+        match &module.declarations[0].node {
+            DeclKind::Function(def) => {
+                assert_eq!(def.name.node, "strlen");
+                assert_eq!(def.annotations.len(), 1);
+                assert_eq!(def.annotations[0].name.node, "extern");
+                assert_eq!(def.annotations[0].args.len(), 1);
+                assert_eq!(def.params.len(), 1);
+                // Body should be the sentinel Unit expression
+                assert!(matches!(def.body.node, ExprKind::Lit(Lit::Unit)));
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_extern_c_function_with_effect() {
+        let module = parse_mod("@extern(\"c\")\nfn abs(n: Int32) -[IO]> Int32");
+        match &module.declarations[0].node {
+            DeclKind::Function(def) => {
+                assert_eq!(def.name.node, "abs");
+                assert!(def.effect_annotation.is_some());
+                assert!(matches!(def.body.node, ExprKind::Lit(Lit::Unit)));
             }
             other => panic!("expected function declaration, got {other:?}"),
         }

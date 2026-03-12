@@ -8760,7 +8760,7 @@ fn compile_build_and_execute_aot_ptr_alloc_read_write_free_exit_code() {
     let output_path = temp_artifact_path("kea-cli-aot-ptr-alloc-read-write-free", "bin");
 
     let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
-    link_object_bytes(&compiled.object, &output_path).expect("link should work");
+    link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
 
     let status = std::process::Command::new(&output_path)
         .status()
@@ -8782,7 +8782,7 @@ fn compile_build_and_execute_aot_payload_constructor_case_exit_code() {
     let output_path = temp_artifact_path("kea-cli-aot-sum-case", "bin");
 
     let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
-    link_object_bytes(&compiled.object, &output_path).expect("link should work");
+    link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
 
     let status = std::process::Command::new(&output_path)
         .status()
@@ -8804,7 +8804,7 @@ fn compile_build_and_execute_aot_mutually_recursive_struct_enum_exit_code() {
     let output_path = temp_artifact_path("kea-cli-aot-mutual-recursive-type-defs", "bin");
 
     let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
-    link_object_bytes(&compiled.object, &output_path).expect("link should work");
+    link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
 
     let status = std::process::Command::new(&output_path)
         .status()
@@ -8826,7 +8826,7 @@ fn compile_build_and_execute_aot_io_stdout_unit_main_exit_code() {
     let output_path = temp_artifact_path("kea-cli-aot-io-stdout", "bin");
 
     let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
-    link_object_bytes(&compiled.object, &output_path).expect("link should work");
+    link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
 
     let output = std::process::Command::new(&output_path)
         .output()
@@ -8853,7 +8853,7 @@ fn compile_build_and_execute_aot_io_stdout_concat_exit_code() {
     let output_path = temp_artifact_path("kea-cli-aot-io-stdout-concat", "bin");
 
     let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
-    link_object_bytes(&compiled.object, &output_path).expect("link should work");
+    link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
 
     let output = std::process::Command::new(&output_path)
         .output()
@@ -8880,7 +8880,7 @@ fn compile_build_and_execute_aot_io_stderr_unit_main_exit_code() {
     let output_path = temp_artifact_path("kea-cli-aot-io-stderr", "bin");
 
     let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
-    link_object_bytes(&compiled.object, &output_path).expect("link should work");
+    link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
 
     let output = std::process::Command::new(&output_path)
         .output()
@@ -8919,7 +8919,7 @@ fn compile_build_and_execute_aot_io_read_write_file_exit_code() {
     let output_path = temp_artifact_path("kea-cli-aot-io-read-write", "bin");
 
     let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
-    link_object_bytes(&compiled.object, &output_path).expect("link should work");
+    link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
 
     let status = std::process::Command::new(&output_path)
         .status()
@@ -8969,7 +8969,7 @@ fn compile_jit_and_aot_exit_code_parity_corpus() {
         let output_path = temp_artifact_path(&name, "bin");
         let compiled = compile_file(&source_path, CodegenMode::Aot)
             .unwrap_or_else(|err| panic!("aot compile should work for parity case {idx}: {err}"));
-        link_object_bytes(&compiled.object, &output_path).expect("link should work");
+        link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
 
         let status = std::process::Command::new(&output_path)
             .status()
@@ -9744,7 +9744,7 @@ fn compile_and_execute_division_by_zero_panics_with_message() {
     let output_path = temp_artifact_path("kea-cli-div-by-zero", "bin");
 
     let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
-    link_object_bytes(&compiled.object, &output_path).expect("link should work");
+    link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
 
     let output = std::process::Command::new(&output_path)
         .output()
@@ -9772,7 +9772,7 @@ fn compile_and_execute_modulo_by_zero_panics_with_message() {
     let output_path = temp_artifact_path("kea-cli-mod-by-zero", "bin");
 
     let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
-    link_object_bytes(&compiled.object, &output_path).expect("link should work");
+    link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
 
     let output = std::process::Command::new(&output_path)
         .output()
@@ -11552,7 +11552,7 @@ fn compile_build_and_execute_aot_string_interpolation_with_fifty_expressions_std
     let output_path = temp_artifact_path("kea-cli-aot-string-interpolation-fifty", "bin");
 
     let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
-    link_object_bytes(&compiled.object, &output_path).expect("link should work");
+    link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
 
     let output = std::process::Command::new(&output_path)
         .output()
@@ -14399,6 +14399,42 @@ fn par_effectful_callback_rejected_at_typecheck() {
         "effectful Par callback should be rejected by type checker"
     );
     let _ = std::fs::remove_file(source_path);
+}
+
+// ── FFI / @extern tests ────────────────────────────────────────────────
+
+#[test]
+fn extern_c_function_calls_libc_labs_jit() {
+    let source_path = write_temp_source(
+        "@extern(\"c\")\nfn labs(n: Int) -[IO]> Int\n\npub fn main() -[IO]> Int\n  let result = labs(-42)\n  if result == 42\n    0\n  else\n    1\n",
+        "kea-cli-ffi-labs-jit",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("jit run should succeed");
+    assert_eq!(run.exit_code, 0, "labs(-42) should return 42");
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn extern_c_function_calls_libc_labs_aot() {
+    let source_path = write_temp_source(
+        "@extern(\"c\")\nfn labs(n: Int) -[IO]> Int\n\npub fn main() -[IO]> Int\n  let result = labs(-42)\n  if result == 42\n    0\n  else\n    1\n",
+        "kea-cli-ffi-labs-aot",
+        "kea",
+    );
+    let output_path = temp_artifact_path("kea-cli-ffi-labs-aot", "bin");
+
+    let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+    link_object_bytes(&compiled.object, &output_path, &compiled.link_libraries).expect("link should work");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("aot executable should run");
+    assert_eq!(status.code(), Some(0), "labs(-42) should return 42");
+
+    let _ = std::fs::remove_file(source_path);
+    let _ = std::fs::remove_file(output_path);
 }
 
 fn temp_artifact_path(prefix: &str, extension: &str) -> PathBuf {

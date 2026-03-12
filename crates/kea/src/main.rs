@@ -69,7 +69,7 @@ fn run() -> Result<(), String> {
                     result.object.len()
                 );
             } else {
-                link_object_bytes(&result.object, &output)?;
+                link_object_bytes(&result.object, &output, &result.link_libraries)?;
                 println!("built executable `{}`", output.display());
             }
             Ok(())
@@ -680,7 +680,11 @@ fn default_build_output_path(input: &Path) -> PathBuf {
     input.with_extension("")
 }
 
-fn link_object_bytes(object: &[u8], output: &Path) -> Result<(), String> {
+fn link_object_bytes(
+    object: &[u8],
+    output: &Path,
+    link_libraries: &[String],
+) -> Result<(), String> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("time should move forward")
@@ -721,11 +725,16 @@ fn link_object_bytes(object: &[u8], output: &Path) -> Result<(), String> {
         ));
     }
 
-    let status = ProcessCommand::new("cc")
+    let mut link_cmd = ProcessCommand::new("cc");
+    link_cmd
         .arg(&temp_object)
         .arg(&temp_runtime_object)
         .arg("-o")
-        .arg(output)
+        .arg(output);
+    for lib in link_libraries {
+        link_cmd.arg(format!("-l{lib}"));
+    }
+    let status = link_cmd
         .status()
         .map_err(|err| format!("failed to invoke linker `cc`: {err}"))?;
 

@@ -51,6 +51,7 @@ pub struct CompileResult {
     pub object: Vec<u8>,
     pub stats: PassStats,
     pub diagnostics: Vec<Diagnostic>,
+    pub link_libraries: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -210,10 +211,20 @@ pub fn emit_object(ctx: &CompilationContext, mode: CodegenMode) -> Result<Compil
             )
             .map_err(|err| format_codegen_error_with_fip_context(&module, &format!("{err}")))?;
 
+        // Collect unique link libraries from extern function declarations.
+        let link_libraries: Vec<String> = mir
+            .extern_functions
+            .iter()
+            .flat_map(|ef| ef.link_libraries.iter().cloned())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+
         Ok(CompileResult {
             object: artifact.object,
             stats: artifact.stats,
             diagnostics,
+            link_libraries,
         })
     })
 }
@@ -4510,6 +4521,12 @@ fn typecheck_functions(
             DeclKind::ExprFn(expr_decl) => expr_decl_to_fn_decl(expr_decl),
             _ => continue,
         };
+
+        // @extern functions have no body to type-check — their type is fully
+        // determined by the declaration signature, already pre-registered above.
+        if has_annotation_named(&fn_decl.annotations, "extern") {
+            continue;
+        }
 
         let where_diags = validate_where_clause_traits(&fn_decl.where_clause, traits);
         diagnostics.extend(where_diags.iter().filter(|d| !is_error(d)).cloned());

@@ -25,7 +25,19 @@ pub struct HirModule {
 #[derive(Debug, Clone, PartialEq)]
 pub enum HirDecl {
     Function(HirFunction),
+    ExternFunction(HirExternFunction),
     Raw(DeclKind),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HirExternFunction {
+    pub name: String,
+    pub params: Vec<Type>,
+    pub return_type: Type,
+    pub effects: EffectRow,
+    pub calling_convention: String,
+    pub link_libraries: Vec<String>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1059,7 +1071,7 @@ pub fn check_unique_moves_with_borrow_map(
         .iter()
         .flat_map(|decl| match decl {
             HirDecl::Function(function) => check_unique_moves_function(function, borrow_param_map),
-            HirDecl::Raw(_) => Vec::new(),
+            HirDecl::ExternFunction(_) | HirDecl::Raw(_) => Vec::new(),
         })
         .collect()
 }
@@ -1613,11 +1625,15 @@ pub fn lower_module(
     for decl in &module.declarations {
         match &decl.node {
             DeclKind::Function(fn_decl) => {
-                declarations.push(HirDecl::Function(lower_function_with_variants(
-                    fn_decl, env, &ctx,
-                )));
-                if intrinsic_symbol_from_annotations(&fn_decl.annotations).is_some() {
-                    declarations.push(HirDecl::Raw(DeclKind::Function(fn_decl.clone())));
+                if let Some(extern_fn) = try_lower_extern_function(fn_decl, env) {
+                    declarations.push(HirDecl::ExternFunction(extern_fn));
+                } else {
+                    declarations.push(HirDecl::Function(lower_function_with_variants(
+                        fn_decl, env, &ctx,
+                    )));
+                    if intrinsic_symbol_from_annotations(&fn_decl.annotations).is_some() {
+                        declarations.push(HirDecl::Raw(DeclKind::Function(fn_decl.clone())));
+                    }
                 }
             }
             DeclKind::ExprFn(expr_decl) => {
@@ -1697,6 +1713,64 @@ fn lower_function_with_variants(fn_decl: &FnDecl, env: &TypeEnv, ctx: &LowerCtx)
         span: fn_decl.span,
         is_fip: fn_decl.annotations.iter().any(|ann| ann.name.node == "fip"),
     }
+}
+
+/// If the function has an `@extern("c")` annotation, lower it as an extern function declaration.
+fn try_lower_extern_function(fn_decl: &FnDecl, env: &TypeEnv) -> Option<HirExternFunction> {
+    let extern_ann = fn_decl
+        .annotations
+        .iter()
+        .find(|a| a.name.node == "extern")?;
+
+    // Extract calling convention from annotation argument (e.g. "c")
+    let calling_convention = extern_ann
+        .args
+        .first()
+        .and_then(|arg| match &arg.value.node {
+            ExprKind::Lit(Lit::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| "c".to_string());
+
+    // Extract link libraries from @link annotations
+    let link_libraries = fn_decl
+        .annotations
+        .iter()
+        .filter(|a| a.name.node == "link")
+        .filter_map(|a| {
+            a.args.first().and_then(|arg| match &arg.value.node {
+                ExprKind::Lit(Lit::String(s)) => Some(s.clone()),
+                _ => None,
+            })
+        })
+        .collect();
+
+    // Get the function type from the type environment
+    let fn_ty = env
+        .lookup(&fn_decl.name.node)
+        .map(|scheme| scheme.ty.clone())
+        .unwrap_or_else(|| {
+            function_type_from_decl_annotations(fn_decl, env)
+        });
+
+    let (params, return_type, effects) = match &fn_ty {
+        Type::Function(ft) => (
+            ft.params.clone(),
+            ft.ret.as_ref().clone(),
+            ft.effects.clone(),
+        ),
+        _ => (vec![], Type::Dynamic, EffectRow::pure()),
+    };
+
+    Some(HirExternFunction {
+        name: fn_decl.name.node.clone(),
+        params,
+        return_type,
+        effects,
+        calling_convention,
+        link_libraries,
+        span: fn_decl.span,
+    })
 }
 
 fn merge_function_param_effect_hints_from_annotations(fn_decl: &FnDecl, fn_ty: &mut Type) {
@@ -3994,6 +4068,38 @@ fn record_case_arms_from_pattern(pattern: &PatternKind) -> Option<Vec<RecordCase
                     | PatternKind::Lit(lit @ Lit::Float(_))
                     | PatternKind::Lit(lit @ Lit::Bool(_)) => checks.push(RecordFieldCheck {
                         field: field_name.clone(),
+                        field_ty: literal_case_type(literal_case_value_from_lit(lit)?),
+                        expected: literal_case_value_from_lit(lit)?,
+                    }),
+                    _ => return None,
+                }
+            }
+            Some(vec![(RecordCaseCarrier::Anonymous, None, binds, checks)])
+        }
+        PatternKind::Tuple(pats) => {
+            let mut binds = Vec::new();
+            let mut checks = Vec::new();
+            for (idx, pat) in pats.iter().enumerate() {
+                let field_name = idx.to_string();
+                match &pat.node {
+                    PatternKind::Wildcard => {}
+                    PatternKind::Var(bind_name) => {
+                        if binds
+                            .iter()
+                            .any(|bind: &RecordFieldBind| bind.name == *bind_name)
+                        {
+                            return None;
+                        }
+                        binds.push(RecordFieldBind {
+                            name: bind_name.clone(),
+                            field: field_name,
+                            field_ty: Type::Dynamic,
+                        });
+                    }
+                    PatternKind::Lit(lit @ Lit::Int(_))
+                    | PatternKind::Lit(lit @ Lit::Float(_))
+                    | PatternKind::Lit(lit @ Lit::Bool(_)) => checks.push(RecordFieldCheck {
+                        field: field_name,
                         field_ty: literal_case_type(literal_case_value_from_lit(lit)?),
                         expected: literal_case_value_from_lit(lit)?,
                     }),

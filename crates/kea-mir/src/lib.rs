@@ -106,6 +106,16 @@ pub struct MirBlockId(pub u32);
 pub struct MirModule {
     pub functions: Vec<MirFunction>,
     pub layouts: MirLayoutCatalog,
+    pub extern_functions: Vec<MirExternFunction>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MirExternFunction {
+    pub name: String,
+    pub params: Vec<Type>,
+    pub return_type: Type,
+    pub calling_convention: String,
+    pub link_libraries: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -495,20 +505,37 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
         .iter()
         .filter_map(|decl| match decl {
             HirDecl::Function(function) => Some(function.name.clone()),
-            HirDecl::Raw(_) => None,
+            HirDecl::ExternFunction(_) | HirDecl::Raw(_) => None,
         })
         .collect::<BTreeSet<_>>();
+    let mut known_extern_functions: BTreeSet<String> = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match decl {
+            HirDecl::ExternFunction(ef) => Some(ef.name.clone()),
+            _ => None,
+        })
+        .collect();
     let mut known_function_types = module
         .declarations
         .iter()
         .filter_map(|decl| match decl {
             HirDecl::Function(function) => Some((function.name.clone(), function.ty.clone())),
+            HirDecl::ExternFunction(ef) => {
+                let ft = kea_types::FunctionType {
+                    params: ef.params.clone(),
+                    ret: Box::new(ef.return_type.clone()),
+                    effects: ef.effects.clone(),
+                };
+                Some((ef.name.clone(), Type::Function(ft)))
+            }
             HirDecl::Raw(_) => None,
         })
         .collect::<BTreeMap<_, _>>();
     let known_function_alias_targets =
         collect_namespaced_alias_targets(known_function_types.keys(), &import_aliases);
     extend_namespaced_set_with_import_aliases(&mut known_functions, &import_aliases);
+    extend_namespaced_set_with_import_aliases(&mut known_extern_functions, &import_aliases);
     extend_namespaced_map_with_import_aliases(&mut known_function_types, &import_aliases);
     let intrinsic_symbols = collect_intrinsic_symbols(module);
     let mut effect_operations = collect_effect_operations(module);
@@ -530,12 +557,27 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
     seed_builtin_sum_layouts(&mut layouts);
     seed_anon_record_layouts(module, &mut layouts);
     let mut functions = Vec::new();
+    // Collect extern function metadata for MirModule.
+    let mut mir_extern_functions = Vec::new();
+    for decl in &module.declarations {
+        if let HirDecl::ExternFunction(ef) = decl {
+            mir_extern_functions.push(MirExternFunction {
+                name: ef.name.clone(),
+                params: ef.params.clone(),
+                return_type: ef.return_type.clone(),
+                calling_convention: ef.calling_convention.clone(),
+                link_libraries: ef.link_libraries.clone(),
+            });
+        }
+    }
+
     for decl in &module.declarations {
         if let HirDecl::Function(function) = decl {
             let lowered = lower_hir_function(
                 function,
                 &layouts,
                 &known_functions,
+                &known_extern_functions,
                 &known_function_types,
                 &known_function_alias_targets,
                 &known_const_exprs,
@@ -805,7 +847,11 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
         }
     }
 
-    MirModule { functions, layouts }
+    MirModule {
+        functions,
+        layouts,
+        extern_functions: mir_extern_functions,
+    }
 }
 
 /// Classify what a closure wraps, determined by structural verification of the
@@ -8380,6 +8426,7 @@ fn lower_hir_function(
     function: &HirFunction,
     layouts: &MirLayoutCatalog,
     known_functions: &BTreeSet<String>,
+    known_extern_functions: &BTreeSet<String>,
     known_function_types: &BTreeMap<String, Type>,
     known_function_alias_targets: &BTreeMap<String, String>,
     known_const_exprs: &BTreeMap<String, AstExprKind>,
@@ -8411,6 +8458,7 @@ fn lower_hir_function(
         &hidden_dispatch_effects,
         layouts,
         known_functions,
+        known_extern_functions,
         known_function_types,
         known_function_alias_targets,
         known_const_exprs,
@@ -8559,6 +8607,7 @@ struct FunctionLoweringCtx {
     var_types: BTreeMap<String, Type>,
     local_lambdas: BTreeMap<String, LocalLambda>,
     known_functions: BTreeSet<String>,
+    known_extern_functions: BTreeSet<String>,
     known_function_types: BTreeMap<String, Type>,
     known_function_alias_targets: BTreeMap<String, String>,
     known_const_exprs: BTreeMap<String, AstExprKind>,
@@ -8669,6 +8718,7 @@ impl FunctionLoweringCtx {
         hidden_dispatch_effects: &[String],
         layouts: &MirLayoutCatalog,
         known_functions: &BTreeSet<String>,
+        known_extern_functions: &BTreeSet<String>,
         known_function_types: &BTreeMap<String, Type>,
         known_function_alias_targets: &BTreeMap<String, String>,
         known_const_exprs: &BTreeMap<String, AstExprKind>,
@@ -8720,6 +8770,7 @@ impl FunctionLoweringCtx {
             var_types: BTreeMap::new(),
             local_lambdas: BTreeMap::new(),
             known_functions: known_functions.clone(),
+            known_extern_functions: known_extern_functions.clone(),
             known_function_types: known_function_types.clone(),
             known_function_alias_targets: known_function_alias_targets.clone(),
             known_const_exprs: known_const_exprs.clone(),
@@ -8907,6 +8958,7 @@ impl FunctionLoweringCtx {
             &synthetic_fn,
             &self.layouts,
             &self.known_functions,
+            &self.known_extern_functions,
             &self.known_function_types,
             &self.known_function_alias_targets,
             &self.known_const_exprs,
@@ -9753,6 +9805,7 @@ impl FunctionLoweringCtx {
             &lifted,
             &self.layouts,
             &known,
+            &self.known_extern_functions,
             &known_types,
             &self.known_function_alias_targets,
             &self.known_const_exprs,
@@ -10157,6 +10210,7 @@ impl FunctionLoweringCtx {
             &lifted,
             &self.layouts,
             &known,
+            &self.known_extern_functions,
             &known_types,
             &self.known_function_alias_targets,
             &self.known_const_exprs,
@@ -11074,6 +11128,7 @@ impl FunctionLoweringCtx {
             &fiber_body_hir,
             &self.layouts,
             &known,
+            &self.known_extern_functions,
             &known_types,
             &self.known_function_alias_targets,
             &self.known_const_exprs,
@@ -12296,6 +12351,8 @@ impl FunctionLoweringCtx {
                         MirCallee::External(symbol.clone())
                     } else if let Some(symbol) = ptr_intrinsic_symbol(name) {
                         MirCallee::External(symbol.to_string())
+                    } else if self.known_extern_functions.contains(name) {
+                        MirCallee::External(name.clone())
                     } else if self.known_function_types.contains_key(name) {
                         MirCallee::Local(self.canonical_known_function_name(name))
                     } else if is_namespaced_symbol_name(name) {

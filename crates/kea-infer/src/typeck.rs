@@ -5952,11 +5952,12 @@ fn annotation_name_known(name: &str) -> bool {
         name,
         "rename" | "default" | "skip_if" | "tagged" | "deprecated" | "intrinsic" | "fip"
             | "unsafe" | "unboxed" | "derive" | "kea_trait_bare_alias"
+            | "extern" | "link"
     )
 }
 
 fn annotation_name_suggestion(name: &str) -> Option<&'static str> {
-    const KNOWN: [&str; 10] = [
+    const KNOWN: [&str; 12] = [
         "rename",
         "default",
         "skip_if",
@@ -5967,6 +5968,8 @@ fn annotation_name_suggestion(name: &str) -> Option<&'static str> {
         "unsafe",
         "unboxed",
         "derive",
+        "extern",
+        "link",
     ];
     let mut best: Option<(&str, usize)> = None;
     for candidate in KNOWN {

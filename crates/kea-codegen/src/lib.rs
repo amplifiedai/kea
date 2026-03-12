@@ -7731,7 +7731,7 @@ mod tests {
                     terminator: MirTerminator::Return { value: None },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -7765,7 +7765,7 @@ mod tests {
                     terminator: MirTerminator::Return { value: None },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -7799,7 +7799,7 @@ mod tests {
                     terminator: MirTerminator::Return { value: None },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -7835,7 +7835,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -7873,7 +7873,7 @@ mod tests {
                     terminator: MirTerminator::Return { value: None },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -7917,7 +7917,7 @@ mod tests {
                     terminator: MirTerminator::Return { value: None },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -7947,7 +7947,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -7977,7 +7977,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8007,7 +8007,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8041,7 +8041,7 @@ mod tests {
                     terminator: MirTerminator::Return { value: None },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8077,7 +8077,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8128,7 +8128,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8167,7 +8167,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8220,7 +8220,7 @@ mod tests {
                     },
                 ],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8247,7 +8247,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8283,7 +8283,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8316,7 +8316,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8354,7 +8354,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8400,7 +8400,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8466,7 +8466,7 @@ mod tests {
                     },
                 ],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8532,7 +8532,7 @@ mod tests {
                     },
                 ],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8571,7 +8571,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8610,7 +8610,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8684,7 +8684,7 @@ mod tests {
                     }],
                 },
             ],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -8734,6 +8734,7 @@ mod tests {
                 }],
                 sums: vec![],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -8785,6 +8786,7 @@ mod tests {
                 }],
                 sums: vec![],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -8839,6 +8841,7 @@ mod tests {
                 }],
                 sums: vec![],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -8934,6 +8937,7 @@ mod tests {
                 }],
                 sums: vec![],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9015,6 +9019,7 @@ mod tests {
                 }],
                 sums: vec![],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9092,6 +9097,7 @@ mod tests {
                 }],
                 sums: vec![],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9178,6 +9184,7 @@ mod tests {
                 }],
                 sums: vec![],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9264,6 +9271,7 @@ mod tests {
                 }],
                 sums: vec![],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9325,6 +9333,7 @@ mod tests {
                 }],
                 sums: vec![],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9408,6 +9417,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9472,6 +9482,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9550,6 +9561,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9636,6 +9648,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9735,6 +9748,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9830,6 +9844,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -9934,6 +9949,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -10038,6 +10054,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -10103,6 +10120,7 @@ mod tests {
                 }],
                 sums: vec![],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -10184,6 +10202,7 @@ mod tests {
                 }],
                 sums: vec![],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -10243,6 +10262,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -10319,6 +10339,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -10382,6 +10403,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -10436,6 +10458,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         }
     }
 
@@ -10463,7 +10486,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -10491,7 +10514,7 @@ mod tests {
                     },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -10513,7 +10536,7 @@ mod tests {
                     terminator: MirTerminator::Return { value: None },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -10535,7 +10558,7 @@ mod tests {
                     terminator: MirTerminator::Return { value: None },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -10557,7 +10580,7 @@ mod tests {
                     terminator: MirTerminator::Return { value: None },
                 }],
             }],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -10620,7 +10643,7 @@ mod tests {
                     }],
                 },
             ],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -10688,7 +10711,7 @@ mod tests {
                     }],
                 },
             ],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -10831,7 +10854,7 @@ mod tests {
                     }],
                 },
             ],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -10959,7 +10982,7 @@ mod tests {
                     }],
                 },
             ],
-            layouts: MirLayoutCatalog::default(),
+            layouts: MirLayoutCatalog::default(), extern_functions: vec![],
         }
     }
 
@@ -11166,6 +11189,7 @@ mod tests {
                     ],
                 }],
             },
+            extern_functions: vec![],
         };
         let plan = plan_layout_catalog(&module).expect("layout planning should succeed");
         let function = &module.functions[0];
