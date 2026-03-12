@@ -684,6 +684,24 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
         }
     }
 
+    // Forwarder block elimination: merge trivial forwarding blocks.
+    {
+        let mut total_eliminated = 0usize;
+        for function in &mut functions {
+            total_eliminated += eliminate_forwarder_blocks(function);
+        }
+        if std::env::var("KEA_FORWARDER_ELIM_STATS").as_deref() == Ok("1")
+            && total_eliminated > 0
+        {
+            eprintln!("[forwarder-elim] eliminated={total_eliminated}");
+        }
+    }
+
+    // Dead block and Nop cleanup: remove unreachable blocks and Nop instructions.
+    for function in &mut functions {
+        cleanup_dead_blocks_and_nops(function);
+    }
+
     // LICM: hoist loop-invariant instructions (RecordFieldLoad, Const) to preheader.
     let licm_enabled =
         if std::env::var("KEA_NO_LICM").as_deref() == Ok("1") {
@@ -1657,16 +1675,30 @@ fn detect_loops(function: &MirFunction) -> Vec<LoopInfo> {
         }
 
         // Detect unchanged params: for each header param at position k,
-        // check if ALL back-edge Jumps pass back the same value as the header param.
+        // check if ALL back-edge Jumps pass back the same value as the preheader.
+        // After tail-loop conversion, back-edges pass the original function param
+        // (e.g. MirValueId(0)) while the header has a renamed param (e.g. MirValueId(21)).
+        // Comparing against the preheader arg (which also passes MirValueId(0)) is correct.
+        let preheader_args: Vec<MirValueId> = if let MirTerminator::Jump { args, .. } =
+            &function.blocks[preheader].terminator
+        {
+            args.clone()
+        } else {
+            vec![]
+        };
+
         let mut unchanged = BTreeSet::new();
-        for (k, param) in block.params.iter().enumerate() {
-            let all_same = backedges.iter().all(|&be_idx| {
-                if let MirTerminator::Jump { args, .. } = &function.blocks[be_idx].terminator {
-                    args.get(k).is_some_and(|arg| *arg == param.id)
-                } else {
-                    false
-                }
-            });
+        for (k, _param) in block.params.iter().enumerate() {
+            let pre_arg = preheader_args.get(k);
+            let all_same = pre_arg.is_some()
+                && backedges.iter().all(|&be_idx| {
+                    if let MirTerminator::Jump { args, .. } = &function.blocks[be_idx].terminator
+                    {
+                        args.get(k) == pre_arg
+                    } else {
+                        false
+                    }
+                });
             if all_same {
                 unchanged.insert(k);
             }
@@ -2715,6 +2747,133 @@ fn eliminate_redundant_bounds_checks(function: &mut MirFunction) -> usize {
     }
 
     eliminated
+}
+
+// -----------------------------------------------------------------------
+// Forwarder Block Elimination
+// -----------------------------------------------------------------------
+
+/// Eliminate blocks that are pure forwarders: all Nop instructions and a Jump
+/// that just passes params through to the target. Redirects predecessors to
+/// jump directly to the target. Returns the number of forwarders eliminated.
+fn eliminate_forwarder_blocks(function: &mut MirFunction) -> usize {
+    let mut total = 0;
+
+    loop {
+        // Find one forwarder block per iteration (mutating the function invalidates indices).
+        let mut forwarder = None;
+        for (bi, block) in function.blocks.iter().enumerate() {
+            // Don't eliminate the entry block.
+            if block.id == function.entry {
+                continue;
+            }
+            // All instructions must be Nop.
+            if !block.instructions.iter().all(|i| matches!(i, MirInst::Nop)) {
+                continue;
+            }
+            // Terminator must be Jump.
+            let MirTerminator::Jump { target, args } = &block.terminator else {
+                continue;
+            };
+            // Args must be a 1:1 mapping of the block's params (in order).
+            // This means the forwarder just passes its params straight through.
+            if args.len() != block.params.len() {
+                continue;
+            }
+            let is_identity = block
+                .params
+                .iter()
+                .zip(args.iter())
+                .all(|(p, a)| p.id == *a);
+            if !is_identity {
+                continue;
+            }
+            // Don't redirect to self (loop header → self would be bad).
+            if *target == block.id {
+                continue;
+            }
+            forwarder = Some((bi, block.id.clone(), target.clone()));
+            break;
+        }
+
+        let Some((_fi, fwd_id, target_id)) = forwarder else {
+            break;
+        };
+
+        // Redirect all predecessors: replace jumps to fwd_id with jumps to target_id.
+        for block in &mut function.blocks {
+            if block.id == fwd_id {
+                continue; // Skip the forwarder itself.
+            }
+            match &mut block.terminator {
+                MirTerminator::Jump { target, .. } if *target == fwd_id => {
+                    *target = target_id.clone();
+                }
+                MirTerminator::Branch {
+                    then_block,
+                    else_block,
+                    ..
+                } => {
+                    if *then_block == fwd_id {
+                        *then_block = target_id.clone();
+                    }
+                    if *else_block == fwd_id {
+                        *else_block = target_id.clone();
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Mark the forwarder as dead so it won't match again.
+        if let Some(fwd_block) = function.blocks.iter_mut().find(|b| b.id == fwd_id) {
+            fwd_block.terminator = MirTerminator::Unreachable;
+        }
+
+        total += 1;
+    }
+
+    total
+}
+
+// -----------------------------------------------------------------------
+// Dead Block and Nop Cleanup
+// -----------------------------------------------------------------------
+
+/// Remove unreachable blocks and strip Nop instructions.
+fn cleanup_dead_blocks_and_nops(function: &mut MirFunction) {
+    // BFS from entry to find reachable blocks.
+    let mut reachable: BTreeSet<MirBlockId> = BTreeSet::new();
+    let mut worklist = vec![function.entry.clone()];
+    while let Some(id) = worklist.pop() {
+        if !reachable.insert(id.clone()) {
+            continue;
+        }
+        if let Some(block) = function.blocks.iter().find(|b| b.id == id) {
+            match &block.terminator {
+                MirTerminator::Jump { target, .. } => {
+                    worklist.push(target.clone());
+                }
+                MirTerminator::Branch {
+                    then_block,
+                    else_block,
+                    ..
+                } => {
+                    worklist.push(then_block.clone());
+                    worklist.push(else_block.clone());
+                }
+                MirTerminator::Return { .. } | MirTerminator::Unreachable => {}
+            }
+        }
+    }
+
+    // Remove unreachable blocks.
+    function.blocks.retain(|b| reachable.contains(&b.id));
+
+    // Strip Nop instructions.
+    for block in &mut function.blocks {
+        block.instructions.retain(|i| !matches!(i, MirInst::Nop));
+    }
 }
 
 /// Convert a directly tail-recursive function into an explicit MIR loop.
